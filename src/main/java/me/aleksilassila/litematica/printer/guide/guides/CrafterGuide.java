@@ -23,11 +23,17 @@ public class CrafterGuide extends Guide {
         Direction facing = frontAndTop.front().getOpposite();
         Direction rotation = frontAndTop.top().getOpposite();
         if (facing == Direction.UP) {
-            return Result.success(new Action().setLookDirection(rotation, Direction.UP));
+            return Result.success(new Action()
+                    .setLookDirection(rotation, Direction.UP)
+                    .setNeedWaitModifyLook());
         } else if (facing == Direction.DOWN) {
-            return Result.success(new Action().setLookDirection(rotation.getOpposite(), Direction.DOWN));
+            return Result.success(new Action()
+                    .setLookDirection(rotation.getOpposite(), Direction.DOWN)
+                    .setNeedWaitModifyLook());
         } else {
-            return Result.success(new Action().setLookDirection(facing, facing));
+            return Result.success(new Action()
+                    .setLookDirection(facing, facing)
+                    .setNeedWaitModifyLook());
         }
     }
 

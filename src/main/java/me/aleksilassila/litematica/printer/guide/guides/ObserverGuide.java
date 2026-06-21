@@ -30,7 +30,9 @@ public class ObserverGuide extends Guide {
         Direction facing = getProperty(requiredState, ObserverBlock.FACING).orElseThrow();
 
         if (!Configs.Print.SAFELY_OBSERVER.getBooleanValue()) {
-            return Result.success(new Action().setLookDirection(facing));
+            return Result.success(new Action()
+                    .setLookDirection(facing)
+                    .setNeedWaitModifyLook());
         }
 
         // 安全放置模式
@@ -66,7 +68,9 @@ public class ObserverGuide extends Guide {
                     break;
                 }
             }
-            return Result.success(new Action().setLookDirection(facing));
+            return Result.success(new Action()
+                    .setLookDirection(facing)
+                    .setNeedWaitModifyLook());
         }
 
         // 输入端正确但输出端有问题
@@ -118,7 +122,9 @@ public class ObserverGuide extends Guide {
             }
         }
 
-        return Result.success(new Action().setLookDirection(facing));
+        return Result.success(new Action()
+                .setLookDirection(facing)
+                .setNeedWaitModifyLook());
     }
 
     @Override

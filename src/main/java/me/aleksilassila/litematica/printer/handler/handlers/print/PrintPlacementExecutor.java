@@ -60,6 +60,7 @@ public final class PrintPlacementExecutor {
             ActionManager.INSTANCE.useProtocolHitModifier(hitModifier);
         }
         ActionManager.INSTANCE.setLook(adjustHorizontalLook(action.getPlayerLook(), context));
+        ActionManager.INSTANCE.setNeedWaitModifyLookFromAction(action.isNeedWaitModifyLook());
         HudStatsManager.INSTANCE.trackExpectedBlockState(HudStatsManager.Mode.PRINT, blockPos, context.requiredState);
         HudStatsManager.INSTANCE.recordRateUnit(HudStatsManager.Mode.PRINT, 1);
 

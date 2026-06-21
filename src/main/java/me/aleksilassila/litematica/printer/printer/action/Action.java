@@ -50,6 +50,8 @@ public class Action {
     protected int cooldownTicksOverride = -1;
     @Getter
     protected int clickRepeatCount = 1;
+    @Getter
+    protected boolean needWaitModifyLook = false;
 
     public Action() {
         this.sides = createDefaultSides();
@@ -69,6 +71,15 @@ public class Action {
     public Action setLookDirection(Direction lookDirectionYaw, Direction lookDirectionPitch) {
         this.playerLook = new PlayerLook(lookDirectionYaw, lookDirectionPitch);
         return this;
+    }
+
+    public Action setNeedWaitModifyLook(boolean needWaitModifyLook) {
+        this.needWaitModifyLook = needWaitModifyLook;
+        return this;
+    }
+
+    public Action setNeedWaitModifyLook() {
+        return this.setNeedWaitModifyLook(true);
     }
 
     public @Nullable Item[] getRequiredItems(Block backup) {

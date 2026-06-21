@@ -45,7 +45,10 @@ public class DefaultGuide extends Guide {
                     : attachFace == AttachFace.FLOOR ? Direction.DOWN
                     : facing;
             Direction clickSide = attachFace == AttachFace.WALL ? facing : facing.getOpposite();
-            return Result.success(action.setSides(clickSide).setLookDirection(clickSide.getOpposite(), sidePitch));
+            return Result.success(action
+                    .setSides(clickSide)
+                    .setLookDirection(clickSide.getOpposite(), sidePitch)
+                    .setNeedWaitModifyLook());
         }
 
         // 2. 轴向方块（原木、锁链等）
@@ -81,6 +84,9 @@ public class DefaultGuide extends Guide {
                     if (requiredBlock instanceof ShulkerBoxBlock) {
                         entityFacing = entityFacing.getOpposite();
                         action.setShift();
+                    }
+                    if (requiredBlock instanceof BarrelBlock || requiredBlock instanceof DispenserBlock) {
+                        action.setNeedWaitModifyLook();
                     }
                     action.setSides(entityFacing).setLookDirection(entityFacing.getOpposite());
                 }

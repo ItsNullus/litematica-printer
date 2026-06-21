@@ -2,8 +2,6 @@ package me.aleksilassila.litematica.printer.handler.handlers;
 
 import fi.dy.masa.litematica.world.SchematicWorldHandler;
 import fi.dy.masa.litematica.world.WorldSchematic;
-import lombok.Getter;
-import lombok.Setter;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.enums.PrintModeType;
 import me.aleksilassila.litematica.printer.guide.Guides;
@@ -29,14 +27,6 @@ import org.jetbrains.annotations.Nullable;
 
 public class PrintHandler extends Module {
     public final static String NAME = "print";
-
-    @Getter
-    @Setter
-    private boolean pistonNeedFix;
-
-    @Getter
-    @Setter
-    private boolean printerMemorySync;
 
     private Action action;
     @Nullable

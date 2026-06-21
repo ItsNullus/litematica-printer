@@ -23,7 +23,9 @@ public class PistonGuide extends Guide {
     protected Result onBuildActionMissingBlock(BlockMatchResult state) {
         Direction facing = getProperty(requiredState, PistonBaseBlock.FACING).orElse(null);
         if (facing == null) return Result.SKIP;
-        return Result.success(new Action().setLookDirection(facing.getOpposite()));
+        return Result.success(new Action()
+                .setLookDirection(facing.getOpposite())
+                .setNeedWaitModifyLook());
     }
 
     @Override

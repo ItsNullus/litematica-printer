@@ -11,6 +11,7 @@ import me.aleksilassila.litematica.printer.utils.minecraft.NetworkUtils;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.util.Mth;
 
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.phys.BlockHitResult;
@@ -28,6 +29,7 @@ import net.minecraft.world.entity.player.Input;
 @SuppressWarnings("SpellCheckingInspection")
 public class ActionManager {
     public static final ActionManager INSTANCE = new ActionManager();
+    private static final float LOOK_SETTLED_EPSILON_DEGREES = 1.0F;
 
     private QueuedClick queuedClick;
     @Setter
@@ -35,6 +37,7 @@ public class ActionManager {
     public PlayerLook look;
     public boolean needWaitModifyLook = false;
     private boolean waitForHorizontalLook = true;
+    private boolean actionRequiresWaitModifyLook = false;
 
     private ActionManager() {
     }
@@ -68,14 +71,9 @@ public class ActionManager {
         if (!needWaitModifyLook && look != null) {
             NetworkUtils.sendLookPacket(player, look);
         }
-        if (waitForHorizontalLook && !click.useProtocol && !needWaitModifyLook) {
-            if (look != null) {
-                Direction lookDirection = DirectionUtils.orderedByNearest(look.yaw, look.pitch)[0];
-                if (lookDirection.getAxis().isHorizontal()) {
-                    needWaitModifyLook = true;
-                    return this;
-                }
-            }
+        if (shouldWaitForServerLook(player, click)) {
+            needWaitModifyLook = true;
+            return this;
         }
         if (needWaitModifyLook) {
             needWaitModifyLook = false;
@@ -140,10 +138,32 @@ public class ActionManager {
         this.waitForHorizontalLook = waitForHorizontalLook;
     }
 
+    public void setNeedWaitModifyLookFromAction(boolean actionRequiresWaitModifyLook) {
+        this.actionRequiresWaitModifyLook = actionRequiresWaitModifyLook;
+    }
+
+    private boolean shouldWaitForServerLook(LocalPlayer player, QueuedClick click) {
+        if ((!this.waitForHorizontalLook && !this.actionRequiresWaitModifyLook)
+                || click.useProtocol
+                || this.needWaitModifyLook
+                || this.look == null) {
+            return false;
+        }
+        Direction lookDirection = DirectionUtils.orderedByNearest(this.look.yaw, this.look.pitch)[0];
+        return lookDirection.getAxis().isHorizontal()
+                && !isPlayerLookSettled(player, this.look);
+    }
+
+    private static boolean isPlayerLookSettled(LocalPlayer player, PlayerLook look) {
+        return Math.abs(Mth.wrapDegrees(player.getYRot() - look.yaw)) <= LOOK_SETTLED_EPSILON_DEGREES
+                && Math.abs(player.getXRot() - look.pitch) <= LOOK_SETTLED_EPSILON_DEGREES;
+    }
+
     public void clearQueue() {
         this.queuedClick = null;
         this.needWaitModifyLook = false;
         this.waitForHorizontalLook = true;
+        this.actionRequiresWaitModifyLook = false;
         this.look = null;
     }
 }

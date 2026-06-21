@@ -7,6 +7,7 @@ import me.aleksilassila.litematica.printer.printer.action.Action;
 import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.piston.PistonBaseBlock;
 
+import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -240,9 +241,7 @@ public class Guides {
             }
             if (matches) {
                 try {
-                    Guide guide = reg.guideClass
-                            .getConstructor(SchematicBlockContext.class)
-                            .newInstance(context);
+                    Guide guide = reg.create(context);
                     if (guide.canExecute()) {
                         guides.add(guide);
                     }
@@ -271,12 +270,21 @@ public class Guides {
 
     @SuppressWarnings("ClassCanBeRecord")
     private static class GuideRegistration {
-        public final Class<? extends Guide> guideClass;
+        private final Constructor<? extends Guide> constructor;
         public final Class<? extends Block>[] blockClass;
 
         public GuideRegistration(Class<? extends Guide> guideClass, Class<? extends Block>[] blockClass) {
-            this.guideClass = guideClass;
+            try {
+                this.constructor = guideClass.getConstructor(SchematicBlockContext.class);
+            } catch (NoSuchMethodException e) {
+                throw new IllegalArgumentException("Guide must expose a SchematicBlockContext constructor: "
+                        + guideClass.getName(), e);
+            }
             this.blockClass = blockClass;
+        }
+
+        public Guide create(SchematicBlockContext context) throws ReflectiveOperationException {
+            return this.constructor.newInstance(context);
         }
     }
 }
