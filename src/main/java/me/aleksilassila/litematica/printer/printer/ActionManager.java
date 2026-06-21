@@ -62,9 +62,9 @@ public class ActionManager {
         }
     }
 
-    public ActionManager sendQueue(LocalPlayer player) {
+    public ActionManager sendQueue(@Nullable LocalPlayer player) {
         QueuedClick click = this.queuedClick;
-        if (click == null) {
+        if (click == null || player == null) {
             clearQueue();
             return this;
         }
