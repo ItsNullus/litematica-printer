@@ -38,8 +38,6 @@ repositories {
 
     strictMaven("https://maven.terraformersmc.com/releases", "com.terraformersmc")  // ModMenu
     strictMaven("https://maven.nucleoid.xyz", "eu.pb4") // ModMenu依赖TextPlaceholderAPI
-    strictMaven("https://maven.blamejared.com")     // Searchables 配置库
-    strictMaven("https://maven.isxander.dev/releases")
     strictMaven("https://jitpack.io")
 }
 
@@ -68,14 +66,6 @@ dependencies {
     implementation("maven.modrinth:malilib:$malilib")
     implementation("maven.modrinth:litematica:$litematica")
     implementation("maven.modrinth:tweakeroo:${prop("tweakeroo")}")
-
-    // 箱子追踪
-    implementation("maven.modrinth:chest-tracker-port:${prop("chesttracker")}")
-    implementation("com.github.bunnyi116:JackFredLib:${prop("jackfredlib")}")
-    implementation("maven.modrinth:where-is-it-port:${prop("whereisit")}")
-
-    implementation("dev.isxander:yet-another-config-lib:${prop("yacl")}")
-    implementation("com.blamejared.searchables:${prop("searchables")}")
 
     // 快捷潜影盒
     val quickshulkerUrl = prop("quickshulker").toString()

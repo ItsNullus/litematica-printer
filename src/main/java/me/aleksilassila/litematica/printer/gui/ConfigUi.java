@@ -27,11 +27,19 @@ public class ConfigUi extends GuiConfigsBase {
     }
 
     public ConfigUi() {
+        //#if MC > 260100
+        //$$ this(Minecraft.getInstance().gui.screen());
+        //#else
         this(Minecraft.getInstance().screen);
+        //#endif
     }
 
     public static void refresh() {
+        //#if MC > 260100
+        //$$ if (Reference.MINECRAFT.gui.screen() instanceof ConfigUi gui) {
+        //#else
         if (Reference.MINECRAFT.screen instanceof ConfigUi gui) {
+        //#endif
             gui.initGui();
         }
     }

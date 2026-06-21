@@ -8,22 +8,11 @@ import me.aleksilassila.litematica.printer.printer.ActionManager;
 import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockController;
 import me.aleksilassila.litematica.printer.printer.zxy.utils.HighlightBlockRenderer;
 import me.aleksilassila.litematica.printer.utils.minecraft.MessageUtils;
-import me.aleksilassila.litematica.printer.utils.mods.ModLoadUtils;
 
 import static me.aleksilassila.litematica.printer.config.Configs.*;
 
 public class InitHandler implements IInitializationHandler {
     private static void initModConfig() {
-        // 箱子追踪 (模组没加载的情况下，进行关闭)
-        if (!ModLoadUtils.isChestTrackerLoaded()) {
-            Core.AUTO_INVENTORY.setBooleanValue(false);  // 自动设置远程交互
-            Core.CLOUD_INVENTORY.setBooleanValue(false); // 远程交互容器
-        }
-        //#if MC >= 12001
-        if (ModLoadUtils.isChestTrackerLoaded()) {
-            me.aleksilassila.litematica.printer.printer.zxy.chesttracker.MemoryUtils.setup();
-        }
-        //#endif
     }
 
     @Override

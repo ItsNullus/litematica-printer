@@ -19,7 +19,9 @@ import net.minecraft.util.profiling.ProfilerFiller;
 import java.util.*;
 
 import com.mojang.blaze3d.vertex.BufferBuilder;
+//#if MC <= 260100
 import com.mojang.blaze3d.vertex.Tesselator;
+//#endif
 
 
 //#if MC <= 12104
@@ -138,12 +140,16 @@ public class HighlightBlockRenderer implements IRenderer {
         //#else
         //$$ RenderSystem.setShader(GameRenderer::getPositionColorShader);
         //#endif
+        //#if MC <= 260100
         Tesselator tesselator = Tesselator.getInstance();
+        //#endif
 
         //#if MC > 12006
             //#if MC > 12104
                 //#if MC == 12105
                 //$$ RenderContext ctx = new RenderContext(MaLiLibPipelines.POSITION_COLOR_TRANSLUCENT, BufferUsage.STATIC_WRITE);
+                //#elseif MC > 260100
+                //$$ RenderContext ctx = new RenderContext(() -> threadName, MaLiLibPipelines.POSITION_COLOR_TRANSLUCENT, 0);
                 //#else
                 RenderContext ctx = new RenderContext(() -> threadName, MaLiLibPipelines.POSITION_COLOR_TRANSLUCENT);
                 //#endif

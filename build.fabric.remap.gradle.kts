@@ -37,11 +37,8 @@ repositories {
 
     strictMaven("https://maven.terraformersmc.com/releases", "com.terraformersmc")  // ModMenu
     strictMaven("https://maven.nucleoid.xyz", "eu.pb4") // ModMenu依赖TextPlaceholderAPI
-    strictMaven("https://maven.jackf.red/releases", "red.jackf")  // JackFredLib 依赖
-    strictMaven("https://maven.blamejared.com") // Searchables 配置库
     strictMaven("https://repo.maven.apache.org/maven2", "blue.endless", "io.github.juuxel") // Jankson / LibNinePatch
     strictMaven("https://staging.alexiil.uk/maven/", "io.github.cottonmc") // LibGui 依赖
-    strictMaven("https://maven.isxander.dev/releases")
     strictMaven("https://maven.shedaniel.me")  // Cloth API/Config 官方源
     strictMaven("https://jitpack.io")
 }
@@ -73,35 +70,6 @@ dependencies {
     modImplementation("maven.modrinth:malilib:$malilib")
     modImplementation("maven.modrinth:litematica:$litematica")
     modImplementation("maven.modrinth:tweakeroo:${prop("tweakeroo")}")
-
-    // 箱子追踪
-    if (mcVersionInt >= 12106) {
-        modImplementation("maven.modrinth:chest-tracker-port:${prop("chesttracker")}")
-        if (mcVersionInt >= 12106) {
-            modImplementation("com.github.bunnyi116:JackFredLib:${prop("jackfredlib")}")
-        } else {
-            modImplementation("red.jackf.jackfredlib:jackfredlib:${prop("jackfredlib")}")
-        }
-        modImplementation("maven.modrinth:where-is-it-port:${prop("whereisit")}")
-    } else {
-        modImplementation("maven.modrinth:chest-tracker:${prop("chesttracker")}")
-        modImplementation("maven.modrinth:where-is-it:${prop("whereisit")}")
-        if (mcVersionInt >= 12001) {
-            modImplementation("red.jackf.jackfredlib:jackfredlib:${prop("jackfredlib")}")
-        } else {
-            modImplementation("me.shedaniel.cloth:cloth-config-fabric:${prop("cloth_config")}")
-            if (mcVersionInt < 11904) {
-                modImplementation("me.shedaniel.cloth.api:cloth-api:${prop("cloth_api")}")
-            }
-            if (mcVersionInt <= 11904) {
-                modImplementation("io.github.cottonmc:LibGui:${prop("LibGui")}")
-            }
-        }
-    }
-    if (mcVersionInt >= 12001) {
-        modImplementation("dev.isxander:yet-another-config-lib:${prop("yacl")}")
-        modImplementation("com.blamejared.searchables:${prop("searchables")}")
-    }
 
     // 快捷潜影盒
     if (mcVersionInt >= 12006) {

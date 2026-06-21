@@ -4,7 +4,11 @@ import me.aleksilassila.litematica.printer.render.Render2D;
 import me.aleksilassila.litematica.printer.utils.render.Render2DUtils;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import net.minecraft.client.Minecraft;
+//#if MC >= 260200
+//$$ import net.minecraft.client.gui.Hud;
+//#else
 import net.minecraft.client.gui.Gui;
+//#endif
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import org.spongepowered.asm.mixin.Mixin;
@@ -22,10 +26,16 @@ import net.minecraft.client.DeltaTracker;
 //$$ import net.minecraft.client.gui.GuiGraphics;
 //#endif
 
+//#if MC >= 260200
+//$$ @Mixin(Hud.class)
+//#else
 @Mixin(Gui.class)
+//#endif
 public abstract class MixinGui {
     // @formatter:off
-    //#if MC >= 260100
+    //#if MC >= 260200
+    //$$ @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
+    //#elseif MC >= 260100
     @Inject(method = "extractHotbarAndDecorations", at = @At("TAIL"))
     //#else
     //$$ @Inject(method = "renderItemHotbar", at = @At("TAIL"))

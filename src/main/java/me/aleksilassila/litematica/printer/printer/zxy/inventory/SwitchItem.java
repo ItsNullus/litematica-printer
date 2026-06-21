@@ -7,15 +7,11 @@ import me.aleksilassila.litematica.printer.utils.mods.ModLoadUtils;
 import me.aleksilassila.litematica.printer.utils.mods.ShulkerUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.core.BlockPos;
-import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
@@ -39,8 +35,8 @@ public class SwitchItem {
         if (itemStatistics != null) itemStatistics.syncUseTime();
     }
 
-    public static void newItem(ItemStack itemStack, BlockPos pos, ResourceKey<Level> key, int slot, int shulkerBox) {
-        if (shulkerBox != -1) itemStacks.put(itemStack, new ItemStatistics(key, pos, slot, shulkerBox));
+    public static void newItem(ItemStack itemStack, int slot, int shulkerBox) {
+        if (shulkerBox != -1) itemStacks.put(itemStack, new ItemStatistics(slot, shulkerBox));
     }
 
     public static void openInv(ItemStack itemStack) {
@@ -56,11 +52,7 @@ public class SwitchItem {
         }
         ItemStatistics itemStatistics = itemStacks.get(itemStack);
         if (itemStatistics != null) {
-            if (itemStatistics.key != null && OpenInventoryPacket.key == null) {
-                OpenInventoryPacket.sendOpenInventory(itemStatistics.pos, itemStatistics.key);
-            } else {
-                ShulkerUtils.openShulker(sc.slots.get(itemStatistics.shulkerBoxSlot).getItem(), itemStatistics.shulkerBoxSlot);
-            }
+            ShulkerUtils.openShulker(sc.slots.get(itemStatistics.shulkerBoxSlot).getItem(), itemStatistics.shulkerBoxSlot);
             ModLoadUtils.closeScreen++;
         } else {
             removeItem(reSwitchItem);
@@ -141,15 +133,11 @@ public class SwitchItem {
     }
 
     public static class ItemStatistics {
-        public ResourceKey<Level> key;
-        public BlockPos pos;
         public int slot;
         public int shulkerBoxSlot;
         public long useTime = System.currentTimeMillis();
 
-        public ItemStatistics(ResourceKey<Level> key, BlockPos pos, int slot, int shulkerBox) {
-            this.key = key;
-            this.pos = pos;
+        public ItemStatistics(int slot, int shulkerBox) {
             this.slot = slot;
             this.shulkerBoxSlot = shulkerBox;
         }

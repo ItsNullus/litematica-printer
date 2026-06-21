@@ -4,7 +4,13 @@ public enum ScanIntent {
     PRINT {
         @Override
         public boolean shouldConsider(byte flags) {
-            return ScanFlags.has(flags, ScanFlags.SCHEMATIC_NON_AIR);
+            return ScanFlags.has(flags, ScanFlags.SCHEMATIC_NON_AIR)
+                    || ScanFlags.has(flags, ScanFlags.WORLD_NON_AIR);
+        }
+
+        @Override
+        public boolean acceptsByFlags(byte flags) {
+            return this.shouldConsider(flags);
         }
     },
     MINE {

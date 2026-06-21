@@ -205,9 +205,10 @@ public final class ScanCache {
             boolean unbounded
     ) {
         int scanLimit = unbounded ? Integer.MAX_VALUE : this.getScanLimit(scanGuardLimit);
+        String cacheOwnerKey = this.cacheOwnerKey(ownerKey, intent);
         int asyncLimit = intent == ScanIntent.PRINT ? Math.min(MAX_ASYNC_PREFIX, Math.max(0, scanLimit / 4)) : 0;
-        List<BlockPos> asyncPositions = this.asyncPlanner.take(ownerKey, sourceBox, asyncLimit);
-        SectionScanSession session = this.session(ownerKey, intent, sourceBox, player);
+        List<BlockPos> asyncPositions = this.asyncPlanner.take(cacheOwnerKey, sourceBox, asyncLimit);
+        SectionScanSession session = this.session(cacheOwnerKey, intent, sourceBox, player);
         double eyeX = player == null ? 0.0D : player.getEyePosition().x;
         double eyeY = player == null ? 0.0D : player.getEyePosition().y;
         double eyeZ = player == null ? 0.0D : player.getEyePosition().z;
@@ -320,10 +321,17 @@ public final class ScanCache {
                 if (!force && this.targetSnapshots.size() < 64) {
                     return;
                 }
-                asyncPlanner.submit(ownerKey, this.targetSnapshots, eyeX, eyeY, eyeZ);
+                asyncPlanner.submit(cacheOwnerKey, this.targetSnapshots, eyeX, eyeY, eyeZ);
                 this.targetSnapshots = new ArrayList<>();
             }
         };
+    }
+
+    private String cacheOwnerKey(String ownerKey, ScanIntent intent) {
+        if (intent == ScanIntent.PRINT && Configs.Print.BREAK_EXTRA_BLOCK.getBooleanValue()) {
+            return ownerKey + ":breakExtra";
+        }
+        return ownerKey;
     }
 
     private SectionScanSession session(String ownerKey, ScanIntent intent, PrinterBox sourceBox, LocalPlayer player) {
@@ -675,7 +683,7 @@ public final class ScanCache {
                 return null;
             }
             if (this.usesWorld()) {
-                return this.nextLive(level, tickTime, shouldPause, unbounded);
+                return this.nextLive(level, schematic, tickTime, shouldPause, unbounded);
             }
 
             int advancedSections = 0;
@@ -740,6 +748,7 @@ public final class ScanCache {
             return this.intent == ScanIntent.MINE
                     || this.intent == ScanIntent.FLUID
                     || this.intent == ScanIntent.FILL
+                    || this.intent == ScanIntent.PRINT && Configs.Print.BREAK_EXTRA_BLOCK.getBooleanValue()
                     || this.intent == ScanIntent.CUSTOM;
         }
 
@@ -749,7 +758,7 @@ public final class ScanCache {
          * 时间预算由 shouldPause 切断,跨 tick 续扫靠 liveSectionXYZ 与 liveLocalIndex 记录进度。
          * 这是为了消除大交互距离(box 远大于缓存)下反复 new 数组导致的 GC 卡顿。
          */
-        private Candidate nextLive(ClientLevel level, long tickTime, BooleanSupplier shouldPause, boolean unbounded) {
+        private Candidate nextLive(ClientLevel level, WorldSchematic schematic, long tickTime, BooleanSupplier shouldPause, boolean unbounded) {
             if (level == null) {
                 this.exhaustedUntilTick = tickTime + EXHAUSTED_RESCAN_DELAY_TICKS;
                 return null;
@@ -757,7 +766,7 @@ public final class ScanCache {
             int advancedSections = 0;
             while (true) {
                 if (this.liveSectionActive) {
-                    Candidate candidate = this.nextFromLiveSection(level, shouldPause, unbounded);
+                    Candidate candidate = this.nextFromLiveSection(level, schematic, shouldPause, unbounded);
                     if (candidate != null) {
                         return candidate;
                     }
@@ -806,7 +815,7 @@ public final class ScanCache {
             }
         }
 
-        private Candidate nextFromLiveSection(ClientLevel level, BooleanSupplier shouldPause, boolean unbounded) {
+        private Candidate nextFromLiveSection(ClientLevel level, WorldSchematic schematic, BooleanSupplier shouldPause, boolean unbounded) {
             int baseX = this.liveSectionX << 4;
             int baseY = this.liveSectionY << 4;
             int baseZ = this.liveSectionZ << 4;
@@ -835,7 +844,7 @@ public final class ScanCache {
                 if (this.intent == ScanIntent.CUSTOM) {
                     return new Candidate(new BlockPos(x, y, z), (byte) 0);
                 }
-                byte flags = this.liveFlags(level, x, y, z, state);
+                byte flags = this.liveFlags(level, schematic, x, y, z, state);
                 if (flags != 0) {
                     return new Candidate(new BlockPos(x, y, z), flags);
                 }
@@ -847,8 +856,21 @@ public final class ScanCache {
          * 当场判定一个方块对 world intent 的候选标志,等价于旧缓存路径的 worldSolid/worldFluid/worldFillBase 归类。
          * 返回 0 表示「非该 intent 候选,跳过」(不发射,省去 exactPredicate 调用)。
          */
-        private byte liveFlags(ClientLevel level, int x, int y, int z, BlockState state) {
+        private byte liveFlags(ClientLevel level, WorldSchematic schematic, int x, int y, int z, BlockState state) {
             switch (this.intent) {
+                case PRINT -> {
+                    if (schematic == null) {
+                        return 0;
+                    }
+                    BlockState requiredState = schematic.getBlockState(this.liveMutable);
+                    if (!requiredState.isAir()) {
+                        return (byte) (ScanFlags.SCHEMATIC_SAMPLED | ScanFlags.SCHEMATIC_NON_AIR);
+                    }
+                    if (!state.isAir() && !(state.getBlock() instanceof LiquidBlock)) {
+                        return (byte) (ScanFlags.SCHEMATIC_SAMPLED | ScanFlags.WORLD_NON_AIR);
+                    }
+                    return 0;
+                }
                 case MINE -> {
                     if (state.isAir() || state.getBlock() instanceof LiquidBlock) {
                         return 0;

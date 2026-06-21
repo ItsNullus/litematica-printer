@@ -26,7 +26,7 @@ val versions = listOf(
     "1.19.4",
     "1.20.1", "1.20.2", "1.20.4", "1.20.6",
     "1.21.1", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.9", /*"1.21.10",*/ "1.21.11",
-    "26.1"
+    "26.1", "26.2"
 )
 val mainProjectVersion = file("versions/mainProject").readText().trim()
 val preprocessParentChain = mapOf(
@@ -42,7 +42,8 @@ val preprocessParentChain = mapOf(
     "1.21.5" to "1.21.6",
     "1.21.6" to "1.21.9",
     "1.21.9" to "1.21.11",
-    "1.21.11" to "26.1"
+    "1.21.11" to "26.1",
+    "26.2" to "26.1"
 )
 
 fun expandWithPreprocessParents(requested: List<String>): List<String> {

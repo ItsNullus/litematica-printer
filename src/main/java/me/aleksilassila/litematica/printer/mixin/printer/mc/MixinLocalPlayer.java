@@ -8,14 +8,12 @@ import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
-import me.aleksilassila.litematica.printer.utils.mods.ModLoadUtils;
 import me.aleksilassila.litematica.printer.utils.UpdateCheckerUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.player.LocalPlayer;
-import me.aleksilassila.litematica.printer.printer.zxy.utils.ZxyUtils;
 import net.minecraft.network.protocol.game.ServerboundSignUpdatePacket;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
@@ -29,11 +27,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-
-//#if MC >= 12001 
-import me.aleksilassila.litematica.printer.printer.zxy.chesttracker.MemoryUtils;
-import me.aleksilassila.litematica.printer.printer.zxy.inventory.OpenInventoryPacket;
-//#endif
 
 @Mixin(LocalPlayer.class)
 public class MixinLocalPlayer extends AbstractClientPlayer {
@@ -66,21 +59,10 @@ public class MixinLocalPlayer extends AbstractClientPlayer {
         updateChecked = true;
     }
 
-    @Inject(at = @At("HEAD"), method = "closeContainer")
-    public void close(CallbackInfo ci) {
-        //#if MC >= 12001
-        if (ModLoadUtils.isChestTrackerLoaded()) {
-            MemoryUtils.saveMemory(this.containerMenu);
-        }
-        OpenInventoryPacket.reSet();
-        //#endif
-    }
-
     @Inject(at = @At("HEAD"), method = "tick")
     public void tick(CallbackInfo ci) {
         CooldownUtils.INSTANCE.tick();
         InventoryUtils.tick();
-        ZxyUtils.tick();
         InteractionUtils.INSTANCE.preprocess();
         InteractionUtils.INSTANCE.onTick();
         ClientPlayerTickManager.tick();

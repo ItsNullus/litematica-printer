@@ -33,10 +33,18 @@ public class LitematicaUtils {
             EasyPlaceProtocol protocol = PlacementHandler.getEffectiveProtocolVersion();
             Vec3 hitPos = Vec3.atLowerCornerOf(pos);
             if (protocol == EasyPlaceProtocol.V3) {
+                //#if MC > 260100
+                //$$ return fi.dy.masa.litematica.util.EasyPlaceUtils.applyPlacementProtocolV3(pos, stateSchematic, hitPos);
+                //#else
                 return fi.dy.masa.litematica.util.WorldUtils.applyPlacementProtocolV3(pos, stateSchematic, hitPos);
+                //#endif
             } else if (protocol == EasyPlaceProtocol.V2) {
                 // Carpet Accurate Block placements protocol support, plus slab support
+                //#if MC > 260100
+                //$$ return fi.dy.masa.litematica.util.EasyPlaceUtils.applyCarpetProtocolHitVec(pos, stateSchematic, hitPos);
+                //#else
                 return fi.dy.masa.litematica.util.WorldUtils.applyCarpetProtocolHitVec(pos, stateSchematic, hitPos);
+                //#endif
             }
         }
         return null;
@@ -56,7 +64,11 @@ public class LitematicaUtils {
         //#endif
 
         for (SchematicPlacementManager.PlacementPart placementPart : allPlacementsTouchingChunk) {
+            //#if MC > 260100
+            //$$ if (placementPart.getBox().contains(pos)) {
+            //#else
             if (placementPart.getBox().containsPos(pos)) {
+            //#endif
                 return true;
             }
         }

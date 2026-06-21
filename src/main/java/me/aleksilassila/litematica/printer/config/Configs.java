@@ -14,8 +14,8 @@ import fi.dy.masa.malilib.util.restrictions.UsageRestriction;
 import fi.dy.masa.malilib.config.ConfigManager;
 import me.aleksilassila.litematica.printer.Reference;
 import me.aleksilassila.litematica.printer.enums.*;
-import me.aleksilassila.litematica.printer.utils.mods.ModLoadUtils;
 import me.aleksilassila.litematica.printer.gui.ConfigUi;
+import me.aleksilassila.litematica.printer.utils.mods.ModLoadUtils;
 import net.minecraft.world.level.block.Blocks;
 
 import java.io.File;
@@ -33,7 +33,6 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
     private static final KeybindSettings GUI_NO_ORDER = KeybindSettings.create(KeybindSettings.Context.GUI, KeyAction.PRESS, false, false, false, true);
 
     // 配置页面是否可视(函数式, 动态获取, 全局统一使用)
-    private static final BooleanSupplier isLoadChestTrackerLoaded = ModLoadUtils::isChestTrackerLoaded;
     private static final BooleanSupplier isSingle = () -> Core.WORK_MODE.getOptionListValue().equals(WorkingModeType.SINGLE);
     private static final BooleanSupplier isMulti = () -> Core.WORK_MODE.getOptionListValue().equals(WorkingModeType.MULTI);
 
@@ -188,29 +187,6 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 .defaultValue(true)
                 .build();
 
-        // 远程交互 - 开关
-        public static final ConfigBoolean CLOUD_INVENTORY = bool("cloudInventory")
-                .defaultValue(false)
-                .setVisible(isLoadChestTrackerLoaded) // 仅箱子追踪 Mod 加载时显示
-                .build();
-
-        // 远程交互 - 自动设置远程交互
-        public static final ConfigBoolean AUTO_INVENTORY = bool("autoInventory")
-                .defaultValue(false)
-                .setVisible(isLoadChestTrackerLoaded) // 仅箱子追踪 Mod 加载时显示
-                .build();
-
-        // 远程交互 - 库存白名单
-        public static final ConfigStringList INVENTORY_LIST = stringList("inventoryList")
-                .defaultValue(Blocks.CHEST)
-                .setVisible(isLoadChestTrackerLoaded) // 仅箱子追踪 Mod 加载时显示
-                .build();
-
-        // 容器同步与打印机添加库存高亮颜色
-        public static final ConfigColor SYNC_INVENTORY_COLOR = color("syncInventoryColor")
-                .defaultValue("#4CFF4CE6")
-                .build();
-
         // 通用配置项列表（按功能分类排序）
         public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
                 WORK_SWITCH,
@@ -232,11 +208,7 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 CHECK_PLAYER_INTERACTION_RANGE,
                 ITERATOR_SHAPE,
                 AUTO_DISABLE_PRINTER,
-                UPDATE_CHECK,
-                CLOUD_INVENTORY,
-                AUTO_INVENTORY,
-                INVENTORY_LIST,
-                SYNC_INVENTORY_COLOR
+                UPDATE_CHECK
         );
     }
 
@@ -705,45 +677,6 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 .setVisible(isMulti) // 仅多模式时显示
                 .build();
 
-        // 同步容器热键
-        public static final ConfigHotkey SYNC_INVENTORY = hotkey("syncInventory")
-                .build();
-
-        // 同步容器开关热键
-        public static final ConfigBooleanHotkeyed SYNC_INVENTORY_CHECK = booleanHotkey("syncInventoryCheck")
-                .defaultValue(false)
-                .build();
-
-        // ========== 远程交互热键 ==========
-
-        // 设置打印机库存热键
-        public static final ConfigHotkey PRINTER_INVENTORY = hotkey("printerInventory")
-                .setVisible(isLoadChestTrackerLoaded) // 仅箱子追踪 Mod 加载时显示
-                .build();
-
-        // 清空打印机库存热键
-        public static final ConfigHotkey REMOVE_PRINT_INVENTORY = hotkey("removePrintInventory")
-                .setVisible(isLoadChestTrackerLoaded) // 仅箱子追踪 Mod 加载时显示
-                .build();
-
-        // 上一个箱子
-        public static final ConfigHotkey LAST = hotkey("last")
-                .keybindSettings(GUI_NO_ORDER)
-                .setVisible(isLoadChestTrackerLoaded) // 仅箱子追踪 Mod 加载时显示
-                .build();
-
-        // 下一个箱子
-        public static final ConfigHotkey NEXT = hotkey("next")
-                .keybindSettings(GUI_NO_ORDER)
-                .setVisible(isLoadChestTrackerLoaded) // 仅箱子追踪 Mod 加载时显示
-                .build();
-
-        // 删除当前容器
-        public static final ConfigHotkey DELETE = hotkey("delete")
-                .keybindSettings(GUI_NO_ORDER)
-                .setVisible(isLoadChestTrackerLoaded) // 仅箱子追踪 Mod 加载时显示
-                .build();
-
         public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
                 OPEN_SCREEN,                  // 打开设置菜单
                 Core.WORK_SWITCH,
@@ -755,16 +688,7 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 Core.MINE,                // 挖掘
                 Core.FILL,                    // 填充
                 Core.FLUID,                  // 排流体
-                BEDROCK,                      // 破基岩
-
-                // 远程交互
-                SYNC_INVENTORY,               // 同步容器热键
-                SYNC_INVENTORY_CHECK,         // 同步容器开关热键
-                PRINTER_INVENTORY,            // 设置打印机库存热键
-                REMOVE_PRINT_INVENTORY,       // 清空打印机库存热键
-                LAST,                         // 上一个箱子
-                NEXT,                         // 下一个箱子
-                DELETE                        // 删除当前容器
+                BEDROCK                       // 破基岩
         );
     }
 

@@ -1,6 +1,5 @@
 package me.aleksilassila.litematica.printer.printer.zxy.inventory;
 
-import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
 import me.aleksilassila.litematica.printer.I18n;
 import me.aleksilassila.litematica.printer.utils.minecraft.MessageUtils;
 import me.aleksilassila.litematica.printer.utils.mods.ModLoadUtils;
@@ -13,7 +12,6 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.monster.Shulker;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ContainerInput;
@@ -25,28 +23,9 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
-
-//#if MC > 11904 
-import me.aleksilassila.litematica.printer.printer.zxy.chesttracker.MemoryUtils;
-import me.aleksilassila.litematica.printer.printer.zxy.chesttracker.SearchItem;
-//#elseif MC <= 11904
-//$$ import net.minecraft.core.Registry;
-//$$ import net.minecraft.resources.ResourceLocation;
-//$$ import net.minecraft.resources.ResourceKey;
-//$$ import me.aleksilassila.litematica.printer.printer.zxy.memory.Memory;
-//$$ import me.aleksilassila.litematica.printer.printer.zxy.memory.MemoryDatabase;
-//$$ import me.aleksilassila.litematica.printer.printer.zxy.memory.MemoryUtils;
-    //#if MC > 11902
-    //$$ import net.minecraft.core.registries.Registries;
-    //#endif
-//#endif
-
-//#if MC >= 12001
-//$$ import red.jackf.chesttracker.api.providers.InteractionTracker;
-//#endif
+import net.minecraft.world.phys.Vec3;
 
 import java.util.HashSet;
-import static me.aleksilassila.litematica.printer.printer.zxy.inventory.OpenInventoryPacket.openIng;
 
 public class InventoryUtils {
     private static int shulkerCooldown = 0;
@@ -65,7 +44,9 @@ public class InventoryUtils {
             try {
                 if ((isInventory && blockState.getMenuProvider(client.level, pos) == null) ||
                         (blockEntity instanceof ShulkerBoxBlockEntity entity &&
-                                //#if MC > 12103
+                                //#if MC > 260100
+                                //$$ !client.level.noCollision(Shulker.getProgressDeltaAabb(1.0F, blockState.getValue(BlockStateProperties.FACING), 0.0F, 0.5F, Vec3.atBottomCenterOf(pos)).move(pos).deflate(1.0E-6)) &&
+                                //#elseif MC > 12103
                                 !client.level.noCollision(Shulker.getProgressDeltaAabb(1.0F, blockState.getValue(BlockStateProperties.FACING), 0.0F, 0.5F, pos.getBottomCenter()).move(pos).deflate(1.0E-6)) &&
                                 //#elseif MC <= 12103 && MC > 12004
                                 //$$ !client.level.noCollision(Shulker.getProgressDeltaAabb(1.0F, blockState.getValue(BlockStateProperties.FACING), 0.0F, 0.5F).move(pos).deflate(1.0E-6)) &&
@@ -90,54 +71,22 @@ public class InventoryUtils {
     public static boolean isOpenHandler = false;
 
     public static boolean switchItem() {
-        if (!lastNeedItemList.isEmpty() && !isOpenHandler && !openIng && OpenInventoryPacket.key == null) {
+        if (!lastNeedItemList.isEmpty() && !isOpenHandler) {
             LocalPlayer player = client.player;
             AbstractContainerMenu sc = player.containerMenu;
             if (!player.containerMenu.equals(player.inventoryMenu)) return false;
             //排除合成栏 装备栏 副手
             if (Configs.Placement.STORE_ORDERLY.getBooleanValue() && sc.slots.stream().skip(9).limit(sc.slots.size() - 10).noneMatch(slot -> slot.getItem().isEmpty())
-                    && (Configs.Placement.QUICK_SHULKER.getBooleanValue() || Configs.Core.CLOUD_INVENTORY.getBooleanValue())) {
+                    && Configs.Placement.QUICK_SHULKER.getBooleanValue()) {
                 SwitchItem.checkItems();
                 return true;
             }
 
             if (Configs.Placement.QUICK_SHULKER.getBooleanValue() && openShulker(lastNeedItemList)) {
                 return true;
-            } else if (Configs.Core.CLOUD_INVENTORY.getBooleanValue()) {
-                for (Item item : lastNeedItemList) {
-                    //#if MC >= 12001
-                    MemoryUtils.currentMemoryKey = client.level.dimension().identifier();
-                    MemoryUtils.itemStack = new ItemStack(item);
-                    if (SearchItem.search(true)) {
-                        ModLoadUtils.closeScreen++;
-                        isOpenHandler = true;
-                        ClientPlayerTickManager.PRINT.setPrinterMemorySync(true);
-                        return true;
-                    }
-                    //#elseif MC < 12001
-                    //$$
-                    //$$    MemoryDatabase database = MemoryDatabase.getCurrent();
-                    //$$    if (database != null) {
-                    //$$        for (ResourceLocation dimension : database.getDimensions()) {
-                    //$$            for (Memory memory : database.findItems(item.getDefaultInstance(), dimension)) {
-                    //$$                MemoryUtils.setLatestPos(memory.getPosition());
-                        //#if MC < 11904
-                        //$$ OpenInventoryPacket.sendOpenInventory(memory.getPosition(), ResourceKey.create(Registry.DIMENSION_REGISTRY, dimension));
-                        //#else
-                        //$$ OpenInventoryPacket.sendOpenInventory(memory.getPosition(), ResourceKey.create(Registries.DIMENSION, dimension));
-                        //#endif
-                    //$$                if(ModLoadUtils.closeScreen == 0) ModLoadUtils.closeScreen++;
-                    //$$                me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager.PRINT.setPrinterMemorySync(true);
-                    //$$                isOpenHandler = true;
-                    //$$                return true;
-                    //$$            }
-                    //$$        }
-                    //$$    }
-                    //#endif
-                }
-                lastNeedItemList = new HashSet<>();
-                isOpenHandler = false;
             }
+            lastNeedItemList = new HashSet<>();
+            isOpenHandler = false;
         }
         return false;
     }
@@ -165,9 +114,7 @@ public class InventoryUtils {
                                 MessageUtils.setOverlayMessage(I18n.INVENTORY_SHULKER_OCCUPIED.getName(), false);
                                 continue;
                             }
-                            if (OpenInventoryPacket.key != null) {
-                                SwitchItem.newItem(slots.get(y).getItem(), OpenInventoryPacket.pos, OpenInventoryPacket.key, y, -1);
-                            } else SwitchItem.newItem(slots.get(y).getItem(), null, null, y, shulkerBoxSlot);
+                            SwitchItem.newItem(slots.get(y).getItem(), y, shulkerBoxSlot);
                             int a = InventoryUtilsAccessor.getEmptyPickBlockableHotbarSlot(player.getInventory()) == -1 ?
                                     InventoryUtilsAccessor.getPickBlockTargetSlot(player) :
                                     InventoryUtilsAccessor.getEmptyPickBlockableHotbarSlot(player.getInventory());
@@ -215,9 +162,6 @@ public class InventoryUtils {
                     if (items1.stream().anyMatch(s1 -> s1.getItem().equals(item))) {
                         try {
                             shulkerBoxSlot = i;
-                            //#if MC >= 12001 
-                            //$$ if (ModLoadUtils.isChestTrackerLoaded()) InteractionTracker.INSTANCE.clear();
-                            //#endif
                             ShulkerUtils.openShulker(stack, shulkerBoxSlot);
                             ModLoadUtils.closeScreen++;
                             isOpenHandler = true;

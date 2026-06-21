@@ -34,29 +34,10 @@ public class I18n {
     // 关闭全部模式提示
     public static final I18n CLOSE_ALL_MODE_NOTICE = of("message.close_all_mode");
 
-    // 远程交互容器提示
-    public static final I18n REMOTE_SERVER_ERROR = of("message.remote.server_error");
-    public static final I18n REMOTE_AUTO_ENABLED = of("message.remote.auto_enabled");
-    public static final I18n REMOTE_AUTO_DISABLED = of("message.remote.auto_disabled");
-
-    // 库存/同步相关提示
-    public static final I18n INVENTORY_ADD_COMPLETE = of("message.inventory.add_complete");
-    public static final I18n INVENTORY_ADDING = of("message.inventory.adding");
-    public static final I18n INVENTORY_ADD_STARTED = of("message.inventory.add_started");
-    public static final I18n INVENTORY_ADD_EMPTY = of("message.inventory.add_empty");
-    public static final I18n INVENTORY_SELECTION_REQUIRED = of("message.inventory.selection_required");
-    public static final I18n INVENTORY_REMOTE_DISABLED = of("message.inventory.remote_disabled");
-    public static final I18n INVENTORY_CONTAINER_CANNOT_OPEN = of("message.inventory.container_cannot_open");
-    public static final I18n INVENTORY_NOT_CONTAINER = of("message.inventory.not_container");
-    public static final I18n INVENTORY_SYNC_CANCELLED = of("message.inventory.sync_cancelled");
-    public static final I18n INVENTORY_TOO_FAR = of("message.inventory.too_far");
-    public static final I18n INVENTORY_SYNC_PROGRESS = of("message.inventory.sync_progress");
-    public static final I18n INVENTORY_SYNC_COMPLETE = of("message.inventory.sync_complete");
+    // 库存提示
     public static final I18n INVENTORY_FULL = of("message.inventory.full");
     public static final I18n INVENTORY_RESTORE_FAILED = of("message.inventory.restore_failed");
     public static final I18n INVENTORY_SHULKER_OCCUPIED = of("message.inventory.shulker_occupied");
-    public static final I18n INVENTORY_CLEARED = of("message.inventory.cleared");
-    public static final I18n INVENTORY_OPEN_FAILED = of("message.inventory.open_failed");
 
     private static final String PREFIX_CONFIG = "config";
     private static final String PREFIX_COMMENT = "desc";
