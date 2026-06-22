@@ -13,17 +13,27 @@ import net.minecraft.world.item.ItemStack;
 @SuppressWarnings({"DataFlowIssue", "SpellCheckingInspection"})
 public class ShulkerUtils {
     static final Minecraft client = Minecraft.getInstance();
-    static IConfigOptionListEntry openMode = Configs.Placement.QUICK_SHULKER_MODE.getOptionListValue();
 
-    public static void openShulker(ItemStack stack, int shulkerBoxSlot) {
+    public static boolean openShulker(ItemStack stack, int shulkerBoxSlot) {
+        if (client.player == null || client.gameMode == null) {
+            return false;
+        }
+        IConfigOptionListEntry openMode = Configs.Placement.QUICK_SHULKER_MODE.getOptionListValue();
         if (openMode == QuickShulkerModeType.CLICK_SLOT) {
             client.gameMode.handleContainerInput(client.player.containerMenu.containerId, shulkerBoxSlot, 1, ContainerInput.PICKUP, client.player);
+            return true;
         } else if (openMode == QuickShulkerModeType.INVOKE) {
             if (ModLoadUtils.isQuickShulkerLoaded()) {
                 try {
                     ClientUtil.CheckAndSend(stack, shulkerBoxSlot);
-                } catch (Exception ignored) {}
-            } else MessageUtils.addMessage(I18n.SHULKER_MOD_NOT_LOADED.getName());
+                    return true;
+                } catch (Exception ignored) {
+                    return false;
+                }
+            } else {
+                MessageUtils.addMessage(I18n.SHULKER_MOD_NOT_LOADED.getName());
+            }
         }
+        return false;
     }
 }

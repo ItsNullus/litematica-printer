@@ -31,10 +31,10 @@ public final class SortedSchematicTargetQueue {
     }
 
     public Iterable<BlockPos> iterable(PrinterBox sourceBox, ClientLevel level, WorldSchematic schematic, LocalPlayer player, int scanGuardLimit) {
-        if (this.box == null || !this.box.equals(sourceBox)) {
+        if (this.box == null || !this.box.sameSectionWindow(sourceBox)) {
             this.queue.clear();
-            this.box = sourceBox;
         }
+        this.box = sourceBox;
         this.fill(sourceBox, level, schematic, player, scanGuardLimit);
         return this::iterator;
     }
@@ -46,6 +46,9 @@ public final class SortedSchematicTargetQueue {
         Set<Long> queuedKeys = new HashSet<>();
         while (!this.queue.isEmpty()) {
             BlockPos queued = this.queue.removeFirst();
+            if (!sourceBox.contains(queued)) {
+                continue;
+            }
             positions.add(queued);
             queuedKeys.add(ScanCache.key(queued));
         }

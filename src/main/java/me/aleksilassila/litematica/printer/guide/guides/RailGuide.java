@@ -87,7 +87,7 @@ public class RailGuide extends Guide {
 
     @Override
     protected Result onBuildActionCorrect(BlockMatchResult state) {
-        clearRepairState(blockPos);
+        clearPendingRepairState(blockPos);
         return Result.PASS;
     }
 

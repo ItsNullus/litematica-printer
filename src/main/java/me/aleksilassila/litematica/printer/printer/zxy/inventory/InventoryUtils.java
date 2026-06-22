@@ -29,6 +29,8 @@ import java.util.HashSet;
 
 public class InventoryUtils {
     private static int shulkerCooldown = 0;
+    private static int openHandlerTimeout = 0;
+    private static final int OPEN_HANDLER_TIMEOUT_TICKS = 40;
 
     private static final Minecraft client = Minecraft.getInstance();
 
@@ -130,6 +132,7 @@ public class InventoryUtils {
                             }
                             shulkerBoxSlot = -1;
                             isOpenHandler = false;
+                            openHandlerTimeout = 0;
                             lastNeedItemList = new HashSet<>();
                             return;
                         } catch (Exception e) {
@@ -142,6 +145,7 @@ public class InventoryUtils {
         shulkerBoxSlot = -1;
         lastNeedItemList = new HashSet<>();
         isOpenHandler = false;
+        openHandlerTimeout = 0;
         AbstractContainerMenu sc2 = player.containerMenu;
         if (!sc2.equals(player.inventoryMenu)) {
             player.closeContainer();
@@ -162,9 +166,13 @@ public class InventoryUtils {
                     if (items1.stream().anyMatch(s1 -> s1.getItem().equals(item))) {
                         try {
                             shulkerBoxSlot = i;
-                            ShulkerUtils.openShulker(stack, shulkerBoxSlot);
+                            if (!ShulkerUtils.openShulker(stack, shulkerBoxSlot)) {
+                                shulkerBoxSlot = -1;
+                                continue;
+                            }
                             ModLoadUtils.closeScreen++;
                             isOpenHandler = true;
+                            openHandlerTimeout = OPEN_HANDLER_TIMEOUT_TICKS;
                             shulkerCooldown = Configs.Placement.QUICK_SHULKER_COOLDOWN.getIntegerValue();
                             return true;
                         } catch (Exception e) {
@@ -177,6 +185,14 @@ public class InventoryUtils {
     }
 
     public static void tick() {
+        if (ModLoadUtils.closeScreen > 0) {
+            ModLoadUtils.closeScreen--;
+        }
+        if (isOpenHandler && openHandlerTimeout > 0 && --openHandlerTimeout <= 0) {
+            shulkerBoxSlot = -1;
+            lastNeedItemList = new HashSet<>();
+            isOpenHandler = false;
+        }
         if (shulkerCooldown > 0) {
             shulkerCooldown--;
         }

@@ -1,13 +1,11 @@
 package me.aleksilassila.litematica.printer.guide.guides;
 
-import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.enums.BlockMatchResult;
 import me.aleksilassila.litematica.printer.guide.Guide;
 import me.aleksilassila.litematica.printer.guide.Result;
 import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
 import me.aleksilassila.litematica.printer.printer.action.Action;
 import me.aleksilassila.litematica.printer.printer.PrinterUtils;
-import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import net.minecraft.core.Direction;
 
 /**
@@ -39,9 +37,6 @@ public class VineGuide extends Guide {
             if (value instanceof Boolean && (Boolean) value) {
                 return Result.success(new Action().setSides(direction).setLookDirection(direction));
             }
-        }
-        if (Configs.Print.BREAK_WRONG_STATE_BLOCK.getBooleanValue()) {
-            InteractionUtils.INSTANCE.add(context);
         }
         return Result.SKIP;
     }

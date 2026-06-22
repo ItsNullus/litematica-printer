@@ -232,11 +232,6 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
 
     public static class Placement {
 
-        // 使用数据包打印
-        public static final ConfigBoolean PRINT_USE_PACKET = bool("placeUsePacket")
-                .defaultValue(false)
-                .build();
-
         // 核心 - 工作间隔
         public static final ConfigInteger PLACE_INTERVAL = integer("placeInterval")
                 .defaultValue(0)
@@ -285,7 +280,7 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
 
         // 快捷潜影盒 - 冷却时间
         public static final ConfigInteger QUICK_SHULKER_COOLDOWN = integer("quickShulkerCooldown")
-                .defaultValue(10)
+                .defaultValue(1)
                 .range(0, 20)
                 .build();
 
@@ -295,7 +290,6 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 .build();
 
         public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
-                PRINT_USE_PACKET,
                 PLACE_INTERVAL,
                 PLACE_BLOCKS_PER_TICK,
                 PLACE_COOLDOWN,
@@ -310,10 +304,6 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
     }
 
     public static class Break {
-        public static final ConfigBoolean BREAK_USE_PACKET = bool("breakUsePacket")
-                .defaultValue(false)
-                .build();
-
         public static final ConfigBoolean BREAK_USE_DELAYED_DESTROY = bool("breakUseDelayedDestroy")
                 .defaultValue(false)
                 .build();
@@ -371,7 +361,6 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 BREAK_CHECK_HARDNESS,
                 BREAK_AUTO_TOOL,
                 BREAK_USE_DELAYED_DESTROY,
-                BREAK_USE_PACKET,
                 BREAK_COOLDOWN,
                 BREAK_PROGRESS_THRESHOLD,
                 // 限制器
@@ -525,11 +514,6 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 .defaultValue(false)
                 .build();
 
-        // 破坏错误状态方块（实验性）
-        public static final ConfigBoolean BREAK_WRONG_STATE_BLOCK = bool("printBreakWrongStateBlock")
-                .defaultValue(false)
-                .build();
-
         public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
                 PRINT_SELECTION_TYPE,
                 EASY_PLACE_PROTOCOL,
@@ -540,7 +524,6 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 PRINT_FORCED_SNEAK,
                 BREAK_WRONG_BLOCK,
                 BREAK_EXTRA_BLOCK,
-                BREAK_WRONG_STATE_BLOCK,
                 PRINT_SKIP,
                 PRINT_SKIP_LIST,
                 PRINT_REPLACE,

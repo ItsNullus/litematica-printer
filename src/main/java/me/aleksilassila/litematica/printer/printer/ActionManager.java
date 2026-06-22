@@ -108,10 +108,9 @@ public class ActionManager {
         }
         MultiPlayerGameModeExtension gameModeExtension = (MultiPlayerGameModeExtension) Reference.MINECRAFT.gameMode;
         if (gameModeExtension != null) {
-            boolean localPrediction = !Configs.Placement.PRINT_USE_PACKET.getBooleanValue();
             BlockHitResult blockHitResult = new BlockHitResult(hitVec, click.side, click.target, false);
             for (int i = 0; i < click.repeatCount; i++) {
-                gameModeExtension.litematica_printer$useItemOn(localPrediction, InteractionHand.MAIN_HAND, blockHitResult);
+                gameModeExtension.litematica_printer$useItemOn(true, InteractionHand.MAIN_HAND, blockHitResult);
             }
         }
         if (click.useShift && !wasSneak) {

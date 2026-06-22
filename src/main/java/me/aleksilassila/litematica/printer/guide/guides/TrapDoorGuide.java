@@ -6,8 +6,6 @@ import me.aleksilassila.litematica.printer.guide.Result;
 import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
 import me.aleksilassila.litematica.printer.printer.action.Action;
 import me.aleksilassila.litematica.printer.printer.action.ClickAction;
-import me.aleksilassila.litematica.printer.config.Configs;
-import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.TrapDoorBlock;
@@ -45,14 +43,6 @@ public class TrapDoorGuide extends Guide {
         if (!getProperty(requiredState, TrapDoorBlock.OPEN)
                 .equals(getProperty(currentState, BlockStateProperties.OPEN))) {
             return Result.success(new ClickAction());
-        }
-        // 朝向不一致 → 根据配置决定是否破坏
-        Direction facing = getProperty(requiredState, TrapDoorBlock.FACING).orElse(null);
-        Direction currentFacing = getProperty(currentState, TrapDoorBlock.FACING).orElse(null);
-        if (Configs.Print.BREAK_WRONG_STATE_BLOCK.getBooleanValue()
-                && facing != null && currentFacing != null
-                && facing != currentFacing) {
-            InteractionUtils.INSTANCE.add(context);
         }
         return Result.SKIP;
     }

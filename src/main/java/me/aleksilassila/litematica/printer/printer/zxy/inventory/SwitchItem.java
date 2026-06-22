@@ -52,8 +52,12 @@ public class SwitchItem {
         }
         ItemStatistics itemStatistics = itemStacks.get(itemStack);
         if (itemStatistics != null) {
-            ShulkerUtils.openShulker(sc.slots.get(itemStatistics.shulkerBoxSlot).getItem(), itemStatistics.shulkerBoxSlot);
-            ModLoadUtils.closeScreen++;
+            if (ShulkerUtils.openShulker(sc.slots.get(itemStatistics.shulkerBoxSlot).getItem(), itemStatistics.shulkerBoxSlot)) {
+                ModLoadUtils.closeScreen++;
+            } else {
+                removeItem(reSwitchItem);
+                reSwitchItem = null;
+            }
         } else {
             removeItem(reSwitchItem);
             reSwitchItem = null;

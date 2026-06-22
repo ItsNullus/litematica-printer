@@ -113,20 +113,11 @@ public class DefaultGuide extends Guide {
     }
 
     @Override
-    protected Result onBuildActionWrongState(BlockMatchResult state) {
-        if (!Configs.Print.BREAK_WRONG_STATE_BLOCK.getBooleanValue()) {
-            return Result.PASS;
-        }
-        InteractionUtils.INSTANCE.add(context);
-        return Result.PASS;
-    }
-
-    @Override
     protected Result onBuildActionWrongBlock(BlockMatchResult state) {
         boolean printBreakWrongBlock = Configs.Print.BREAK_WRONG_BLOCK.getBooleanValue();
         boolean printBreakExtraBlock = Configs.Print.BREAK_EXTRA_BLOCK.getBooleanValue();
         if (printBreakWrongBlock || printBreakExtraBlock) {
-            if (InteractionUtils.canBreakBlock(blockPos)) {
+            if (InteractionUtils.canBreakBlock(blockPos) && InteractionUtils.breakRestriction(currentState)) {
                 if (printBreakWrongBlock && !requiredState.isAir()) {
                     InteractionUtils.INSTANCE.add(context);
                 } else if (printBreakExtraBlock && requiredState.isAir()) {

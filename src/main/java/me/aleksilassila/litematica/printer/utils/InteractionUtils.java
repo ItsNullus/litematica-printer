@@ -39,6 +39,7 @@ public class InteractionUtils {
     private static final UsageRestrictionCache BREAK_RESTRICTION_CACHE = new UsageRestrictionCache();
 
     private final Queue<BlockPos> breakQueue = new LinkedList<>();
+    private final Set<BlockPos> queuedBreaks = new HashSet<>();
     private final Map<BlockPos, Integer> recentlyBroken = new HashMap<>();
     private final Map<BlockPos, Integer> pendingBroken = new HashMap<>();
     private BlockPos breakPos;
@@ -135,7 +136,14 @@ public class InteractionUtils {
 
     public void add(BlockPos pos) {
         if (pos == null) return;
-        breakQueue.add(pos);
+        BlockPos queuedPos = pos.immutable();
+        if (queuedPos.equals(this.breakPos)
+                || this.recentlyBroken.containsKey(queuedPos)
+                || this.pendingBroken.containsKey(queuedPos)
+                || !this.queuedBreaks.add(queuedPos)) {
+            return;
+        }
+        breakQueue.add(queuedPos);
     }
 
     public void add(SchematicBlockContext ctx) {
@@ -172,6 +180,7 @@ public class InteractionUtils {
         if (!ConfigUtils.isEnable()) {
             if (!breakQueue.isEmpty()) {
                 breakQueue.clear();
+                queuedBreaks.clear();
             }
             if (breakPos != null) {
                 breakPos = null;
@@ -206,6 +215,7 @@ public class InteractionUtils {
         if (breakPos == null) {
             while (!breakQueue.isEmpty()) {
                 BlockPos pos = breakQueue.poll();
+                queuedBreaks.remove(pos);
                 if (pos == null) {
                     continue;
                 }
@@ -296,7 +306,7 @@ public class InteractionUtils {
     }
 
     public BlockBreakResult continueDestroyBlock(BlockPos blockPos, Direction direction) {
-        return this.continueDestroyBlock(blockPos, direction, !Configs.Break.BREAK_USE_PACKET.getBooleanValue());
+        return this.continueDestroyBlock(blockPos, direction, true);
     }
 
     public BlockBreakResult continueDestroyBlock(BlockPos blockPos) {
@@ -325,7 +335,7 @@ public class InteractionUtils {
     }
 
     public BlockBreakResult continueDestroyBlockWithoutTracking(BlockPos blockPos, Direction direction) {
-        return this.continueDestroyBlock(blockPos, direction, !Configs.Break.BREAK_USE_PACKET.getBooleanValue(), false);
+        return this.continueDestroyBlock(blockPos, direction, true, false);
     }
 
     public BlockBreakResult continueDestroyBlockWithoutTracking(BlockPos blockPos) {
@@ -338,7 +348,7 @@ public class InteractionUtils {
             return BlockBreakResult.FAILED;
         }
         BlockBreakResult result = gameMode.litematica_printer$continueDestroyBlock(
-                !Configs.Break.BREAK_USE_PACKET.getBooleanValue(),
+                true,
                 blockPos,
                 direction,
                 this.forceDelayedDestroy,
@@ -363,6 +373,6 @@ public class InteractionUtils {
     }
 
     public InteractionResult useItemOn(InteractionHand hand, BlockHitResult blockHit) {
-        return this.useItemOn(!Configs.Placement.PRINT_USE_PACKET.getBooleanValue(), hand, blockHit);
+        return this.useItemOn(true, hand, blockHit);
     }
 }

@@ -1,12 +1,10 @@
 package me.aleksilassila.litematica.printer.guide.guides;
 
-import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.enums.BlockMatchResult;
 import me.aleksilassila.litematica.printer.guide.Guide;
 import me.aleksilassila.litematica.printer.guide.Result;
 import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
 import me.aleksilassila.litematica.printer.printer.action.Action;
-import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.ChestType;
@@ -68,10 +66,6 @@ public class ChestGuide extends Guide {
 
     @Override
     protected Result onBuildActionWrongState(BlockMatchResult state) {
-        // 目标是双箱子：当前箱子类型不对，需要破坏后重新放置来触发自动合并
-        if (Configs.Print.BREAK_WRONG_STATE_BLOCK.getBooleanValue()) {
-            InteractionUtils.INSTANCE.add(context);
-        }
         return Result.SKIP;
     }
 }

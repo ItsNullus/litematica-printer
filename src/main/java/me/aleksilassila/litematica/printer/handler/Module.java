@@ -35,7 +35,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
 public abstract class Module extends ConfigUtils {
-    private static final int LAZY_DIRTY_FULL_SCAN_THRESHOLD = 2;
+    private static final int MIN_LAZY_DIRTY_FULL_SCAN_THRESHOLD = 2;
+    private static final int MAX_LAZY_DIRTY_FULL_SCAN_THRESHOLD = 64;
+    private static final int LAZY_DIRTY_SECTION_DIVISOR = 16;
 
     @Getter
     @Nullable
@@ -201,6 +203,10 @@ public abstract class Module extends ConfigUtils {
         if (scanSourceBox.equals(this.lastScanSourceBox)) {
             return;
         }
+        if (this.lastScanSourceBox != null && this.lastScanSourceBox.sameSectionWindow(scanSourceBox)) {
+            this.lastScanSourceBox = scanSourceBox;
+            return;
+        }
         this.lastScanSourceBox = scanSourceBox;
         this.scanState = ScanState.FULL;
         this.idleScanTicks = 0;
@@ -294,7 +300,10 @@ public abstract class Module extends ConfigUtils {
             return;
         }
 
-        int fullThreshold = LAZY_DIRTY_FULL_SCAN_THRESHOLD;
+        PrinterBox scanSourceBox = this.getScanSourceBox(playerInteractionBox);
+        int fullThreshold = scanSourceBox == null
+                ? MIN_LAZY_DIRTY_FULL_SCAN_THRESHOLD
+                : dirtyFullScanThreshold(scanSourceBox);
         if (fullThreshold <= 0 || this.dirtyScanQueue.size() >= fullThreshold) {
             this.scanState = ScanState.FULL;
             this.clearDirtyScanQueue();
@@ -348,6 +357,22 @@ public abstract class Module extends ConfigUtils {
         this.dirtyScanQueue.clear();
         this.activeDirtyScanBox = null;
         this.pendingDirtyRegionCount = 0;
+    }
+
+    private static int dirtyFullScanThreshold(PrinterBox box) {
+        long sectionCount = (long) sectionSpan(box.minX, box.maxX)
+                * sectionSpan(box.minY, box.maxY)
+                * sectionSpan(box.minZ, box.maxZ);
+        int scaledThreshold = (int) Math.min(MAX_LAZY_DIRTY_FULL_SCAN_THRESHOLD, sectionCount / LAZY_DIRTY_SECTION_DIVISOR);
+        return Math.max(MIN_LAZY_DIRTY_FULL_SCAN_THRESHOLD, scaledThreshold);
+    }
+
+    private static int sectionSpan(int min, int max) {
+        return sectionCoord(max) - sectionCoord(min) + 1;
+    }
+
+    private static int sectionCoord(int blockCoord) {
+        return blockCoord >> 4;
     }
 
     private void resetScanRuntime() {

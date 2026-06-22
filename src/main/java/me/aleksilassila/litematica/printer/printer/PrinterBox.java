@@ -5,6 +5,7 @@ import net.minecraft.core.Vec3i;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Iterator;
+import java.util.NoSuchElementException;
 import java.util.Objects;
 
 import net.minecraft.core.BlockPos;
@@ -44,6 +45,15 @@ public class PrinterBox implements Iterable<BlockPos> {
 
     public boolean contains(Vec3i vec3i) {
         return vec3i.getX() >= this.minX && vec3i.getX() <= this.maxX && vec3i.getY() >= this.minY && vec3i.getY() <= this.maxY && vec3i.getZ() >= this.minZ && vec3i.getZ() <= this.maxZ;
+    }
+
+    public boolean sameSectionWindow(PrinterBox other) {
+        return sectionCoord(this.minX) == sectionCoord(other.minX)
+                && sectionCoord(this.maxX) == sectionCoord(other.maxX)
+                && sectionCoord(this.minY) == sectionCoord(other.minY)
+                && sectionCoord(this.maxY) == sectionCoord(other.maxY)
+                && sectionCoord(this.minZ) == sectionCoord(other.minZ)
+                && sectionCoord(this.maxZ) == sectionCoord(other.maxZ);
     }
 
     public PrinterBox expand(int expandX, int expandY, int expandZ) {
@@ -97,6 +107,10 @@ public class PrinterBox implements Iterable<BlockPos> {
 
         @Override
         public BlockPos next() {
+            if (!this.hasNext()) {
+                throw new NoSuchElementException();
+            }
+
             // 初始化起始位置
             if (currPos == null) {
                 currPos = new BlockPos(
@@ -124,5 +138,9 @@ public class PrinterBox implements Iterable<BlockPos> {
             currPos = new BlockPos(x, y, z);
             return currPos;
         }
+    }
+
+    private static int sectionCoord(int blockCoord) {
+        return blockCoord >> 4;
     }
 }
