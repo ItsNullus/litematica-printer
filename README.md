@@ -1,9 +1,9 @@
 Litematica Printer - Hana Version
 ==================
 
-该模组为 投影 的 Minecraft Fabric 1.18.2 至 26.1 版本添加了自动建造功能。允许玩家通过自动放置周围正确方块来快速还原投影。
+该模组为 投影 的 Minecraft Fabric 1.18.2 至 26.2 版本添加了自动建造功能。允许玩家通过自动放置周围正确方块来快速还原投影。
 
-这个版本基于[炫白三改版](https://github.com/BiliXWhite/litematica-printer)修改，添加了一些实用的功能。
+这是独立于三改版之外的四改版,主要特色为独立破基岩逻辑和更多小功能在其中~
 
 如果你觉得好用，可以给该项目点个 Star ⭐️ 来以支持我。
 
@@ -32,14 +32,15 @@ Litematica Printer - Hana Version
 - 1.21.5
 - 1.21.6~8
 - 1.21.9~11
-- 26.1
+- 26.1+
+- 26.2
 
 暂不接受1.18.2以下版本的更新，之间的小版本是否可用请自行尝试，一般版本进度会跟进上游分支
 
 
 ## 前置模组
 
-该模组必须先安装 **Fabric API** , **MaLiLib** 和 **Litematica** 作为前置。可选前置有 **Twrakeroo** , **Chest Tracker**(≤1.21.4) 和 **Quick Shulker**。
+该模组必须先安装 **Fabric API** , **MaLiLib** 和 **Litematica** 作为前置。可选前置有 **Twrakeroo** 和 **Quick Shulker**。
 
 ## 特性
 
