@@ -94,6 +94,11 @@ public abstract class Module extends ConfigUtils {
         this.updateVariables();
     }
 
+    @Nullable
+    public AtomicReference<PrinterBox> getBoxRef() {
+        return this.playerInteractionBox;
+    }
+
     protected void updateVariables() {
         this.updateVariables(TickContext.capture());
     }

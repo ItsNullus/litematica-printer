@@ -57,6 +57,10 @@ public class SchematicBlockContext {
         return requiredState.getBlock();
     }
 
+    public Block getRequiredBlock() {
+        return requiredState();
+    }
+
     public Block currentState() {
         return currentState.getBlock();
     }
