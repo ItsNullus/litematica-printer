@@ -38,6 +38,9 @@ public class ActionManager {
     public boolean needWaitModifyLook = false;
     private boolean waitForHorizontalLook = true;
     private boolean actionRequiresWaitModifyLook = false;
+    private long lastQueuedLookTick = Long.MIN_VALUE;
+    private float lastQueuedLookYaw;
+    private float lastQueuedLookPitch;
 
     private ActionManager() {
     }
@@ -68,8 +71,9 @@ public class ActionManager {
             clearQueue();
             return this;
         }
-        if (!needWaitModifyLook && look != null) {
+        if (!needWaitModifyLook && look != null && shouldSendQueuedLook(look)) {
             NetworkUtils.sendLookPacket(player, look);
+            this.recordQueuedLook(look);
         }
         if (shouldWaitForServerLook(player, click)) {
             needWaitModifyLook = true;
@@ -156,6 +160,21 @@ public class ActionManager {
     private static boolean isPlayerLookSettled(LocalPlayer player, PlayerLook look) {
         return Math.abs(Mth.wrapDegrees(player.getYRot() - look.yaw)) <= LOOK_SETTLED_EPSILON_DEGREES
                 && Math.abs(player.getXRot() - look.pitch) <= LOOK_SETTLED_EPSILON_DEGREES;
+    }
+
+    private boolean shouldSendQueuedLook(PlayerLook look) {
+        long tick = Reference.MINECRAFT.level == null ? Long.MIN_VALUE : Reference.MINECRAFT.level.getGameTime();
+        if (tick == Long.MIN_VALUE || this.lastQueuedLookTick != tick) {
+            return true;
+        }
+        return Math.abs(Mth.wrapDegrees(this.lastQueuedLookYaw - look.yaw)) > LOOK_SETTLED_EPSILON_DEGREES
+                || Math.abs(this.lastQueuedLookPitch - look.pitch) > LOOK_SETTLED_EPSILON_DEGREES;
+    }
+
+    private void recordQueuedLook(PlayerLook look) {
+        this.lastQueuedLookTick = Reference.MINECRAFT.level == null ? Long.MIN_VALUE : Reference.MINECRAFT.level.getGameTime();
+        this.lastQueuedLookYaw = look.yaw;
+        this.lastQueuedLookPitch = look.pitch;
     }
 
     public void clearQueue() {
