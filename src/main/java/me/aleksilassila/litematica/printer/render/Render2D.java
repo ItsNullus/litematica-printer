@@ -8,6 +8,7 @@ import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
 import me.aleksilassila.litematica.printer.handler.Module;
 import me.aleksilassila.litematica.printer.handler.Modules;
 import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockController;
+import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.render.Render2DUtils;
 import net.minecraft.client.Minecraft;
@@ -25,6 +26,14 @@ public class Render2D {
 
     private static final int HUD_PADDING = 6;
     private static final int HUD_LINE_HEIGHT = 12;
+
+    private long cachedHudTick = Long.MIN_VALUE;
+    private float cachedHudWidth = Float.NaN;
+    private float cachedHudHeight = Float.NaN;
+    private int cachedHudX = Integer.MIN_VALUE;
+    private int cachedHudY = Integer.MIN_VALUE;
+    private int cachedHudScale = Integer.MIN_VALUE;
+    private HudLayouts cachedHudLayouts;
 
     private Render2D() {
     }
@@ -64,12 +73,16 @@ public class Render2D {
 
     public void renderHudPreview(float scaledWidth, float scaledHeight) {
         Render2DUtils.ensureInitialized();
-        drawHudInfo(scaledWidth, scaledHeight);
+        drawHudInfo(scaledWidth, scaledHeight, true);
     }
 
     // ==================== HUD 进度条等信息绘制 ====================
 
     private void drawHudInfo(float scaledWidth, float scaledHeight) {
+        this.drawHudInfo(scaledWidth, scaledHeight, false);
+    }
+
+    private void drawHudInfo(float scaledWidth, float scaledHeight, boolean forceRefresh) {
         int centerX = (int) (scaledWidth / 2);
         int centerY = (int) (scaledHeight / 2);
 
@@ -79,13 +92,9 @@ public class Render2D {
             Render2DUtils.drawString("延迟过大，已暂停运行", centerX, centerY - 22, Color.ORANGE, true, true);
         }
 
-        int baseX = Configs.Core.RENDER_HUD_X.getIntegerValue();
-        int baseY = Configs.Core.RENDER_HUD_Y.getIntegerValue();
-        float hudScale = getHudScale();
-        PanelLayout summaryLayout = computeHudPanelLayout(baseX, baseY, buildHudSummaryLines(), scaledWidth, scaledHeight, hudScale);
-        int panelBottom = drawHudPanel(summaryLayout);
-        PanelLayout modeLayout = computeHudPanelLayout(baseX, panelBottom + Math.max(4, Math.round(6 * hudScale)), buildHudModeLines(), scaledWidth, scaledHeight, hudScale);
-        drawHudPanel(modeLayout);
+        HudLayouts layouts = this.getHudLayouts(scaledWidth, scaledHeight, forceRefresh);
+        drawHudPanel(layouts.summary());
+        drawHudPanel(layouts.modes());
     }
 
     private int drawHudPanel(PanelLayout layout) {
@@ -154,11 +163,9 @@ public class Render2D {
     }
 
     public HudBounds getHudBounds(float scaledWidth, float scaledHeight) {
-        float hudScale = getHudScale();
-        int baseX = Configs.Core.RENDER_HUD_X.getIntegerValue();
-        int baseY = Configs.Core.RENDER_HUD_Y.getIntegerValue();
-        PanelLayout summaryLayout = computeHudPanelLayout(baseX, baseY, buildHudSummaryLines(), scaledWidth, scaledHeight, hudScale);
-        PanelLayout modeLayout = computeHudPanelLayout(baseX, summaryLayout.bottom() + Math.max(4, Math.round(6 * hudScale)), buildHudModeLines(), scaledWidth, scaledHeight, hudScale);
+        HudLayouts layouts = this.getHudLayouts(scaledWidth, scaledHeight, false);
+        PanelLayout summaryLayout = layouts.summary();
+        PanelLayout modeLayout = layouts.modes();
 
         if (summaryLayout.lines().isEmpty()) {
             return new HudBounds(modeLayout.drawX(), modeLayout.drawY(), modeLayout.scaledWidth(), modeLayout.scaledHeight());
@@ -172,6 +179,49 @@ public class Render2D {
         int maxX = Math.max(summaryLayout.right(), modeLayout.right());
         int maxY = Math.max(summaryLayout.bottom(), modeLayout.bottom());
         return new HudBounds(minX, minY, Math.max(0, maxX - minX), Math.max(0, maxY - minY));
+    }
+
+    private HudLayouts getHudLayouts(float scaledWidth, float scaledHeight, boolean forceRefresh) {
+        int baseX = Configs.Core.RENDER_HUD_X.getIntegerValue();
+        int baseY = Configs.Core.RENDER_HUD_Y.getIntegerValue();
+        int scaleConfig = Configs.Core.RENDER_HUD_SCALE.getIntegerValue();
+        long tick = ClientPlayerTickManager.getCurrentHandlerTime();
+        if (!forceRefresh
+                && this.cachedHudLayouts != null
+                && this.cachedHudTick == tick
+                && Float.compare(this.cachedHudWidth, scaledWidth) == 0
+                && Float.compare(this.cachedHudHeight, scaledHeight) == 0
+                && this.cachedHudX == baseX
+                && this.cachedHudY == baseY
+                && this.cachedHudScale == scaleConfig) {
+            return this.cachedHudLayouts;
+        }
+
+        float hudScale = getHudScale();
+        PanelLayout summary = computeHudPanelLayout(
+                baseX,
+                baseY,
+                buildHudSummaryLines(),
+                scaledWidth,
+                scaledHeight,
+                hudScale
+        );
+        PanelLayout modes = computeHudPanelLayout(
+                baseX,
+                summary.bottom() + Math.max(4, Math.round(6 * hudScale)),
+                buildHudModeLines(),
+                scaledWidth,
+                scaledHeight,
+                hudScale
+        );
+        this.cachedHudTick = tick;
+        this.cachedHudWidth = scaledWidth;
+        this.cachedHudHeight = scaledHeight;
+        this.cachedHudX = baseX;
+        this.cachedHudY = baseY;
+        this.cachedHudScale = scaleConfig;
+        this.cachedHudLayouts = new HudLayouts(summary, modes);
+        return this.cachedHudLayouts;
     }
 
     private List<HudLine> buildHudSummaryLines() {
@@ -312,7 +362,8 @@ public class Render2D {
     }
 
     private String formatRate(double rate) {
-        return String.format("%.1f", rate);
+        long tenths = Math.max(0L, Math.round(rate * 10.0D));
+        return tenths / 10L + "." + tenths % 10L;
     }
 
     private String formatPercent(double value) {
@@ -382,13 +433,30 @@ public class Render2D {
         String text = switch (state) {
             case FULL -> "全量";
             case PARTIAL -> "局部";
-            case LAZY -> "惰性";
+            case LAZY -> module.getPendingIterationWorkCount() > 0 ? "前沿" : "惰性";
         };
         int dirtyRegions = module.getPendingDirtyRegionCount();
         if (dirtyRegions > 0) {
             text += "(" + dirtyRegions + ")";
         }
+        ScanCache.ScanMetrics metrics = ScanCache.INSTANCE.metricsFor(module.getId());
+        if (metrics.hasActivity()) {
+            text += " " + formatScanMillis(metrics.scanNanos())
+                    + "ms " + metrics.scannedBlocks()
+                    + "块/" + metrics.scannedSections()
+                    + "区 " + metrics.acceptedTargets() + "目标";
+            if (metrics.budgetPauses() > 0) {
+                text += " 切片" + metrics.budgetPauses();
+            }
+        }
         return text;
+    }
+
+    private String formatScanMillis(long scanNanos) {
+        long hundredths = Math.max(0L, (scanNanos + 5_000L) / 10_000L);
+        long whole = hundredths / 100L;
+        long fraction = hundredths % 100L;
+        return whole + "." + (fraction < 10L ? "0" : "") + fraction;
     }
 
     private String humanizeCommonModeReason(HudStatsManager.Mode mode, HudStatsManager.Snapshot snapshot, double actualRate) {
@@ -422,9 +490,9 @@ public class Render2D {
 
     private String formatModeSettings(HudStatsManager.Mode mode) {
         return switch (mode) {
-            case PRINT, FILL -> Configs.Placement.PLACE_BLOCKS_PER_TICK.getIntegerValue()
+            case PRINT, FILL, FLUID -> Configs.Placement.PLACE_BLOCKS_PER_TICK.getIntegerValue()
                     + "/t 间隔" + Configs.Placement.PLACE_INTERVAL.getIntegerValue();
-            case MINE, FLUID -> "不限速";
+            case MINE -> "不限速";
             case BEDROCK -> Configs.Bedrock.BEDROCK_BLOCKS_PER_TICK.getIntegerValue()
                     + "/t 间隔" + Configs.Bedrock.BEDROCK_INTERVAL.getIntegerValue();
             case TOTAL -> "--";
@@ -482,6 +550,9 @@ public class Render2D {
         private int bottom() {
             return this.drawY + this.scaledHeight;
         }
+    }
+
+    private record HudLayouts(PanelLayout summary, PanelLayout modes) {
     }
 
     public record HudBounds(int x, int y, int width, int height) {

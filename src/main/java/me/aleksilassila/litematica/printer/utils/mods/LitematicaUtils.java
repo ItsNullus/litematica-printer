@@ -1,7 +1,9 @@
 package me.aleksilassila.litematica.printer.utils.mods;
 
 import fi.dy.masa.litematica.data.DataManager;
+import fi.dy.masa.litematica.schematic.placement.SchematicPlacement;
 import fi.dy.masa.litematica.schematic.placement.SchematicPlacementManager;
+import fi.dy.masa.litematica.schematic.placement.SubRegionPlacement;
 import fi.dy.masa.litematica.selection.AreaSelection;
 import fi.dy.masa.litematica.selection.Box;
 import fi.dy.masa.litematica.selection.SelectionMode;
@@ -10,11 +12,13 @@ import fi.dy.masa.litematica.util.PlacementHandler;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Predicate;
 
 //#if MC < 11900
@@ -120,22 +124,99 @@ public class LitematicaUtils {
     }
 
     public static PrinterBox createSelection1BoundingBox() {
-        AreaSelection selection = DataManager.getSelectionManager().getCurrentSelection();
-        if (selection == null) return null;
+        List<PrinterBox> boxes = createSelection1Boxes();
+        if (boxes.isEmpty()) return null;
         Bounds merged = null;
+        for (PrinterBox box : boxes) {
+            Bounds bounds = Bounds.from(box);
+            merged = merged == null ? bounds : merged.merge(bounds);
+        }
+        return merged == null ? null : merged.toPrinterBox();
+    }
+
+    public static List<PrinterBox> createSelection1Boxes() {
+        AreaSelection selection = DataManager.getSelectionManager().getCurrentSelection();
+        if (selection == null) return List.of();
+        List<PrinterBox> result = new ArrayList<>();
         if (DataManager.getSelectionManager().getSelectionMode() == SelectionMode.NORMAL) {
             List<Box> boxes = selection.getAllSubRegionBoxes();
             for (Box box : boxes) {
                 Bounds bounds = Bounds.from(box);
                 if (bounds != null) {
-                    merged = merged == null ? bounds : merged.merge(bounds);
+                    result.add(bounds.toPrinterBox());
                 }
             }
         } else {
             Box box = selection.getSubRegionBox(DataManager.getSimpleArea().getName());
-            merged = Bounds.from(box);
+            Bounds bounds = Bounds.from(box);
+            if (bounds != null) {
+                result.add(bounds.toPrinterBox());
+            }
         }
-        return merged == null ? null : merged.toPrinterBox();
+        return result;
+    }
+
+    public static List<PrinterBox> createSchematicPlacementBoxes() {
+        List<PrinterBox> result = new ArrayList<>();
+        SchematicPlacementManager manager = DataManager.getSchematicPlacementManager();
+        for (SchematicPlacement placement : manager.getAllSchematicsPlacements()) {
+            if (!placement.matchesRequirement(SubRegionPlacement.RequiredEnabled.RENDERING_ENABLED)) {
+                continue;
+            }
+            Map<String, Box> boxes = placement.getSubRegionBoxes(
+                    SubRegionPlacement.RequiredEnabled.RENDERING_ENABLED
+            );
+            for (Box box : boxes.values()) {
+                Bounds bounds = Bounds.from(box);
+                if (bounds != null) {
+                    result.add(bounds.toPrinterBox());
+                }
+            }
+        }
+        return result;
+    }
+
+    public static PrinterBox clampToRenderLayer(PrinterBox box) {
+        if (box == null) {
+            return null;
+        }
+        var clamped = DataManager.getRenderLayerRange().getClampedArea(
+                box.minX,
+                box.minY,
+                box.minZ,
+                box.maxX,
+                box.maxY,
+                box.maxZ
+        );
+        if (clamped == null) {
+            return null;
+        }
+        //#if MC > 260100
+        //$$ int minX = clamped.minX();
+        //$$ int minY = clamped.minY();
+        //$$ int minZ = clamped.minZ();
+        //$$ int maxX = clamped.maxX();
+        //$$ int maxY = clamped.maxY();
+        //$$ int maxZ = clamped.maxZ();
+        //#else
+        int minX = clamped.getMinValueForAxis(Direction.Axis.X);
+        int minY = clamped.getMinValueForAxis(Direction.Axis.Y);
+        int minZ = clamped.getMinValueForAxis(Direction.Axis.Z);
+        int maxX = clamped.getMaxValueForAxis(Direction.Axis.X);
+        int maxY = clamped.getMaxValueForAxis(Direction.Axis.Y);
+        int maxZ = clamped.getMaxValueForAxis(Direction.Axis.Z);
+        //#endif
+        if (minX > maxX || minY > maxY || minZ > maxZ) {
+            return null;
+        }
+        return new PrinterBox(
+                minX,
+                minY,
+                minZ,
+                maxX,
+                maxY,
+                maxZ
+        );
     }
 
     static boolean comparePos(Box box, BlockPos pos) {
@@ -168,6 +249,13 @@ public class LitematicaUtils {
                     Math.max(pos1.getY(), pos2.getY()),
                     Math.max(pos1.getZ(), pos2.getZ())
             );
+        }
+
+        static Bounds from(PrinterBox box) {
+            if (box == null) {
+                return null;
+            }
+            return new Bounds(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
         }
 
         Bounds merge(Bounds other) {

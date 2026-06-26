@@ -63,10 +63,11 @@ final class InteractionBoxTracker {
     }
 
     private static double getBoxRange() {
+        double workRange = ConfigUtils.getWorkRange();
         if (Configs.Core.CHECK_PLAYER_INTERACTION_RANGE.getBooleanValue()) {
-            return PlayerUtils.getPlayerBlockInteractionRange(5) + 3.0D;
+            return Math.min(workRange, PlayerUtils.getPlayerBlockInteractionRange(5) + 3.0D);
         }
-        return ConfigUtils.getWorkRange();
+        return workRange;
     }
 
     private static BlockPos trackingPos(LocalPlayer player) {

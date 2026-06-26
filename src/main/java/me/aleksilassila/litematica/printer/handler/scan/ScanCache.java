@@ -15,7 +15,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
-import java.util.ArrayList;
 import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -30,15 +29,12 @@ public final class ScanCache {
 
     private static final int SECTION_SIZE = 16;
     private static final int SECTION_VOLUME = SECTION_SIZE * SECTION_SIZE * SECTION_SIZE;
-    private static final int UNLIMITED_SCAN_GUARD = 8192;
-    private static final int MAX_SCAN_GUARD = 65_536;
-    private static final int MAX_ASYNC_PREFIX = 256;
     private static final int MAX_SECTION_CACHE_ENTRIES = 8192;
     private static final int WORLD_SECTION_TTL_TICKS = 80;
     private static final int SCHEMATIC_SECTION_TTL_TICKS = 80;
-    private static final int EXHAUSTED_RESCAN_DELAY_TICKS = 1;
     private static final int BUDGET_CHECK_INTERVAL = 8;
-    private static final int SECTION_SCAN_BUDGET_CHECK_INTERVAL = 32;
+    private static final int SECTION_SCAN_BUDGET_CHECK_INTERVAL = 8;
+    private static final int OWNER_SCAN_BUDGET_PERCENT = 75;
     private static final int MAX_SECTION_ADVANCES_PER_STEP = 16;
     private static final int SECTION_CANDIDATE_BURST = 8;
     private static final int LIVE_SECTION_SCAN_SLICE_BLOCKS = 256;
@@ -52,7 +48,7 @@ public final class ScanCache {
 
     private final Long2ObjectOpenHashMap<SectionEntry> sections = new Long2ObjectOpenHashMap<>();
     private final Map<String, SectionScanSession> sessions = new HashMap<>();
-    private final AsyncScanCandidatePlanner asyncPlanner = new AsyncScanCandidatePlanner();
+    private final Map<String, MutableScanMetrics> scanMetrics = new HashMap<>();
 
     private Object levelIdentity;
     private Object schematicIdentity;
@@ -61,6 +57,28 @@ public final class ScanCache {
     private long globalScanBudgetUsedNanos;
 
     private ScanCache() {
+    }
+
+    public record ScanMetrics(
+            long scanNanos,
+            int scannedBlocks,
+            int scannedSections,
+            int sourceCandidates,
+            int acceptedTargets,
+            int budgetPauses,
+            int completedPasses
+    ) {
+        private static final ScanMetrics EMPTY = new ScanMetrics(0L, 0, 0, 0, 0, 0, 0);
+
+        public boolean hasActivity() {
+            return this.scanNanos > 0L
+                    || this.scannedBlocks > 0
+                    || this.scannedSections > 0
+                    || this.sourceCandidates > 0
+                    || this.acceptedTargets > 0
+                    || this.budgetPauses > 0
+                    || this.completedPasses > 0;
+        }
     }
 
     public static long key(BlockPos pos) {
@@ -80,10 +98,15 @@ public final class ScanCache {
         if (this.levelIdentity != level || this.schematicIdentity != schematic) {
             this.sections.clear();
             this.sessions.clear();
-            this.asyncPlanner.clear();
+            this.scanMetrics.clear();
             DirtyRegionTracker.INSTANCE.clear();
             this.levelIdentity = level;
             this.schematicIdentity = schematic;
+        }
+        if (this.tickTime != tickTime) {
+            for (MutableScanMetrics metrics : this.scanMetrics.values()) {
+                metrics.reset();
+            }
         }
         this.tickTime = tickTime;
         if (this.scanBudgetTickTime != tickTime) {
@@ -95,6 +118,11 @@ public final class ScanCache {
         }
     }
 
+    public ScanMetrics metricsFor(String ownerKey) {
+        MutableScanMetrics metrics = this.scanMetrics.get(normalizeMetricsOwnerKey(ownerKey));
+        return metrics == null ? ScanMetrics.EMPTY : metrics.snapshot();
+    }
+
     public void invalidate(BlockPos pos) {
         if (pos == null) {
             return;
@@ -102,44 +130,10 @@ public final class ScanCache {
         int sectionX = sectionCoord(pos.getX());
         int sectionY = sectionCoord(pos.getY());
         int sectionZ = sectionCoord(pos.getZ());
-        this.invalidateSection(sectionX, sectionY, sectionZ);
-        if (this.hasFillSession()) {
-            int localX = pos.getX() & 15;
-            int localY = pos.getY() & 15;
-            int localZ = pos.getZ() & 15;
-            if (localX == 0) {
-                this.invalidateSection(sectionX - 1, sectionY, sectionZ);
-            } else if (localX == 15) {
-                this.invalidateSection(sectionX + 1, sectionY, sectionZ);
-            }
-            if (localY == 0) {
-                this.invalidateSection(sectionX, sectionY - 1, sectionZ);
-            } else if (localY == 15) {
-                this.invalidateSection(sectionX, sectionY + 1, sectionZ);
-            }
-            if (localZ == 0) {
-                this.invalidateSection(sectionX, sectionY, sectionZ - 1);
-            } else if (localZ == 15) {
-                this.invalidateSection(sectionX, sectionY, sectionZ + 1);
-            }
-        }
-    }
-
-    private void invalidateSection(int sectionX, int sectionY, int sectionZ) {
         this.sections.remove(sectionKey(sectionX, sectionY, sectionZ));
         for (SectionScanSession session : this.sessions.values()) {
-            session.invalidateSection(sectionX, sectionY, sectionZ);
+            session.invalidate(pos);
         }
-        this.asyncPlanner.invalidateSection(sectionX, sectionY, sectionZ);
-    }
-
-    private boolean hasFillSession() {
-        for (SectionScanSession session : this.sessions.values()) {
-            if (session.intent == ScanIntent.FILL) {
-                return true;
-            }
-        }
-        return false;
     }
 
     public Iterable<BlockPos> rawIterable(
@@ -149,7 +143,7 @@ public final class ScanCache {
             int scanGuardLimit,
             Predicate<BlockPos> preFilter
     ) {
-        return this.iterable(ownerKey, sourceBox, null, null, player, scanGuardLimit, ScanIntent.CUSTOM, pos -> true, preFilter);
+        return this.iterable(ownerKey, List.of(sourceBox), null, null, player, scanGuardLimit, ScanIntent.CUSTOM, pos -> true, preFilter, false);
     }
 
     public Iterable<BlockPos> iterable(
@@ -175,7 +169,7 @@ public final class ScanCache {
             Predicate<BlockPos> exactPredicate,
             Predicate<BlockPos> preFilter
     ) {
-        return this.iterable(ownerKey, sourceBox, level, schematic, player, Integer.MAX_VALUE, intent, exactPredicate, preFilter, true);
+        return this.iterable(ownerKey, List.of(sourceBox), level, schematic, player, Integer.MAX_VALUE, intent, exactPredicate, preFilter, true);
     }
 
     public Iterable<BlockPos> iterable(
@@ -189,12 +183,52 @@ public final class ScanCache {
             Predicate<BlockPos> exactPredicate,
             Predicate<BlockPos> preFilter
     ) {
-        return this.iterable(ownerKey, sourceBox, level, schematic, player, scanGuardLimit, intent, exactPredicate, preFilter, false);
+        return this.iterable(ownerKey, List.of(sourceBox), level, schematic, player, scanGuardLimit, intent, exactPredicate, preFilter, false);
+    }
+
+    public Iterable<BlockPos> iterable(
+            String ownerKey,
+            List<PrinterBox> sourceBoxes,
+            ClientLevel level,
+            WorldSchematic schematic,
+            LocalPlayer player,
+            int scanGuardLimit,
+            ScanIntent intent,
+            Predicate<BlockPos> exactPredicate
+    ) {
+        return this.iterable(
+                ownerKey,
+                sourceBoxes,
+                level,
+                schematic,
+                player,
+                scanGuardLimit,
+                intent,
+                exactPredicate,
+                pos -> true
+        );
+    }
+
+    public Iterable<BlockPos> iterable(
+            String ownerKey,
+            List<PrinterBox> sourceBoxes,
+            ClientLevel level,
+            WorldSchematic schematic,
+            LocalPlayer player,
+            int scanGuardLimit,
+            ScanIntent intent,
+            Predicate<BlockPos> exactPredicate,
+            Predicate<BlockPos> preFilter
+    ) {
+        if (sourceBoxes == null || sourceBoxes.isEmpty()) {
+            return List.of();
+        }
+        return this.iterable(ownerKey, sourceBoxes, level, schematic, player, scanGuardLimit, intent, exactPredicate, preFilter, false);
     }
 
     private Iterable<BlockPos> iterable(
             String ownerKey,
-            PrinterBox sourceBox,
+            List<PrinterBox> sourceBoxes,
             ClientLevel level,
             WorldSchematic schematic,
             LocalPlayer player,
@@ -206,17 +240,22 @@ public final class ScanCache {
     ) {
         int scanLimit = unbounded ? Integer.MAX_VALUE : this.getScanLimit(scanGuardLimit);
         String cacheOwnerKey = this.cacheOwnerKey(ownerKey, intent);
-        int asyncLimit = intent == ScanIntent.PRINT ? Math.min(MAX_ASYNC_PREFIX, Math.max(0, scanLimit / 4)) : 0;
-        List<BlockPos> asyncPositions = this.asyncPlanner.take(cacheOwnerKey, sourceBox, asyncLimit);
-        SectionScanSession session = this.session(cacheOwnerKey, intent, sourceBox, player);
-        double eyeX = player == null ? 0.0D : player.getEyePosition().x;
-        double eyeY = player == null ? 0.0D : player.getEyePosition().y;
-        double eyeZ = player == null ? 0.0D : player.getEyePosition().z;
-
+        String metricsOwnerKey = normalizeMetricsOwnerKey(ownerKey);
+        MutableScanMetrics metrics = this.metrics(metricsOwnerKey);
+        PrinterBox sourceBounds = enclosingBox(sourceBoxes);
+        if (sourceBounds == null) {
+            return List.of();
+        }
+        SectionScanSession session = this.session(
+                cacheOwnerKey,
+                metrics,
+                intent,
+                sourceBounds,
+                sourceBoxes,
+                player
+        );
         return () -> new Iterator<>() {
-            private final Iterator<BlockPos> asyncIterator = asyncPositions.iterator();
             private final LongSet emitted = new LongOpenHashSet();
-            private List<ScanSnapshot> targetSnapshots = new ArrayList<>();
             private BlockPos next;
             private boolean prepared;
             private boolean scanLimitHit;
@@ -230,14 +269,6 @@ public final class ScanCache {
                 }
                 this.prepared = true;
 
-                while (this.asyncIterator.hasNext()) {
-                    BlockPos pos = this.asyncIterator.next();
-                    if (session.contains(pos) && preFilter.test(pos) && exactPredicate.test(pos) && this.emitted.add(key(pos))) {
-                        this.next = pos;
-                        return;
-                    }
-                }
-
                 long budgetStart = System.nanoTime();
                 boolean budgetHit = false;
                 try {
@@ -249,6 +280,7 @@ public final class ScanCache {
 
                         Candidate candidate = session.next(level, schematic, tickTime,
                                 () -> !unbounded && isScanBudgetExceeded(budgetStart),
+                                preFilter,
                                 unbounded);
                         if (candidate == null) {
                             if (session.wasPaused()) {
@@ -256,12 +288,10 @@ public final class ScanCache {
                             }
                             break;
                         }
+                        metrics.sourceCandidates++;
                         this.considered++;
                         BlockPos pos = candidate.pos();
                         if (!session.contains(pos)) {
-                            continue;
-                        }
-                        if (!preFilter.test(pos)) {
                             continue;
                         }
                         boolean target = candidate.acceptedByFlags(intent);
@@ -272,23 +302,21 @@ public final class ScanCache {
                             continue;
                         }
                         long posKey = key(pos);
-                        if (intent == ScanIntent.PRINT) {
-                            this.targetSnapshots.add(new ScanSnapshot(posKey, pos.getX(), pos.getY(), pos.getZ(),
-                                    (byte) (candidate.flags() | ScanFlags.TARGET)));
-                            this.submitSnapshotsIfNeeded(false);
-                        }
                         if (this.emitted.add(posKey)) {
+                            metrics.acceptedTargets++;
                             this.next = pos;
                             return;
                         }
                     }
                 } finally {
                     if (!unbounded) {
-                        recordScanBudget(budgetStart);
+                        recordScanBudget(metrics, budgetStart);
                     }
                 }
 
-                this.submitSnapshotsIfNeeded(true);
+                if (budgetHit) {
+                    metrics.budgetPauses++;
+                }
                 this.scanLimitHit = session.hasPendingSource(tickTime) && (budgetHit || this.considered >= scanLimit);
             }
 
@@ -314,16 +342,6 @@ public final class ScanCache {
                 return null;
             }
 
-            private void submitSnapshotsIfNeeded(boolean force) {
-                if (intent != ScanIntent.PRINT || player == null || this.targetSnapshots.isEmpty()) {
-                    return;
-                }
-                if (!force && this.targetSnapshots.size() < 64) {
-                    return;
-                }
-                asyncPlanner.submit(cacheOwnerKey, this.targetSnapshots, eyeX, eyeY, eyeZ);
-                this.targetSnapshots = new ArrayList<>();
-            }
         };
     }
 
@@ -334,17 +352,55 @@ public final class ScanCache {
         return ownerKey;
     }
 
-    private SectionScanSession session(String ownerKey, ScanIntent intent, PrinterBox sourceBox, LocalPlayer player) {
-        SectionRegion region = SectionRegion.from(sourceBox, player);
+    private SectionScanSession session(
+            String ownerKey,
+            MutableScanMetrics metrics,
+            ScanIntent intent,
+            PrinterBox sourceBounds,
+            List<PrinterBox> sourceBoxes,
+            LocalPlayer player
+    ) {
+        SectionRegion region = SectionRegion.from(sourceBounds, player);
         String key = ownerKey + ":" + intent.name();
         SectionScanSession session = this.sessions.get(key);
-        if (session == null || !session.canReuse(region)) {
-            session = new SectionScanSession(region, intent);
+        if (session == null || !session.canReuse(region, sourceBoxes)) {
+            session = new SectionScanSession(region, sourceBoxes, intent, metrics);
             this.sessions.put(key, session);
         } else {
-            session.updateRegion(region);
+            session.updateRegion(region, sourceBoxes);
         }
         return session;
+    }
+
+    private static PrinterBox enclosingBox(List<PrinterBox> boxes) {
+        PrinterBox result = null;
+        for (PrinterBox box : boxes) {
+            if (box == null) {
+                continue;
+            }
+            if (result == null) {
+                result = box;
+                continue;
+            }
+            result = new PrinterBox(
+                    Math.min(result.minX, box.minX),
+                    Math.min(result.minY, box.minY),
+                    Math.min(result.minZ, box.minZ),
+                    Math.max(result.maxX, box.maxX),
+                    Math.max(result.maxY, box.maxY),
+                    Math.max(result.maxZ, box.maxZ)
+            );
+        }
+        return result;
+    }
+
+    private static boolean containsAny(List<PrinterBox> boxes, BlockPos pos) {
+        for (PrinterBox box : boxes) {
+            if (box.contains(pos)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private SectionEntry sectionEntry(int sectionX, int sectionY, int sectionZ) {
@@ -365,9 +421,32 @@ public final class ScanCache {
                 || this.globalScanBudgetUsedNanos + elapsed >= globalBudgetNanos;
     }
 
-    private void recordScanBudget(long ownerBudgetStartNanos) {
+    private void recordScanBudget(MutableScanMetrics metrics, long ownerBudgetStartNanos) {
         long elapsed = Math.max(0L, System.nanoTime() - ownerBudgetStartNanos);
         this.globalScanBudgetUsedNanos += elapsed;
+        metrics.scanNanos += elapsed;
+    }
+
+    private MutableScanMetrics metrics(String ownerKey) {
+        return this.scanMetrics.computeIfAbsent(ownerKey, key -> new MutableScanMetrics());
+    }
+
+    private static String normalizeMetricsOwnerKey(String ownerKey) {
+        int separator = ownerKey.length();
+        int underscore = ownerKey.indexOf('_');
+        if (underscore >= 0) {
+            separator = Math.min(separator, underscore);
+        }
+        int colon = ownerKey.indexOf(':');
+        if (colon >= 0) {
+            separator = Math.min(separator, colon);
+        }
+        return ownerKey.substring(0, separator);
+    }
+
+    private static int exhaustedRescanDelayTicks() {
+        int lazyEnterTicks = Configs.Core.LAZY_ENTER_TICKS.getIntegerValue();
+        return lazyEnterTicks > 0 ? lazyEnterTicks + 1 : 1;
     }
 
     private long globalScanBudgetNanos() {
@@ -375,12 +454,11 @@ public final class ScanCache {
     }
 
     private long ownerScanBudgetNanos(long globalBudgetNanos) {
-        return Math.max(500_000L, globalBudgetNanos / 2L);
+        return Math.max(500_000L, globalBudgetNanos * OWNER_SCAN_BUDGET_PERCENT / 100L);
     }
 
     private int getScanLimit(int scanGuardLimit) {
-        int scanLimit = scanGuardLimit > 0 ? scanGuardLimit : UNLIMITED_SCAN_GUARD;
-        return Math.max(1, Math.min(MAX_SCAN_GUARD, scanLimit));
+        return scanGuardLimit > 0 ? scanGuardLimit : Integer.MAX_VALUE;
     }
 
     private void prune() {
@@ -411,6 +489,13 @@ public final class ScanCache {
 
     private static int localIndex(int x, int y, int z) {
         return (y & 15) << 8 | (z & 15) << 4 | (x & 15);
+    }
+
+    private static long distanceSqr(BlockPos pos, int centerX, int centerY, int centerZ) {
+        long dx = pos.getX() - (long) centerX;
+        long dy = pos.getY() - (long) centerY;
+        long dz = pos.getZ() - (long) centerZ;
+        return dx * dx + dy * dy + dz * dz;
     }
 
     private static BlockPos blockPos(int sectionX, int sectionY, int sectionZ, int localIndex) {
@@ -532,6 +617,12 @@ public final class ScanCache {
                     && this.centerSectionZ == other.centerSectionZ;
         }
 
+        boolean sameCenterBlock(SectionRegion other) {
+            return this.centerX == other.centerX
+                    && this.centerY == other.centerY
+                    && this.centerZ == other.centerZ;
+        }
+
         boolean sameBlockBounds(SectionRegion other) {
             return this.minX == other.minX
                     && this.minY == other.minY
@@ -556,8 +647,11 @@ public final class ScanCache {
 
     private final class SectionScanSession {
         private final ScanIntent intent;
+        private final MutableScanMetrics metrics;
         private SectionRegion region;
+        private List<PrinterBox> sourceBoxes;
         private SectionCursor cursor = new SectionCursor();
+        private PlayerDistanceCursor distanceCursor;
         private long exhaustedUntilTick = Long.MIN_VALUE;
         private SectionEntry currentSection;
         private short[] currentCandidates = ShortArrayBuilder.EMPTY;
@@ -565,6 +659,8 @@ public final class ScanCache {
         private final ArrayDeque<LiveSectionProgress> deferredLiveSections = new ArrayDeque<>();
         private final ArrayDeque<SectionPos> dirtySections = new ArrayDeque<>();
         private final LongSet dirtySectionKeys = new LongOpenHashSet();
+        private final PriorityQueue<DirtyPosition> dirtyPositions = new PriorityQueue<>();
+        private final LongSet dirtyPositionKeys = new LongOpenHashSet();
         private int candidateIndex;
         private int phase;
         private int sectionBurstRemaining;
@@ -581,27 +677,36 @@ public final class ScanCache {
         private boolean liveSectionActive;
         private final BlockPos.MutableBlockPos liveMutable = new BlockPos.MutableBlockPos();
         private final BlockPos.MutableBlockPos liveNeighbor = new BlockPos.MutableBlockPos();
+        private int lastChunkX = Integer.MIN_VALUE;
+        private int lastChunkZ = Integer.MIN_VALUE;
+        private boolean lastChunkLoaded;
 
-        private SectionScanSession(SectionRegion region, ScanIntent intent) {
+        private SectionScanSession(
+                SectionRegion region,
+                List<PrinterBox> sourceBoxes,
+                ScanIntent intent,
+                MutableScanMetrics metrics
+        ) {
             this.region = region;
+            this.sourceBoxes = List.copyOf(sourceBoxes);
             this.intent = intent;
+            this.metrics = metrics;
+            this.distanceCursor = new PlayerDistanceCursor(this.sourceBoxes, region);
         }
 
-        boolean canReuse(SectionRegion region) {
-            return this.region.sameSectionWindow(region);
+        boolean canReuse(SectionRegion region, List<PrinterBox> sourceBoxes) {
+            return this.region.sameSectionWindow(region) && this.sourceBoxes.equals(sourceBoxes);
         }
 
-        void updateRegion(SectionRegion region) {
+        void updateRegion(SectionRegion region, List<PrinterBox> sourceBoxes) {
             boolean boundsChanged = !this.region.sameBlockBounds(region);
-            boolean centerSectionChanged = !this.region.sameCenterSection(region);
+            boolean centerChanged = !this.region.sameCenterBlock(region);
+            boolean boxesChanged = !this.sourceBoxes.equals(sourceBoxes);
             this.region = region;
-            if (centerSectionChanged) {
-                this.prioritizeCenterSections(region);
-                this.clearCurrentSection();
-                this.liveSectionActive = false;
-                this.exhaustedUntilTick = Long.MIN_VALUE;
-                this.paused = false;
-            } else if (boundsChanged && (this.exhaustedUntilTick != Long.MIN_VALUE || this.cursor.complete)) {
+            if (boxesChanged) {
+                this.sourceBoxes = List.copyOf(sourceBoxes);
+            }
+            if (boundsChanged || centerChanged || boxesChanged) {
                 this.resetProgress();
             }
         }
@@ -619,6 +724,7 @@ public final class ScanCache {
 
         private void resetProgress() {
             this.cursor = new SectionCursor();
+            this.distanceCursor = new PlayerDistanceCursor(this.sourceBoxes, this.region);
             this.exhaustedUntilTick = Long.MIN_VALUE;
             this.currentSection = null;
             this.currentCandidates = ShortArrayBuilder.EMPTY;
@@ -626,6 +732,8 @@ public final class ScanCache {
             this.deferredLiveSections.clear();
             this.dirtySections.clear();
             this.dirtySectionKeys.clear();
+            this.dirtyPositions.clear();
+            this.dirtyPositionKeys.clear();
             this.candidateIndex = 0;
             this.phase = 0;
             this.sectionBurstRemaining = 0;
@@ -633,11 +741,16 @@ public final class ScanCache {
             this.liveSectionActive = false;
             this.liveLocalIndex = 0;
             this.liveSectionScannedThisSlice = 0;
+            this.lastChunkX = Integer.MIN_VALUE;
+            this.lastChunkZ = Integer.MIN_VALUE;
+            this.lastChunkLoaded = false;
         }
 
         boolean hasPendingSource(long tickTime) {
             return this.canScan(tickTime)
-                    && (this.currentSection != null
+                    && (!this.dirtyPositions.isEmpty()
+                    || !this.distanceCursor.complete
+                    || this.currentSection != null
                     || this.liveSectionActive
                     || !this.dirtySections.isEmpty()
                     || !this.deferredSections.isEmpty()
@@ -650,42 +763,146 @@ public final class ScanCache {
         }
 
         boolean contains(BlockPos pos) {
-            return this.region.containsBlock(pos);
+            return containsAny(this.sourceBoxes, pos);
         }
 
-        void invalidateSection(int sectionX, int sectionY, int sectionZ) {
-            if (!this.region.containsSection(sectionX, sectionY, sectionZ)) {
-                return;
+        void invalidate(BlockPos pos) {
+            this.addDirtyPosition(pos);
+            if (this.intent == ScanIntent.FILL) {
+                for (Direction direction : DIRECTIONS) {
+                    this.addDirtyPosition(pos.relative(direction));
+                }
             }
-            this.exhaustedUntilTick = Long.MIN_VALUE;
-            if (this.isCurrentSection(sectionX, sectionY, sectionZ)) {
-                this.clearCurrentSection();
-            }
-            if (this.liveSectionActive
-                    && this.liveSectionX == sectionX
-                    && this.liveSectionY == sectionY
-                    && this.liveSectionZ == sectionZ) {
-                this.liveSectionActive = false;
-            }
-            this.removeDeferredSection(sectionX, sectionY, sectionZ);
-            this.removeDeferredLiveSection(sectionX, sectionY, sectionZ);
-            this.addDirtySection(sectionX, sectionY, sectionZ);
             this.paused = false;
         }
 
-        Candidate next(ClientLevel level, WorldSchematic schematic, long tickTime, BooleanSupplier shouldPause) {
-            return this.next(level, schematic, tickTime, shouldPause, false);
+        private void addDirtyPosition(BlockPos pos) {
+            if (pos == null || !containsAny(this.sourceBoxes, pos)) {
+                return;
+            }
+            this.exhaustedUntilTick = Long.MIN_VALUE;
+            long key = ScanCache.key(pos);
+            if (this.dirtyPositionKeys.add(key)) {
+                this.dirtyPositions.add(new DirtyPosition(
+                        pos.immutable(),
+                        distanceSqr(pos, this.region.centerX(), this.region.centerY(), this.region.centerZ())
+                ));
+            }
         }
 
-        Candidate next(ClientLevel level, WorldSchematic schematic, long tickTime, BooleanSupplier shouldPause, boolean unbounded) {
+        Candidate next(
+                ClientLevel level,
+                WorldSchematic schematic,
+                long tickTime,
+                BooleanSupplier shouldPause,
+                Predicate<BlockPos> preFilter,
+                boolean unbounded
+        ) {
             this.paused = false;
             if (!this.canScan(tickTime)) {
                 return null;
             }
-            if (this.usesWorld()) {
-                return this.nextLive(level, schematic, tickTime, shouldPause, unbounded);
-            }
+            return this.nextByPlayerDistance(level, schematic, tickTime, shouldPause, preFilter, unbounded);
+        }
 
+        private Candidate nextByPlayerDistance(
+                ClientLevel level,
+                WorldSchematic schematic,
+                long tickTime,
+                BooleanSupplier shouldPause,
+                Predicate<BlockPos> preFilter,
+                boolean unbounded
+        ) {
+            if (level == null) {
+                this.markExhausted(tickTime);
+                return null;
+            }
+            int scanned = 0;
+            while (true) {
+                if (!unbounded
+                        && scanned > 0
+                        && scanned % SECTION_SCAN_BUDGET_CHECK_INTERVAL == 0
+                        && shouldPause.getAsBoolean()) {
+                    this.paused = true;
+                    return null;
+                }
+
+                BlockPos dirtyPos = this.pollDirtyPositionBefore(this.distanceCursor.peekDistanceSqr());
+                int x;
+                int y;
+                int z;
+                if (dirtyPos != null) {
+                    x = dirtyPos.getX();
+                    y = dirtyPos.getY();
+                    z = dirtyPos.getZ();
+                    this.liveMutable.set(x, y, z);
+                } else {
+                    if (!this.distanceCursor.next(this.liveMutable)) {
+                        this.markExhausted(tickTime);
+                        return null;
+                    }
+                    x = this.liveMutable.getX();
+                    y = this.liveMutable.getY();
+                    z = this.liveMutable.getZ();
+                }
+                scanned++;
+
+                if (!preFilter.test(this.liveMutable)) {
+                    continue;
+                }
+
+                int chunkX = sectionCoord(x);
+                int chunkZ = sectionCoord(z);
+                if (chunkX != this.lastChunkX || chunkZ != this.lastChunkZ) {
+                    this.lastChunkX = chunkX;
+                    this.lastChunkZ = chunkZ;
+                    this.lastChunkLoaded = level.hasChunk(chunkX, chunkZ);
+                }
+                if (!this.lastChunkLoaded) {
+                    continue;
+                }
+
+                this.metrics.recordScannedSection(sectionKey(chunkX, sectionCoord(y), chunkZ));
+
+                BlockState state = level.getBlockState(this.liveMutable);
+                this.metrics.scannedBlocks++;
+                if (this.intent == ScanIntent.CUSTOM) {
+                    return new Candidate(new BlockPos(x, y, z), (byte) 0);
+                }
+                byte flags = this.liveFlags(level, schematic, x, y, z, state);
+                if (flags != 0) {
+                    return new Candidate(new BlockPos(x, y, z), flags);
+                }
+            }
+        }
+
+        private BlockPos pollDirtyPositionBefore(long sourceDistanceSqr) {
+            while (!this.dirtyPositions.isEmpty()) {
+                DirtyPosition dirty = this.dirtyPositions.peek();
+                if (dirty.distanceSqr() > sourceDistanceSqr) {
+                    return null;
+                }
+                this.dirtyPositions.poll();
+                BlockPos pos = dirty.pos();
+                this.dirtyPositionKeys.remove(ScanCache.key(pos));
+                if (containsAny(this.sourceBoxes, pos)) {
+                    return pos;
+                }
+            }
+            return null;
+        }
+
+        /*
+         * 保留旧 section 缓存路径，供后续针对静态快照做专门优化；主扫描不再从这里调度，
+         * 避免 section 成为放置顺序并造成 16x16x16 的成片推进。
+         */
+        private Candidate nextBySectionCache(
+                ClientLevel level,
+                WorldSchematic schematic,
+                long tickTime,
+                BooleanSupplier shouldPause,
+                boolean unbounded
+        ) {
             int advancedSections = 0;
             while (true) {
                 if (this.currentSectionPrepared) {
@@ -721,7 +938,7 @@ public final class ScanCache {
                             this.restoreDeferredSection(this.deferredSections.removeFirst());
                             continue;
                         }
-                        this.exhaustedUntilTick = tickTime + EXHAUSTED_RESCAN_DELAY_TICKS;
+                        this.markExhausted(tickTime);
                         return null;
                     }
                     advancedSections++;
@@ -729,6 +946,11 @@ public final class ScanCache {
                         continue;
                     }
                     this.currentSection = sectionEntry(sectionPos.x(), sectionPos.y(), sectionPos.z());
+                    this.metrics.recordScannedSection(sectionKey(
+                            this.currentSection.sectionX,
+                            this.currentSection.sectionY,
+                            this.currentSection.sectionZ
+                    ));
                 }
 
                 if (!this.currentSection.ensure(this.intent, level, schematic, tickTime, shouldPause)) {
@@ -760,7 +982,7 @@ public final class ScanCache {
          */
         private Candidate nextLive(ClientLevel level, WorldSchematic schematic, long tickTime, BooleanSupplier shouldPause, boolean unbounded) {
             if (level == null) {
-                this.exhaustedUntilTick = tickTime + EXHAUSTED_RESCAN_DELAY_TICKS;
+                this.markExhausted(tickTime);
                 return null;
             }
             int advancedSections = 0;
@@ -796,13 +1018,18 @@ public final class ScanCache {
                         advancedSections++;
                         continue;
                     }
-                    this.exhaustedUntilTick = tickTime + EXHAUSTED_RESCAN_DELAY_TICKS;
+                    this.markExhausted(tickTime);
                     return null;
                 }
                 advancedSections++;
                 if (!level.hasChunk(sectionPos.x(), sectionPos.z())) {
                     continue;
                 }
+                this.metrics.recordScannedSection(sectionKey(
+                        sectionPos.x(),
+                        sectionPos.y(),
+                        sectionPos.z()
+                ));
                 this.liveSectionX = sectionPos.x();
                 this.liveSectionY = sectionPos.y();
                 this.liveSectionZ = sectionPos.z();
@@ -841,6 +1068,7 @@ public final class ScanCache {
                 }
                 this.liveMutable.set(x, y, z);
                 BlockState state = level.getBlockState(this.liveMutable);
+                this.metrics.scannedBlocks++;
                 if (this.intent == ScanIntent.CUSTOM) {
                     return new Candidate(new BlockPos(x, y, z), (byte) 0);
                 }
@@ -850,6 +1078,11 @@ public final class ScanCache {
                 }
             }
             return null;
+        }
+
+        private void markExhausted(long tickTime) {
+            this.exhaustedUntilTick = tickTime + exhaustedRescanDelayTicks();
+            this.metrics.completedPasses++;
         }
 
         /**
@@ -900,7 +1133,11 @@ public final class ScanCache {
 
         private boolean hasFillSupportNeighborLive(ClientLevel level, int x, int y, int z) {
             for (Direction direction : DIRECTIONS) {
-                this.liveNeighbor.set(x + direction.getStepX(), y + direction.getStepY(), z + direction.getStepZ());
+                this.liveNeighbor.set(
+                        x + direction.getStepX(),
+                        y + direction.getStepY(),
+                        z + direction.getStepZ()
+                );
                 BlockState neighbor = level.getBlockState(this.liveNeighbor);
                 if (!neighbor.isAir()
                         && !(neighbor.getBlock() instanceof LiquidBlock)
@@ -1172,6 +1409,334 @@ public final class ScanCache {
                 return blockCoord - (long) max;
             }
             return 0L;
+        }
+    }
+
+    private static final class PlayerDistanceCursor {
+        private final List<PrinterBox> boxes;
+        private final PriorityQueue<BoxCursorNode> cursors;
+        private boolean complete;
+
+        private PlayerDistanceCursor(List<PrinterBox> boxes, SectionRegion region) {
+            this.boxes = boxes;
+            this.cursors = new PriorityQueue<>();
+            for (int index = 0; index < boxes.size(); index++) {
+                BoxDistanceCursor cursor = new BoxDistanceCursor(
+                        boxes.get(index),
+                        region.centerX(),
+                        region.centerY(),
+                        region.centerZ()
+                );
+                BlockPos.MutableBlockPos first = new BlockPos.MutableBlockPos();
+                if (cursor.next(first)) {
+                    this.cursors.add(new BoxCursorNode(index, cursor, first.immutable(), region));
+                }
+            }
+            this.complete = this.cursors.isEmpty();
+        }
+
+        long peekDistanceSqr() {
+            BoxCursorNode node = this.cursors.peek();
+            return node == null ? Long.MAX_VALUE : node.distanceSqr();
+        }
+
+        boolean next(BlockPos.MutableBlockPos target) {
+            while (!this.cursors.isEmpty()) {
+                BoxCursorNode node = this.cursors.poll();
+                BlockPos result = node.pos;
+                BlockPos.MutableBlockPos following = new BlockPos.MutableBlockPos();
+                if (node.cursor.next(following)) {
+                    node.pos = following.immutable();
+                    this.cursors.add(node);
+                }
+                if (this.claimedByEarlierBox(node.boxIndex, result)) {
+                    continue;
+                }
+                target.set(result);
+                return true;
+            }
+            this.complete = true;
+            return false;
+        }
+
+        private boolean claimedByEarlierBox(int boxIndex, BlockPos pos) {
+            for (int index = 0; index < boxIndex; index++) {
+                if (this.boxes.get(index).contains(pos)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static final class BoxCursorNode implements Comparable<BoxCursorNode> {
+            private final int boxIndex;
+            private final BoxDistanceCursor cursor;
+            private final int centerX;
+            private final int centerY;
+            private final int centerZ;
+            private BlockPos pos;
+
+            private BoxCursorNode(
+                    int boxIndex,
+                    BoxDistanceCursor cursor,
+                    BlockPos pos,
+                    SectionRegion region
+            ) {
+                this.boxIndex = boxIndex;
+                this.cursor = cursor;
+                this.pos = pos;
+                this.centerX = region.centerX();
+                this.centerY = region.centerY();
+                this.centerZ = region.centerZ();
+            }
+
+            @Override
+            public int compareTo(BoxCursorNode other) {
+                int result = Long.compare(this.distanceSqr(), other.distanceSqr());
+                if (result != 0) {
+                    return result;
+                }
+                result = Integer.compare(this.pos.getX(), other.pos.getX());
+                if (result != 0) {
+                    return result;
+                }
+                result = Integer.compare(this.pos.getY(), other.pos.getY());
+                if (result != 0) {
+                    return result;
+                }
+                result = Integer.compare(this.pos.getZ(), other.pos.getZ());
+                if (result != 0) {
+                    return result;
+                }
+                return Integer.compare(this.boxIndex, other.boxIndex);
+            }
+
+            private long distanceSqr() {
+                long dx = this.pos.getX() - (long) this.centerX;
+                long dy = this.pos.getY() - (long) this.centerY;
+                long dz = this.pos.getZ() - (long) this.centerZ;
+                return dx * dx + dy * dy + dz * dz;
+            }
+        }
+    }
+
+    private record DirtyPosition(BlockPos pos, long distanceSqr) implements Comparable<DirtyPosition> {
+        @Override
+        public int compareTo(DirtyPosition other) {
+            int result = Long.compare(this.distanceSqr, other.distanceSqr);
+            if (result != 0) {
+                return result;
+            }
+            result = Integer.compare(this.pos.getX(), other.pos.getX());
+            if (result != 0) {
+                return result;
+            }
+            result = Integer.compare(this.pos.getY(), other.pos.getY());
+            if (result != 0) {
+                return result;
+            }
+            return Integer.compare(this.pos.getZ(), other.pos.getZ());
+        }
+    }
+
+    /**
+     * 单个扫描盒内按玩家位置的全局平方距离遍历方块。
+     *
+     * 三个轴分别按离玩家中心的距离排序，再用一个无 visited 集合的最小堆归并笛卡尔积。
+     * 每个三轴索引组合只有唯一父节点，因此不会重复，也不需要为整个扫描盒保存访问标记。
+     */
+    private static final class BoxDistanceCursor {
+        private static final int STATE_BITS = 21;
+        private static final long STATE_MASK = (1L << STATE_BITS) - 1L;
+
+        private final int[] xCoordinates;
+        private final int[] yCoordinates;
+        private final int[] zCoordinates;
+        private final long[] xDistanceSqr;
+        private final long[] yDistanceSqr;
+        private final long[] zDistanceSqr;
+        private long[] heap = new long[64];
+        private int heapSize;
+        private boolean complete;
+
+        private BoxDistanceCursor(PrinterBox box, int centerX, int centerY, int centerZ) {
+            this.xCoordinates = buildAxisCoordinates(box.minX, box.maxX, centerX);
+            this.yCoordinates = buildAxisCoordinates(box.minY, box.maxY, centerY);
+            this.zCoordinates = buildAxisCoordinates(box.minZ, box.maxZ, centerZ);
+            this.xDistanceSqr = buildAxisDistances(this.xCoordinates, centerX);
+            this.yDistanceSqr = buildAxisDistances(this.yCoordinates, centerY);
+            this.zDistanceSqr = buildAxisDistances(this.zCoordinates, centerZ);
+            if (this.xCoordinates.length == 0 || this.yCoordinates.length == 0 || this.zCoordinates.length == 0) {
+                this.complete = true;
+            } else {
+                this.push(packState(0, 0, 0));
+            }
+        }
+
+        boolean next(BlockPos.MutableBlockPos target) {
+            if (this.complete) {
+                return false;
+            }
+            if (this.heapSize == 0) {
+                this.complete = true;
+                return false;
+            }
+
+            long state = this.pop();
+            int xIndex = xIndex(state);
+            int yIndex = yIndex(state);
+            int zIndex = zIndex(state);
+
+            if (xIndex + 1 < this.xCoordinates.length) {
+                this.push(packState(xIndex + 1, yIndex, zIndex));
+            }
+            if (xIndex == 0 && yIndex + 1 < this.yCoordinates.length) {
+                this.push(packState(0, yIndex + 1, zIndex));
+            }
+            if (xIndex == 0 && yIndex == 0 && zIndex + 1 < this.zCoordinates.length) {
+                this.push(packState(0, 0, zIndex + 1));
+            }
+
+            target.set(
+                    this.xCoordinates[xIndex],
+                    this.yCoordinates[yIndex],
+                    this.zCoordinates[zIndex]
+            );
+            return true;
+        }
+
+        private void push(long state) {
+            if (this.heapSize >= this.heap.length) {
+                long[] expanded = new long[this.heap.length << 1];
+                System.arraycopy(this.heap, 0, expanded, 0, this.heap.length);
+                this.heap = expanded;
+            }
+            int index = this.heapSize++;
+            while (index > 0) {
+                int parent = (index - 1) >>> 1;
+                long parentState = this.heap[parent];
+                if (this.compare(parentState, state) <= 0) {
+                    break;
+                }
+                this.heap[index] = parentState;
+                index = parent;
+            }
+            this.heap[index] = state;
+        }
+
+        private long pop() {
+            long result = this.heap[0];
+            long tail = this.heap[--this.heapSize];
+            if (this.heapSize == 0) {
+                return result;
+            }
+
+            int index = 0;
+            int half = this.heapSize >>> 1;
+            while (index < half) {
+                int left = (index << 1) + 1;
+                int right = left + 1;
+                int child = left;
+                if (right < this.heapSize && this.compare(this.heap[right], this.heap[left]) < 0) {
+                    child = right;
+                }
+                if (this.compare(tail, this.heap[child]) <= 0) {
+                    break;
+                }
+                this.heap[index] = this.heap[child];
+                index = child;
+            }
+            this.heap[index] = tail;
+            return result;
+        }
+
+        private int compare(long left, long right) {
+            long leftDistance = this.distanceSqr(left);
+            long rightDistance = this.distanceSqr(right);
+            int result = Long.compare(leftDistance, rightDistance);
+            if (result != 0) {
+                return result;
+            }
+
+            long leftMaxAxisDistance = this.maxAxisDistanceSqr(left);
+            long rightMaxAxisDistance = this.maxAxisDistanceSqr(right);
+            result = Long.compare(leftMaxAxisDistance, rightMaxAxisDistance);
+            if (result != 0) {
+                return result;
+            }
+            return Long.compareUnsigned(left, right);
+        }
+
+        private long distanceSqr(long state) {
+            return this.xDistanceSqr[xIndex(state)]
+                    + this.yDistanceSqr[yIndex(state)]
+                    + this.zDistanceSqr[zIndex(state)];
+        }
+
+        private long maxAxisDistanceSqr(long state) {
+            return Math.max(
+                    Math.max(this.xDistanceSqr[xIndex(state)], this.yDistanceSqr[yIndex(state)]),
+                    this.zDistanceSqr[zIndex(state)]
+            );
+        }
+
+        private static int[] buildAxisCoordinates(int min, int max, int center) {
+            if (max < min) {
+                return new int[0];
+            }
+            int[] coordinates = new int[max - min + 1];
+            for (int index = 0; index < coordinates.length; index++) {
+                coordinates[index] = min + index;
+            }
+
+            for (int index = 1; index < coordinates.length; index++) {
+                int value = coordinates[index];
+                long valueDistance = axisDistanceSqr(value, center);
+                int insertionIndex = index;
+                while (insertionIndex > 0) {
+                    int previous = coordinates[insertionIndex - 1];
+                    long previousDistance = axisDistanceSqr(previous, center);
+                    if (previousDistance < valueDistance
+                            || previousDistance == valueDistance && previous <= value) {
+                        break;
+                    }
+                    coordinates[insertionIndex] = previous;
+                    insertionIndex--;
+                }
+                coordinates[insertionIndex] = value;
+            }
+            return coordinates;
+        }
+
+        private static long[] buildAxisDistances(int[] coordinates, int center) {
+            long[] distances = new long[coordinates.length];
+            for (int index = 0; index < coordinates.length; index++) {
+                distances[index] = axisDistanceSqr(coordinates[index], center);
+            }
+            return distances;
+        }
+
+        private static long axisDistanceSqr(int coordinate, int center) {
+            long delta = coordinate - (long) center;
+            return delta * delta;
+        }
+
+        private static long packState(int xIndex, int yIndex, int zIndex) {
+            return (long) xIndex << STATE_BITS * 2
+                    | (long) yIndex << STATE_BITS
+                    | zIndex;
+        }
+
+        private static int xIndex(long state) {
+            return (int) (state >>> STATE_BITS * 2);
+        }
+
+        private static int yIndex(long state) {
+            return (int) (state >>> STATE_BITS & STATE_MASK);
+        }
+
+        private static int zIndex(long state) {
+            return (int) (state & STATE_MASK);
         }
     }
 
@@ -1519,6 +2084,46 @@ public final class ScanCache {
                 all.add(index);
             }
             this.allPositions = all.toArray();
+        }
+    }
+
+    private static final class MutableScanMetrics {
+        private long scanNanos;
+        private int scannedBlocks;
+        private int scannedSections;
+        private final LongSet scannedSectionKeys = new LongOpenHashSet();
+        private int sourceCandidates;
+        private int acceptedTargets;
+        private int budgetPauses;
+        private int completedPasses;
+
+        private void reset() {
+            this.scanNanos = 0L;
+            this.scannedBlocks = 0;
+            this.scannedSections = 0;
+            this.scannedSectionKeys.clear();
+            this.sourceCandidates = 0;
+            this.acceptedTargets = 0;
+            this.budgetPauses = 0;
+            this.completedPasses = 0;
+        }
+
+        private ScanMetrics snapshot() {
+            return new ScanMetrics(
+                    this.scanNanos,
+                    this.scannedBlocks,
+                    this.scannedSections,
+                    this.sourceCandidates,
+                    this.acceptedTargets,
+                    this.budgetPauses,
+                    this.completedPasses
+            );
+        }
+
+        private void recordScannedSection(long sectionKey) {
+            if (this.scannedSectionKeys.add(sectionKey)) {
+                this.scannedSections++;
+            }
         }
     }
 

@@ -21,32 +21,32 @@ import java.util.Set;
 
 public final class SortedSchematicTargetQueue {
     private final Deque<BlockPos> queue = new ArrayDeque<>();
-    private PrinterBox box;
+    private List<PrinterBox> boxes = List.of();
     private boolean hasMoreSource;
 
     public void clear() {
         this.queue.clear();
-        this.box = null;
+        this.boxes = List.of();
         this.hasMoreSource = false;
     }
 
-    public Iterable<BlockPos> iterable(PrinterBox sourceBox, ClientLevel level, WorldSchematic schematic, LocalPlayer player, int scanGuardLimit) {
-        if (this.box == null || !this.box.sameSectionWindow(sourceBox)) {
+    public Iterable<BlockPos> iterable(List<PrinterBox> sourceBoxes, ClientLevel level, WorldSchematic schematic, LocalPlayer player, int scanGuardLimit) {
+        if (!this.boxes.equals(sourceBoxes)) {
             this.queue.clear();
         }
-        this.box = sourceBox;
-        this.fill(sourceBox, level, schematic, player, scanGuardLimit);
+        this.boxes = List.copyOf(sourceBoxes);
+        this.fill(sourceBoxes, level, schematic, player, scanGuardLimit);
         return this::iterator;
     }
 
-    private void fill(PrinterBox sourceBox, ClientLevel level, WorldSchematic schematic, LocalPlayer player, int scanGuardLimit) {
+    private void fill(List<PrinterBox> sourceBoxes, ClientLevel level, WorldSchematic schematic, LocalPlayer player, int scanGuardLimit) {
         int collectLimit = scanGuardLimit > 0 ? scanGuardLimit : Integer.MAX_VALUE;
         boolean previousHasMoreSource = this.hasMoreSource;
         List<BlockPos> positions = new ArrayList<>();
         Set<Long> queuedKeys = new HashSet<>();
         while (!this.queue.isEmpty()) {
             BlockPos queued = this.queue.removeFirst();
-            if (!sourceBox.contains(queued)) {
+            if (!containsAny(sourceBoxes, queued)) {
                 continue;
             }
             positions.add(queued);
@@ -56,7 +56,7 @@ public final class SortedSchematicTargetQueue {
         if (positions.size() < collectLimit) {
             Iterable<BlockPos> candidates = ScanCache.INSTANCE.iterable(
                     "print_sorted",
-                    sourceBox,
+                    sourceBoxes,
                     level,
                     schematic,
                     player,
@@ -80,6 +80,15 @@ public final class SortedSchematicTargetQueue {
         }
         positions.sort(createComparator(schematic, player));
         this.queue.addAll(positions);
+    }
+
+    private static boolean containsAny(List<PrinterBox> boxes, BlockPos pos) {
+        for (PrinterBox box : boxes) {
+            if (box.contains(pos)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Iterator<BlockPos> iterator() {

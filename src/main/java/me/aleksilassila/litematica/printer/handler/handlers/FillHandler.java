@@ -28,9 +28,6 @@ import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
-import it.unimi.dsi.fastutil.longs.LongSet;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -41,9 +38,6 @@ import java.util.function.Predicate;
 
 public class FillHandler extends Module {
     public final static String NAME = "fill";
-    private static final int FILL_FRONTIER_CACHE_MIN = 1024;
-    private static final int FILL_FRONTIER_CACHE_MAX = 8192;
-    private static final int FILL_FRONTIER_CACHE_PER_ACTION = 64;
     private static final Direction[] FILL_SIDE_ORDER = {
             Direction.DOWN,
             Direction.NORTH,
@@ -58,10 +52,10 @@ public class FillHandler extends Module {
     private String[] replaceableFilters = new String[0];
     @Getter
     private Item[] fillModeItemList = new Item[0];
-    private final ArrayDeque<BlockPos> fillTargets = new ArrayDeque<>();
-    private final LongSet fillTargetKeys = new LongOpenHashSet();
     private PrinterBox fillScanBox;
+    private List<PrinterBox> fillScanBoxes = List.of();
     private int fillScanConfigHash;
+    private int observedFillScanConfigHash = Integer.MIN_VALUE;
 
     public FillHandler() {
         super(NAME, PrintModeType.FILL, Configs.Core.FILL, Configs.Fill.FILL_SELECTION_TYPE, true);
@@ -112,6 +106,13 @@ public class FillHandler extends Module {
         if (fillModeItemList.length == 0 && fillMode == FillBlockModeType.BLOCKLIST && !fillCacheBlocklist.isEmpty()) {
             HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.FILL, "列表无匹配方块");
         }
+        int scanConfigHash = this.getFillScanConfigHash();
+        if (this.observedFillScanConfigHash != Integer.MIN_VALUE
+                && this.observedFillScanConfigHash != scanConfigHash) {
+            this.clearFillTargets();
+            this.requestFullScan();
+        }
+        this.observedFillScanConfigHash = scanConfigHash;
     }
 
     private void updateReplaceableFilterCache() {
@@ -129,15 +130,53 @@ public class FillHandler extends Module {
     }
 
     @Override
+    protected boolean usesDirtyRegionWakeup() {
+        return false;
+    }
+
+    @Override
     protected Iterable<BlockPos> getIterationPositions(PrinterBox playerInteractionBox) {
-        this.refillFillTargets(playerInteractionBox);
-        int emitLimit = this.getMaxEffectiveExecutionsPerTick();
+        List<PrinterBox> scanSourceBoxes = this.getScanSourceBoxes(playerInteractionBox);
+        PrinterBox fullInteractionBox = this.playerInteractionBox == null ? null : this.playerInteractionBox.get();
+        List<PrinterBox> fullScanSourceBoxes = this.getScanSourceBoxes(fullInteractionBox);
+        PrinterBox fullScanSourceBox = this.getScanSourceBox(fullInteractionBox);
+        if (scanSourceBoxes.isEmpty() || fullScanSourceBoxes.isEmpty() || fullScanSourceBox == null) {
+            this.clearFillTargets();
+            return List.of();
+        }
+
+        int configHash = this.getFillScanConfigHash();
+        if (this.fillScanBox == null || this.fillScanConfigHash != configHash) {
+            this.resetFillScan(fullScanSourceBox, fullScanSourceBoxes, configHash);
+        } else if (!this.fillScanBox.equals(fullScanSourceBox)
+                || !this.fillScanBoxes.equals(fullScanSourceBoxes)) {
+            this.fillScanBox = this.copyScanBox(fullScanSourceBox);
+            this.fillScanBoxes = List.copyOf(fullScanSourceBoxes);
+        }
+
+        Predicate<BlockPos> selectionPredicate = this.createSelectionRangePredicate();
         return () -> new Iterator<>() {
-            private int emitted;
+            private final Iterator<BlockPos> sourceIterator =
+                    createSourceIterator(scanSourceBoxes, selectionPredicate);
+            private BlockPos next;
+            private boolean prepared;
+            private boolean nextAvailable;
+
+            private void prepare() {
+                if (this.prepared) {
+                    return;
+                }
+                this.prepared = true;
+                if (this.sourceIterator.hasNext()) {
+                    this.next = this.sourceIterator.next();
+                    this.nextAvailable = true;
+                }
+            }
 
             @Override
             public boolean hasNext() {
-                return !fillTargets.isEmpty() && (emitLimit <= 0 || this.emitted < emitLimit);
+                this.prepare();
+                return this.nextAvailable;
             }
 
             @Override
@@ -145,37 +184,25 @@ public class FillHandler extends Module {
                 if (!this.hasNext()) {
                     throw new NoSuchElementException();
                 }
-                this.emitted++;
-                BlockPos result = fillTargets.removeFirst();
-                fillTargetKeys.remove(ScanCache.key(result));
+                BlockPos result = this.next;
+                this.next = null;
+                this.prepared = false;
+                this.nextAvailable = false;
                 return result;
             }
         };
     }
 
-    private void refillFillTargets(PrinterBox playerInteractionBox) {
-        PrinterBox scanSourceBox = this.getScanSourceBox(playerInteractionBox);
-        if (scanSourceBox == null) {
-            this.clearFillTargets();
-            return;
-        }
-        int configHash = this.getFillScanConfigHash();
-        if (this.fillScanBox == null || this.fillScanConfigHash != configHash || !this.fillScanBox.equals(scanSourceBox)) {
-            this.resetFillScan(scanSourceBox, configHash);
-        }
-
-        Predicate<BlockPos> selectionPredicate = this.createSelectionRangePredicate();
-        this.trimInvalidLeadingFillTargets(scanSourceBox, selectionPredicate);
-
-        int targetCacheSize = this.getFillFrontierCacheTarget();
-        if (this.fillTargets.size() >= targetCacheSize) {
-            return;
-        }
-
-        ScanIntent scanIntent = Configs.Print.PLACE_IN_AIR.getBooleanValue() ? ScanIntent.CUSTOM : ScanIntent.FILL;
-        Iterable<BlockPos> candidates = ScanCache.INSTANCE.iterable(
-                NAME + "_frontier",
-                scanSourceBox,
+    private Iterator<BlockPos> createSourceIterator(
+            List<PrinterBox> scanSourceBoxes,
+            Predicate<BlockPos> selectionPredicate
+    ) {
+        ScanIntent scanIntent = Configs.Print.PLACE_IN_AIR.getBooleanValue()
+                ? ScanIntent.CUSTOM
+                : ScanIntent.FILL;
+        return ScanCache.INSTANCE.iterable(
+                NAME,
+                scanSourceBoxes,
                 this.level,
                 null,
                 this.player,
@@ -183,31 +210,7 @@ public class FillHandler extends Module {
                 scanIntent,
                 this::isFillTarget,
                 pos -> this.isFillCandidatePreFilter(pos, selectionPredicate)
-        );
-        for (BlockPos blockPos : candidates) {
-            if (blockPos == null || this.fillTargets.size() >= targetCacheSize) {
-                break;
-            }
-            this.addFillTargetLast(blockPos);
-        }
-    }
-
-    private void trimInvalidLeadingFillTargets(PrinterBox playerInteractionBox, Predicate<BlockPos> selectionPredicate) {
-        while (!this.fillTargets.isEmpty()) {
-            BlockPos queued = this.fillTargets.peekFirst();
-            if (this.isFillQueueCandidate(queued, playerInteractionBox, selectionPredicate)) {
-                return;
-            }
-            this.fillTargetKeys.remove(ScanCache.key(queued));
-            this.fillTargets.removeFirst();
-        }
-    }
-
-    private boolean isFillQueueCandidate(BlockPos blockPos, PrinterBox playerInteractionBox, Predicate<BlockPos> selectionPredicate) {
-        return playerInteractionBox != null
-                && playerInteractionBox.contains(blockPos)
-                && this.isFillCandidatePreFilter(blockPos, selectionPredicate)
-                && this.isFillTarget(blockPos);
+        ).iterator();
     }
 
     private boolean isFillCandidatePreFilter(BlockPos blockPos, Predicate<BlockPos> selectionPredicate) {
@@ -216,30 +219,23 @@ public class FillHandler extends Module {
                 && !this.isBlockPosOnCooldown(blockPos);
     }
 
-    private void resetFillScan(PrinterBox playerInteractionBox, int configHash) {
-        this.fillTargets.clear();
-        this.fillTargetKeys.clear();
+    private void resetFillScan(
+            PrinterBox playerInteractionBox,
+            List<PrinterBox> sourceBoxes,
+            int configHash
+    ) {
         this.fillScanBox = this.copyScanBox(playerInteractionBox);
+        this.fillScanBoxes = List.copyOf(sourceBoxes);
         this.fillScanConfigHash = configHash;
     }
 
     private void clearFillTargets() {
-        this.fillTargets.clear();
-        this.fillTargetKeys.clear();
         this.fillScanBox = null;
+        this.fillScanBoxes = List.of();
     }
 
     private PrinterBox copyScanBox(PrinterBox box) {
         return new PrinterBox(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
-    }
-
-    private int getFillFrontierCacheTarget() {
-        int placeBudget = this.getMaxEffectiveExecutionsPerTick();
-        if (placeBudget <= 0) {
-            return FILL_FRONTIER_CACHE_MAX;
-        }
-        int scaled = placeBudget * FILL_FRONTIER_CACHE_PER_ACTION;
-        return Math.max(FILL_FRONTIER_CACHE_MIN, Math.min(FILL_FRONTIER_CACHE_MAX, scaled));
     }
 
     private int getFillScanConfigHash() {
@@ -251,18 +247,6 @@ public class FillHandler extends Module {
         result = 31 * result + Configs.Fill.FILL_BLOCK_FACING.getOptionListValue().hashCode();
         result = 31 * result + Boolean.hashCode(Configs.Core.CHECK_PLAYER_INTERACTION_RANGE.getBooleanValue());
         return result;
-    }
-
-    private void addFillTargetFirst(BlockPos blockPos) {
-        if (blockPos != null && this.fillTargetKeys.add(ScanCache.key(blockPos))) {
-            this.fillTargets.addFirst(blockPos.immutable());
-        }
-    }
-
-    private void addFillTargetLast(BlockPos blockPos) {
-        if (blockPos != null && this.fillTargetKeys.add(ScanCache.key(blockPos))) {
-            this.fillTargets.addLast(blockPos.immutable());
-        }
     }
 
     @Override
@@ -312,23 +296,9 @@ public class FillHandler extends Module {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "等待转头");
             skipIteration.set(true);
         } else {
-            this.seedAdjacentFillTargets(blockPos);
             HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.FILL, "运行中");
         }
         this.setBlockPosCooldown(blockPos, ConfigUtils.getPlaceCooldown());
-    }
-
-    private void seedAdjacentFillTargets(BlockPos blockPos) {
-        if (this.fillScanBox == null || blockPos == null) {
-            return;
-        }
-        Predicate<BlockPos> selectionPredicate = this.createSelectionRangePredicate();
-        for (Direction direction : Direction.values()) {
-            BlockPos neighbor = blockPos.relative(direction);
-            if (this.isFillQueueCandidate(neighbor, this.fillScanBox, selectionPredicate)) {
-                this.addFillTargetFirst(neighbor);
-            }
-        }
     }
 
     private Direction getFillPlacementSide(BlockPos blockPos) {

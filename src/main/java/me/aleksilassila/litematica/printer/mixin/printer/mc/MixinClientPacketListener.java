@@ -2,6 +2,7 @@ package me.aleksilassila.litematica.printer.mixin.printer.mc;
 
 import me.aleksilassila.litematica.printer.I18n;
 import me.aleksilassila.litematica.printer.config.Configs;
+import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.handler.scan.DirtyRegionTracker;
 import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
@@ -38,6 +39,7 @@ public abstract class MixinClientPacketListener {
         ScanCache.INSTANCE.invalidate(packet.getPos());
         DirtyRegionTracker.INSTANCE.markDirty(packet.getPos());
         InteractionUtils.INSTANCE.confirmServerBlockUpdate(packet.getPos());
+        HudStatsManager.INSTANCE.confirmBlockUpdate(packet.getPos());
     }
 
     @Inject(method = "handleChunkBlocksUpdate", at = @At("RETURN"))
@@ -46,6 +48,7 @@ public abstract class MixinClientPacketListener {
             ScanCache.INSTANCE.invalidate(pos);
             DirtyRegionTracker.INSTANCE.markDirty(pos);
             InteractionUtils.INSTANCE.confirmServerBlockUpdate(pos);
+            HudStatsManager.INSTANCE.confirmBlockUpdate(pos);
         });
     }
 }

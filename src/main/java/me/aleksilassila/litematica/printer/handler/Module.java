@@ -35,9 +35,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
 public abstract class Module extends ConfigUtils {
-    private static final int MIN_LAZY_DIRTY_FULL_SCAN_THRESHOLD = 2;
-    private static final int MAX_LAZY_DIRTY_FULL_SCAN_THRESHOLD = 64;
-    private static final int LAZY_DIRTY_SECTION_DIVISOR = 16;
+    private static final int ITERATION_BUDGET_CHECK_INTERVAL = 8;
 
     @Getter
     @Nullable
@@ -64,6 +62,7 @@ public abstract class Module extends ConfigUtils {
     private int idleScanTicks;
     @Nullable
     private PrinterBox lastScanSourceBox;
+    private List<PrinterBox> lastScanSourceBoxes = List.of();
     private long lastDirtyVersion;
     private final ArrayDeque<PrinterBox> dirtyScanQueue = new ArrayDeque<>();
     @Nullable
@@ -186,12 +185,14 @@ public abstract class Module extends ConfigUtils {
         if (playerInteractionBox == null || !this.canIterate()) {
             return false;
         }
-        PrinterBox scanSourceBox = this.getScanSourceBox(playerInteractionBox);
+        List<PrinterBox> scanSourceBoxes = this.getScanSourceBoxes(playerInteractionBox);
+        PrinterBox scanSourceBox = enclosingBox(scanSourceBoxes);
         if (scanSourceBox == null) {
             this.lastScanSourceBox = null;
+            this.lastScanSourceBoxes = List.of();
             return false;
         }
-        this.updateScanSource(scanSourceBox);
+        this.updateScanSource(scanSourceBox, scanSourceBoxes);
         if (!this.isLazyScanEnabled()) {
             this.scanState = ScanState.FULL;
             this.clearDirtyScanQueue();
@@ -204,12 +205,26 @@ public abstract class Module extends ConfigUtils {
         };
     }
 
-    private void updateScanSource(PrinterBox scanSourceBox) {
-        if (scanSourceBox.equals(this.lastScanSourceBox)) {
+    private void updateScanSource(PrinterBox scanSourceBox, List<PrinterBox> scanSourceBoxes) {
+        boolean boxesChanged = !this.lastScanSourceBoxes.equals(scanSourceBoxes);
+        if (scanSourceBox.equals(this.lastScanSourceBox) && !boxesChanged) {
             return;
         }
-        if (this.lastScanSourceBox != null && this.lastScanSourceBox.sameSectionWindow(scanSourceBox)) {
+        this.lastScanSourceBoxes = List.copyOf(scanSourceBoxes);
+        if (!boxesChanged
+                && this.lastScanSourceBox != null
+                && this.lastScanSourceBox.sameSectionWindow(scanSourceBox)) {
+            PrinterBox previousScanSourceBox = this.lastScanSourceBox;
             this.lastScanSourceBox = scanSourceBox;
+            if (this.scanState == ScanState.LAZY) {
+                if (this.usesDirtyRegionWakeup()) {
+                    this.queueNewlyExposedScanRegions(previousScanSourceBox, scanSourceBox);
+                } else {
+                    this.scanState = ScanState.FULL;
+                    this.idleScanTicks = 0;
+                    this.clearDirtyScanQueue();
+                }
+            }
             return;
         }
         this.lastScanSourceBox = scanSourceBox;
@@ -226,7 +241,9 @@ public abstract class Module extends ConfigUtils {
     }
 
     private boolean runLazyIteration(PrinterBox playerInteractionBox) {
-        this.refreshDirtyScanQueue(playerInteractionBox);
+        if (this.usesDirtyRegionWakeup() && this.scanState == ScanState.LAZY) {
+            this.refreshDirtyScanQueue(playerInteractionBox);
+        }
         if (this.scanState == ScanState.LAZY) {
             return this.runLazyProbeIteration(playerInteractionBox);
         }
@@ -304,16 +321,6 @@ public abstract class Module extends ConfigUtils {
             this.scanState = ScanState.LAZY;
             return;
         }
-
-        PrinterBox scanSourceBox = this.getScanSourceBox(playerInteractionBox);
-        int fullThreshold = scanSourceBox == null
-                ? MIN_LAZY_DIRTY_FULL_SCAN_THRESHOLD
-                : dirtyFullScanThreshold(scanSourceBox);
-        if (fullThreshold <= 0 || this.dirtyScanQueue.size() >= fullThreshold) {
-            this.scanState = ScanState.FULL;
-            this.clearDirtyScanQueue();
-            return;
-        }
         this.scanState = ScanState.PARTIAL;
     }
 
@@ -333,7 +340,6 @@ public abstract class Module extends ConfigUtils {
         if (++this.idleScanTicks >= lazyThreshold) {
             this.scanState = ScanState.LAZY;
             this.idleScanTicks = 0;
-            this.lastDirtyVersion = DirtyRegionTracker.INSTANCE.currentVersion();
             this.clearDirtyScanQueue();
         }
     }
@@ -364,20 +370,54 @@ public abstract class Module extends ConfigUtils {
         this.pendingDirtyRegionCount = 0;
     }
 
-    private static int dirtyFullScanThreshold(PrinterBox box) {
-        long sectionCount = (long) sectionSpan(box.minX, box.maxX)
-                * sectionSpan(box.minY, box.maxY)
-                * sectionSpan(box.minZ, box.maxZ);
-        int scaledThreshold = (int) Math.min(MAX_LAZY_DIRTY_FULL_SCAN_THRESHOLD, sectionCount / LAZY_DIRTY_SECTION_DIVISOR);
-        return Math.max(MIN_LAZY_DIRTY_FULL_SCAN_THRESHOLD, scaledThreshold);
+    private void queueNewlyExposedScanRegions(PrinterBox previous, PrinterBox current) {
+        int overlapMinX = Math.max(previous.minX, current.minX);
+        int overlapMinY = Math.max(previous.minY, current.minY);
+        int overlapMinZ = Math.max(previous.minZ, current.minZ);
+        int overlapMaxX = Math.min(previous.maxX, current.maxX);
+        int overlapMaxY = Math.min(previous.maxY, current.maxY);
+        int overlapMaxZ = Math.min(previous.maxZ, current.maxZ);
+        if (overlapMinX > overlapMaxX || overlapMinY > overlapMaxY || overlapMinZ > overlapMaxZ) {
+            this.scanState = ScanState.FULL;
+            this.idleScanTicks = 0;
+            this.clearDirtyScanQueue();
+            return;
+        }
+
+        this.addDirtyScanBox(current.minX, current.minY, current.minZ,
+                overlapMinX - 1, current.maxY, current.maxZ);
+        this.addDirtyScanBox(overlapMaxX + 1, current.minY, current.minZ,
+                current.maxX, current.maxY, current.maxZ);
+        this.addDirtyScanBox(overlapMinX, current.minY, current.minZ,
+                overlapMaxX, overlapMinY - 1, current.maxZ);
+        this.addDirtyScanBox(overlapMinX, overlapMaxY + 1, current.minZ,
+                overlapMaxX, current.maxY, current.maxZ);
+        this.addDirtyScanBox(overlapMinX, overlapMinY, current.minZ,
+                overlapMaxX, overlapMaxY, overlapMinZ - 1);
+        this.addDirtyScanBox(overlapMinX, overlapMinY, overlapMaxZ + 1,
+                overlapMaxX, overlapMaxY, current.maxZ);
+
+        if (!this.dirtyScanQueue.isEmpty()) {
+            List<PrinterBox> sorted = new ArrayList<>(this.dirtyScanQueue);
+            sorted.sort(Comparator.comparingDouble(this::distanceToPlayerSqr));
+            this.dirtyScanQueue.clear();
+            this.dirtyScanQueue.addAll(sorted);
+            this.pendingDirtyRegionCount = this.dirtyScanQueue.size();
+            this.scanState = ScanState.PARTIAL;
+            this.idleScanTicks = 0;
+        }
     }
 
-    private static int sectionSpan(int min, int max) {
-        return sectionCoord(max) - sectionCoord(min) + 1;
+    private void addDirtyScanBox(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+        if (minX <= maxX && minY <= maxY && minZ <= maxZ) {
+            this.dirtyScanQueue.addLast(new PrinterBox(minX, minY, minZ, maxX, maxY, maxZ));
+        }
     }
 
-    private static int sectionCoord(int blockCoord) {
-        return blockCoord >> 4;
+    protected final void requestFullScan() {
+        this.scanState = ScanState.FULL;
+        this.idleScanTicks = 0;
+        this.clearDirtyScanQueue();
     }
 
     private void resetScanRuntime() {
@@ -413,6 +453,10 @@ public abstract class Module extends ConfigUtils {
         int scanGuardLimit = this.getScanGuardLimit();
         int totalIterCount = 0;
         int effectiveExecCount = 0;
+        int iterationBudgetChecks = 0;
+        long iterationStartNanos = System.nanoTime();
+        long actionExecutionNanos = 0L;
+        long iterationBudgetNanos = Math.max(1L, Configs.Core.SCAN_TIME_BUDGET_MS.getIntegerValue()) * 1_000_000L;
         boolean interrupt = false;
         boolean trackGuiBlockInfo = this.shouldTrackGuiBlockInfo();
         this.skipIteration.set(false);
@@ -422,6 +466,11 @@ public abstract class Module extends ConfigUtils {
 
         Iterable<BlockPos> iterationPositions = this.getIterationPositions(playerInteractionBox);
         for (BlockPos pos : iterationPositions) {
+            if (++iterationBudgetChecks % ITERATION_BUDGET_CHECK_INTERVAL == 0
+                    && System.nanoTime() - iterationStartNanos - actionExecutionNanos >= iterationBudgetNanos) {
+                interrupt = true;
+                break;
+            }
             if (scanGuardLimit > 0 && totalIterCount++ >= scanGuardLimit) {
                 interrupt = true;
                 break;
@@ -469,7 +518,14 @@ public abstract class Module extends ConfigUtils {
                     continue;
                 }
                 this.iterationConsumedEffectiveExecution = true;
-                this.executeIteration(pos, this.skipIteration);
+                long actionStartNanos = System.nanoTime();
+                try {
+                    this.executeIteration(pos, this.skipIteration);
+                } finally {
+                    if (this.iterationConsumedEffectiveExecution) {
+                        actionExecutionNanos += Math.max(0L, System.nanoTime() - actionStartNanos);
+                    }
+                }
                 if (gui != null) {
                     gui.execute = true;
                 }
@@ -570,7 +626,7 @@ public abstract class Module extends ConfigUtils {
     }
 
     protected int getScanGuardLimit() {
-        return 65_536;
+        return 0;
     }
 
     protected Iterable<BlockPos> getIterationPositions(PrinterBox playerInteractionBox) {
@@ -588,14 +644,14 @@ public abstract class Module extends ConfigUtils {
     }
 
     protected Iterable<BlockPos> getCachedFilteredIterationPositions(PrinterBox playerInteractionBox, ScanIntent intent, Predicate<BlockPos> candidatePredicate) {
-        PrinterBox scanSourceBox = this.getScanSourceBox(playerInteractionBox);
-        if (scanSourceBox == null) {
+        List<PrinterBox> scanSourceBoxes = this.getScanSourceBoxes(playerInteractionBox);
+        if (scanSourceBoxes.isEmpty()) {
             return java.util.List.of();
         }
         Predicate<BlockPos> selectionPredicate = this.createSelectionRangePredicate();
         return ScanCache.INSTANCE.iterable(
                 this.id,
-                scanSourceBox,
+                scanSourceBoxes,
                 this.level,
                 SchematicWorldHandler.getSchematicWorld(),
                 this.player,
@@ -608,17 +664,68 @@ public abstract class Module extends ConfigUtils {
 
     @Nullable
     protected PrinterBox getScanSourceBox(PrinterBox playerInteractionBox) {
+        return enclosingBox(this.getScanSourceBoxes(playerInteractionBox));
+    }
+
+    protected List<PrinterBox> getScanSourceBoxes(PrinterBox playerInteractionBox) {
         if (playerInteractionBox == null) {
+            return List.of();
+        }
+
+        List<PrinterBox> baseBoxes;
+        if (isSchematicBlockHandler()) {
+            baseBoxes = LitematicaUtils.createSchematicPlacementBoxes();
+        } else if (requiresSelection1ModeRangeCheck()) {
+            baseBoxes = LitematicaUtils.createSelection1Boxes();
+        } else {
+            baseBoxes = List.of(playerInteractionBox);
+        }
+
+        List<PrinterBox> result = new ArrayList<>(baseBoxes.size());
+        for (PrinterBox baseBox : baseBoxes) {
+            PrinterBox bounded = intersect(playerInteractionBox, baseBox);
+            bounded = this.clampToConfiguredSelection(bounded);
+            if (bounded != null) {
+                result.add(bounded);
+            }
+        }
+        return result;
+    }
+
+    @Nullable
+    private PrinterBox clampToConfiguredSelection(@Nullable PrinterBox box) {
+        if (box == null || this.selectionType == null) {
+            return box;
+        }
+        if (!(this.selectionType.getOptionListValue() instanceof SelectionType selectionType)) {
             return null;
         }
-        if (isSchematicBlockHandler() || !requiresSelection1ModeRangeCheck()) {
-            return playerInteractionBox;
-        }
-        PrinterBox selectionBox = LitematicaUtils.createSelection1BoundingBox();
-        if (selectionBox == null) {
-            return null;
-        }
-        return intersect(playerInteractionBox, selectionBox);
+        return switch (selectionType) {
+            case LITEMATICA_SELECTION -> box;
+            case LITEMATICA_RENDER_LAYER -> LitematicaUtils.clampToRenderLayer(box);
+            case LITEMATICA_SELECTION_BELOW_PLAYER -> this.player == null
+                    ? null
+                    : clipMaximumY(box, (int) Math.floor(this.player.getY()));
+            case LITEMATICA_SELECTION_ABOVE_PLAYER -> this.player == null
+                    ? null
+                    : clipMinimumY(box, (int) Math.ceil(this.player.getY()));
+        };
+    }
+
+    @Nullable
+    private static PrinterBox clipMaximumY(PrinterBox box, int maxY) {
+        int clippedMaxY = Math.min(box.maxY, maxY);
+        return clippedMaxY < box.minY
+                ? null
+                : new PrinterBox(box.minX, box.minY, box.minZ, box.maxX, clippedMaxY, box.maxZ);
+    }
+
+    @Nullable
+    private static PrinterBox clipMinimumY(PrinterBox box, int minY) {
+        int clippedMinY = Math.max(box.minY, minY);
+        return clippedMinY > box.maxY
+                ? null
+                : new PrinterBox(box.minX, clippedMinY, box.minZ, box.maxX, box.maxY, box.maxZ);
     }
 
     @Nullable
@@ -635,6 +742,26 @@ public abstract class Module extends ConfigUtils {
         return new PrinterBox(minX, minY, minZ, maxX, maxY, maxZ);
     }
 
+    @Nullable
+    private static PrinterBox enclosingBox(List<PrinterBox> boxes) {
+        PrinterBox result = null;
+        for (PrinterBox box : boxes) {
+            if (result == null) {
+                result = box;
+            } else {
+                result = new PrinterBox(
+                        Math.min(result.minX, box.minX),
+                        Math.min(result.minY, box.minY),
+                        Math.min(result.minZ, box.minZ),
+                        Math.max(result.maxX, box.maxX),
+                        Math.max(result.maxY, box.maxY),
+                        Math.max(result.maxZ, box.maxZ)
+                );
+            }
+        }
+        return result;
+    }
+
     protected void preprocess() {
     }
 
@@ -643,6 +770,18 @@ public abstract class Module extends ConfigUtils {
     }
 
     protected boolean canIterate() {
+        return true;
+    }
+
+    protected boolean hasPendingIterationWork() {
+        return false;
+    }
+
+    public int getPendingIterationWorkCount() {
+        return 0;
+    }
+
+    protected boolean usesDirtyRegionWakeup() {
         return true;
     }
 

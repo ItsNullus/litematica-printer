@@ -23,6 +23,7 @@ final class TickScheduler {
     }
 
     void tick() {
+        HudStatsManager.INSTANCE.tick();
         if (!Configs.Core.WORK_SWITCH.getBooleanValue()) {
             HudStatsManager.INSTANCE.resetAll();
             this.lastPauseReason = null;

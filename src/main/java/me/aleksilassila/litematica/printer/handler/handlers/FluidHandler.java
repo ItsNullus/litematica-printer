@@ -39,17 +39,12 @@ public class FluidHandler extends Module {
 
     @Override
     protected int getTickInterval() {
-        return 0;
+        return Configs.Placement.PLACE_INTERVAL.getIntegerValue();
     }
 
     @Override
     protected int getMaxEffectiveExecutionsPerTick() {
-        return 0;
-    }
-
-    @Override
-    protected int getScanGuardLimit() {
-        return 0;
+        return Configs.Placement.PLACE_BLOCKS_PER_TICK.getIntegerValue();
     }
 
     @Override
@@ -86,15 +81,15 @@ public class FluidHandler extends Module {
 
     @Override
     protected Iterable<BlockPos> getIterationPositions(PrinterBox playerInteractionBox) {
-        PrinterBox scanSourceBox = this.getScanSourceBox(playerInteractionBox);
-        if (scanSourceBox == null) {
+        List<PrinterBox> scanSourceBoxes = this.getScanSourceBoxes(playerInteractionBox);
+        if (scanSourceBoxes.isEmpty()) {
             return List.of();
         }
         Predicate<BlockPos> selectionPredicate = this.createSelectionRangePredicate();
         
         return ScanCache.INSTANCE.iterable(
                 NAME,
-                scanSourceBox,
+                scanSourceBoxes,
                 this.level,
                 null,
                 this.player,

@@ -104,15 +104,15 @@ public class MineHandler extends Module {
 
     @Override
     protected Iterable<BlockPos> getIterationPositions(PrinterBox playerInteractionBox) {
-        PrinterBox scanSourceBox = this.getScanSourceBox(playerInteractionBox);
-        if (scanSourceBox == null) {
+        List<PrinterBox> scanSourceBoxes = this.getScanSourceBoxes(playerInteractionBox);
+        if (scanSourceBoxes.isEmpty()) {
             return List.of();
         }
         Predicate<BlockPos> selectionPredicate = this.createSelectionRangePredicate();
         
         return ScanCache.INSTANCE.iterable(
                 NAME,
-                scanSourceBox,
+                scanSourceBoxes,
                 this.level,
                 SchematicWorldHandler.getSchematicWorld(),
                 this.player,

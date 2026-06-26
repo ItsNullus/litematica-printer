@@ -94,7 +94,12 @@ public class PrintHandler extends Module {
             this.sortedTargets.clear();
             return playerInteractionBox;
         }
-        return this.sortedTargets.iterable(playerInteractionBox, level, schematic, player, getScanGuardLimit());
+        List<PrinterBox> scanSourceBoxes = this.getScanSourceBoxes(playerInteractionBox);
+        if (scanSourceBoxes.isEmpty()) {
+            this.sortedTargets.clear();
+            return List.of();
+        }
+        return this.sortedTargets.iterable(scanSourceBoxes, level, schematic, player, getScanGuardLimit());
     }
 
     @Override
