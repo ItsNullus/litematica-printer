@@ -319,18 +319,18 @@ public class InventoryUtils {
             items = new Item[]{Items.AIR};
         }
         Inventory inventory = player.getInventory();
-        boolean isCreativeMode = PlayerUtils.getAbilities(player).instabuild;
-        // 创造模式
-        if (isCreativeMode) {
-            ItemStack stack = new ItemStack(items[0]);
-            return InventoryUtils.setPickedItemToHand(stack, client);
-        }
         ItemStack mainHandStack = player.getMainHandItem();
         for (Item item : items) {
             if (mainHandStack.getItem().equals(item)) {
                 orderlyStoreItem = mainHandStack;
                 return true;
             }
+        }
+        boolean isCreativeMode = PlayerUtils.getAbilities(player).instabuild;
+        // 创造模式下主手不匹配时才执行 pick，避免高速放置时每个方块都重复同步物品。
+        if (isCreativeMode) {
+            ItemStack stack = new ItemStack(items[0]);
+            return InventoryUtils.setPickedItemToHand(stack, client);
         }
         // 找到背包中可用的物品
         for (Item item : items) {

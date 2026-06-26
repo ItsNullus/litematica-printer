@@ -459,6 +459,9 @@ public abstract class Module extends ConfigUtils {
         long iterationBudgetNanos = Math.max(1L, Configs.Core.SCAN_TIME_BUDGET_MS.getIntegerValue()) * 1_000_000L;
         boolean interrupt = false;
         boolean trackGuiBlockInfo = this.shouldTrackGuiBlockInfo();
+        boolean prefilteredReachAndSelection = this.iterationPositionsPrefilterReachAndSelection();
+        boolean prefilteredCooldown = this.iterationPositionsPrefilterCooldown();
+        boolean exactCandidates = this.iterationPositionsAreExactCandidates();
         this.skipIteration.set(false);
         this.currentIterationDidWork = false;
         this.currentIterationFoundCandidate = false;
@@ -484,7 +487,7 @@ public abstract class Module extends ConfigUtils {
                 break;
             }
             GuiBlockInfo gui = this.createGuiBlockInfo(trackGuiBlockInfo, pos);
-            if (this.canReachIterationPosition(pos)) {
+            if (prefilteredReachAndSelection || this.canReachIterationPosition(pos)) {
                 if (gui != null) {
                     gui.interacted = true;
                 }
@@ -501,7 +504,7 @@ public abstract class Module extends ConfigUtils {
                     continue;
                 }
             }
-            if (!this.isInSelectionRange(pos)) {
+            if (!prefilteredReachAndSelection && !this.isInSelectionRange(pos)) {
                 if (gui != null) {
                     gui.posInSelectionRange = false;
                 }
@@ -511,9 +514,9 @@ public abstract class Module extends ConfigUtils {
             if (gui != null) {
                 gui.posInSelectionRange = true;
             }
-            if (this.canIterationBlockPos(pos)) {
+            if (exactCandidates || this.canIterationBlockPos(pos)) {
                 this.currentIterationFoundCandidate = true;
-                if (isBlockPosOnCooldown(pos)) {
+                if (!prefilteredCooldown && isBlockPosOnCooldown(pos)) {
                     this.guiBlockInfoBuffer.add(gui);
                     continue;
                 }
@@ -627,6 +630,18 @@ public abstract class Module extends ConfigUtils {
 
     protected int getScanGuardLimit() {
         return 0;
+    }
+
+    protected boolean iterationPositionsPrefilterReachAndSelection() {
+        return false;
+    }
+
+    protected boolean iterationPositionsPrefilterCooldown() {
+        return false;
+    }
+
+    protected boolean iterationPositionsAreExactCandidates() {
+        return false;
     }
 
     protected Iterable<BlockPos> getIterationPositions(PrinterBox playerInteractionBox) {

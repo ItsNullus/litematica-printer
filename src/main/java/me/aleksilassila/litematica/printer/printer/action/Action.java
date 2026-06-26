@@ -143,26 +143,22 @@ public class Action {
         if (!this.customSides) {
             sortSidesByPlayerView(orderedSides, pos);
         }
-        List<Direction> validSides = new ArrayList<>();
+        Direction firstValidSide = null;
+        BlockState currentState = world.getBlockState(pos);
         for (Direction side : orderedSides) {
             BlockPos neighborPos = pos.relative(side);
             BlockState neighborState = world.getBlockState(neighborPos);
             if (PrinterUtils.canBeClicked(world, neighborPos) && !BlockUtils.isReplaceable(neighborState)) {
-                validSides.add(side);
+                if (firstValidSide == null) {
+                    firstValidSide = side;
+                }
+                // 选择一个不需要潜行放置的面
+                if (!Implementation.isInteractive(neighborState.getBlock()) && currentState.canSurvive(world, pos)) {
+                    return side;
+                }
             }
         }
-        if (validSides.isEmpty()) {
-            return null;
-        }
-        // 选择一个不需要潜行放置的面
-        for (Direction validSide : validSides) {
-            BlockState requiredState = world.getBlockState(pos);
-            BlockState sideBlockState = world.getBlockState(pos.relative(validSide));
-            if (!Implementation.isInteractive(sideBlockState.getBlock()) && requiredState.canSurvive(world, pos)) {
-                return validSide;
-            }
-        }
-        return validSides.get(0);
+        return firstValidSide;
     }
 
     private static void sortSidesByPlayerView(List<Direction> sides, BlockPos pos) {

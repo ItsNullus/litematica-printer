@@ -6,7 +6,6 @@ import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.handler.Module;
 import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
-import me.aleksilassila.litematica.printer.printer.action.Action;
 import me.aleksilassila.litematica.printer.printer.ActionManager;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
@@ -16,6 +15,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -80,6 +80,16 @@ public class FluidHandler extends Module {
     }
 
     @Override
+    protected boolean iterationPositionsPrefilterReachAndSelection() {
+        return true;
+    }
+
+    @Override
+    protected boolean iterationPositionsAreExactCandidates() {
+        return true;
+    }
+
+    @Override
     protected Iterable<BlockPos> getIterationPositions(PrinterBox playerInteractionBox) {
         List<PrinterBox> scanSourceBoxes = this.getScanSourceBoxes(playerInteractionBox);
         if (scanSourceBoxes.isEmpty()) {
@@ -116,7 +126,12 @@ public class FluidHandler extends Module {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "缺少流体填充方块");
             return;
         }
-        new Action().queueAction(blockPos, Direction.UP, false, player);
+        ActionManager.INSTANCE.queueClick(
+                Configs.Print.PLACE_IN_AIR.getBooleanValue() ? blockPos : blockPos.above(),
+                Direction.DOWN,
+                Vec3.ZERO,
+                false
+        );
         HudStatsManager.INSTANCE.trackExpectedBlockChange(HudStatsManager.Mode.FLUID, blockPos, level.getBlockState(blockPos));
         HudStatsManager.INSTANCE.recordRateUnit(HudStatsManager.Mode.FLUID, 1);
         if (ActionManager.INSTANCE.sendQueue(player).needWaitModifyLook) {

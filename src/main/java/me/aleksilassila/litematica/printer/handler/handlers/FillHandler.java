@@ -9,8 +9,8 @@ import me.aleksilassila.litematica.printer.I18n;
 import me.aleksilassila.litematica.printer.handler.Module;
 import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
+import me.aleksilassila.litematica.printer.printer.PlayerLook;
 import me.aleksilassila.litematica.printer.printer.PrinterUtils;
-import me.aleksilassila.litematica.printer.printer.action.Action;
 import me.aleksilassila.litematica.printer.printer.ActionManager;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
@@ -27,6 +27,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -132,6 +133,21 @@ public class FillHandler extends Module {
     @Override
     protected boolean usesDirtyRegionWakeup() {
         return false;
+    }
+
+    @Override
+    protected boolean iterationPositionsPrefilterReachAndSelection() {
+        return true;
+    }
+
+    @Override
+    protected boolean iterationPositionsPrefilterCooldown() {
+        return true;
+    }
+
+    @Override
+    protected boolean iterationPositionsAreExactCandidates() {
+        return Configs.Fill.FILL_BLOCK_MODE.getOptionListValue() != FillBlockModeType.HANDHELD;
     }
 
     @Override
@@ -285,10 +301,10 @@ public class FillHandler extends Module {
             setIterationConsumedEffectiveExecution(false);
             return;
         }
-        Action action = new Action()
-                .setLookDirection(side.getOpposite())
-                .queueAction(blockPos, side, false, player);
-        ActionManager.INSTANCE.setLook(action.getPlayerLook());
+        BlockPos clickTarget = Configs.Print.PLACE_IN_AIR.getBooleanValue() ? blockPos : blockPos.relative(side);
+        Direction clickSide = side.getOpposite();
+        ActionManager.INSTANCE.queueClick(clickTarget, clickSide, Vec3.ZERO, false);
+        ActionManager.INSTANCE.setLook(new PlayerLook(clickSide));
         ActionManager.INSTANCE.setWaitForHorizontalLook(false);
         HudStatsManager.INSTANCE.trackExpectedBlockChange(HudStatsManager.Mode.FILL, blockPos, currentState);
         HudStatsManager.INSTANCE.recordRateUnit(HudStatsManager.Mode.FILL, 1);
