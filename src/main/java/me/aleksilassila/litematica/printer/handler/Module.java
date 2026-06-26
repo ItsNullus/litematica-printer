@@ -514,12 +514,12 @@ public abstract class Module extends ConfigUtils {
             if (gui != null) {
                 gui.posInSelectionRange = true;
             }
+            if (!prefilteredCooldown && isBlockPosOnCooldown(pos)) {
+                this.guiBlockInfoBuffer.add(gui);
+                continue;
+            }
             if (exactCandidates || this.canIterationBlockPos(pos)) {
                 this.currentIterationFoundCandidate = true;
-                if (!prefilteredCooldown && isBlockPosOnCooldown(pos)) {
-                    this.guiBlockInfoBuffer.add(gui);
-                    continue;
-                }
                 this.iterationConsumedEffectiveExecution = true;
                 long actionStartNanos = System.nanoTime();
                 try {
