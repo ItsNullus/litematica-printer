@@ -26,6 +26,7 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 
 public class InventoryUtils {
     private static int shulkerCooldown = 0;
@@ -69,14 +70,18 @@ public class InventoryUtils {
         }
     }
 
-    public static HashSet<Item> lastNeedItemList = new HashSet<>();
+    public static HashSet<Item> lastNeedItemList = new LinkedHashSet<>();
     public static boolean isOpenHandler = false;
 
     public static boolean switchItem() {
         if (!lastNeedItemList.isEmpty() && !isOpenHandler) {
             LocalPlayer player = client.player;
+            if (player == null) {
+                clearSwitchRequest();
+                return false;
+            }
             AbstractContainerMenu sc = player.containerMenu;
-            if (!player.containerMenu.equals(player.inventoryMenu)) return false;
+            if (!player.containerMenu.equals(player.inventoryMenu)) return true;
             //排除合成栏 装备栏 副手
             if (Configs.Placement.STORE_ORDERLY.getBooleanValue() && sc.slots.stream().skip(9).limit(sc.slots.size() - 10).noneMatch(slot -> slot.getItem().isEmpty())
                     && Configs.Placement.QUICK_SHULKER.getBooleanValue()) {
@@ -84,13 +89,25 @@ public class InventoryUtils {
                 return true;
             }
 
-            if (Configs.Placement.QUICK_SHULKER.getBooleanValue() && openShulker(lastNeedItemList)) {
-                return true;
+            if (Configs.Placement.QUICK_SHULKER.getBooleanValue()) {
+                if (shulkerCooldown > 0) {
+                    return true;
+                }
+                if (openShulker(lastNeedItemList)) {
+                    return true;
+                }
             }
-            lastNeedItemList = new HashSet<>();
-            isOpenHandler = false;
+            clearSwitchRequest();
         }
         return false;
+    }
+
+    public static boolean hasPendingSwitchRequest() {
+        return isOpenHandler || !lastNeedItemList.isEmpty();
+    }
+
+    public static boolean shouldPauseForSwitchRequest() {
+        return Configs.Placement.QUICK_SHULKER.getBooleanValue() && hasPendingSwitchRequest();
     }
 
     static int shulkerBoxSlot = -1;
@@ -124,16 +141,15 @@ public class InventoryUtils {
                             ZxyUtils.switchPlayerInvToHotbarAir(c);
                             fi.dy.masa.malilib.util.InventoryUtils.swapSlots(sc, y, c);
                             me.aleksilassila.litematica.printer.utils.InventoryUtils.setSelectedSlot(player.getInventory(), c);
+                            me.aleksilassila.litematica.printer.utils.InventoryUtils.syncSelectedHotbarSlot();
+                            me.aleksilassila.litematica.printer.utils.InventorySwitchGuard.markSwitchIfNeeded(item);
                             player.closeContainer();
                             //刷新濳影盒
                             if (shulkerBoxSlot != -1) {
                                 client.gameMode.handleContainerInput(sc.containerId, shulkerBoxSlot, 0, ContainerInput.PICKUP, client.player);
                                 client.gameMode.handleContainerInput(sc.containerId, shulkerBoxSlot, 0, ContainerInput.PICKUP, client.player);
                             }
-                            shulkerBoxSlot = -1;
-                            isOpenHandler = false;
-                            openHandlerTimeout = 0;
-                            lastNeedItemList = new HashSet<>();
+                            clearSwitchRequest();
                             return;
                         } catch (Exception e) {
                             System.out.println("Item switch error");
@@ -142,10 +158,7 @@ public class InventoryUtils {
                 }
             }
         }
-        shulkerBoxSlot = -1;
-        lastNeedItemList = new HashSet<>();
-        isOpenHandler = false;
-        openHandlerTimeout = 0;
+        clearSwitchRequest();
         AbstractContainerMenu sc2 = player.containerMenu;
         if (!sc2.equals(player.inventoryMenu)) {
             player.closeContainer();
@@ -189,12 +202,17 @@ public class InventoryUtils {
             ModLoadUtils.closeScreen--;
         }
         if (isOpenHandler && openHandlerTimeout > 0 && --openHandlerTimeout <= 0) {
-            shulkerBoxSlot = -1;
-            lastNeedItemList = new HashSet<>();
-            isOpenHandler = false;
+            clearSwitchRequest();
         }
         if (shulkerCooldown > 0) {
             shulkerCooldown--;
         }
+    }
+
+    private static void clearSwitchRequest() {
+        shulkerBoxSlot = -1;
+        lastNeedItemList = new LinkedHashSet<>();
+        isOpenHandler = false;
+        openHandlerTimeout = 0;
     }
 }

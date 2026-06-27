@@ -5,8 +5,11 @@ import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.handler.handlers.GuiHandler;
 import me.aleksilassila.litematica.printer.handler.handlers.MineDebugLog;
 import me.aleksilassila.litematica.printer.printer.ActionManager;
+import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
+import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import net.minecraft.client.Minecraft;
 
+import static me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.hasPendingSwitchRequest;
 import static me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.isOpenHandler;
 import static me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.switchItem;
 
@@ -86,10 +89,14 @@ final class TickScheduler {
     }
 
     private boolean pauseForInventoryState(String reasonPrefix) {
-        boolean openHandler = isOpenHandler;
         boolean switchingItem = switchItem();
-        if (openHandler || switchingItem) {
-            this.pause(reasonPrefix + " openHandler=" + openHandler + " switchingItem=" + switchingItem);
+        boolean pendingSwitch = hasPendingSwitchRequest();
+        boolean takeItOutPending = TakeItOutUtils.isAwaitingStack();
+        boolean inventorySwitchPending = InventorySwitchGuard.isWaiting();
+        boolean openHandler = isOpenHandler;
+        if (pendingSwitch || switchingItem || takeItOutPending || inventorySwitchPending) {
+            ActionManager.INSTANCE.clearQueue();
+            this.pause(reasonPrefix + " openHandler=" + openHandler + " pendingSwitch=" + pendingSwitch + " switchingItem=" + switchingItem + " takeItOutPending=" + takeItOutPending + " inventorySwitchPending=" + inventorySwitchPending);
             return true;
         }
         return false;

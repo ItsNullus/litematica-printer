@@ -14,6 +14,7 @@ import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.DirectionUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.MessageUtils;
 import me.aleksilassila.litematica.printer.utils.mods.LitematicaUtils;
+import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.item.Item;
@@ -46,7 +47,10 @@ public final class PrintPlacementExecutor {
         if (!InventoryUtils.switchToItems(context.client.player, requiredItems)) {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "缺少材料");
             // 缺少材料属于无效放置，不应消耗每 tick 的有效放置预算（与重构前行为一致）。
-            return PrintPlacementResult.failure(false, shouldStopAfterTaskAction(taskAction));
+            return PrintPlacementResult.failure(false,
+                    shouldStopAfterTaskAction(taskAction)
+                            || me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.shouldPauseForSwitchRequest()
+                            || TakeItOutUtils.isAwaitingStack());
         }
         if (!InventoryUtils.isHoldingAnyItem(context.client.player, requiredItems)) {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "等待物品同步");

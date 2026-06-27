@@ -293,6 +293,11 @@ public class FillHandler extends Module {
         }
         if (!handheld && !InventoryUtils.switchToItems(player, this.fillModeItemList)) {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "缺少填充材料");
+            setIterationConsumedEffectiveExecution(false);
+            if (me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.shouldPauseForSwitchRequest()
+                    || me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils.isAwaitingStack()) {
+                skipIteration.set(true);
+            }
             return;
         }
         Direction side = this.getFillPlacementSide(blockPos);

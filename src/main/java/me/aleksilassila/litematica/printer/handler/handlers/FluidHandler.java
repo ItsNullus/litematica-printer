@@ -124,6 +124,11 @@ public class FluidHandler extends Module {
         }
         if (!InventoryUtils.switchToItems(player, fillItemArray)) {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "缺少流体填充方块");
+            setIterationConsumedEffectiveExecution(false);
+            if (me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.shouldPauseForSwitchRequest()
+                    || me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils.isAwaitingStack()) {
+                skipIteration.set(true);
+            }
             return;
         }
         ActionManager.INSTANCE.queueClick(

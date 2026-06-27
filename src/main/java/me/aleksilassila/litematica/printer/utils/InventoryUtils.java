@@ -8,6 +8,7 @@ import lombok.Setter;
 import me.aleksilassila.litematica.printer.mixin.printer.litematica.EasyPlaceUtilsAccessor;
 import me.aleksilassila.litematica.printer.mixin.printer.litematica.InventoryUtilsAccessor;
 import me.aleksilassila.litematica.printer.utils.minecraft.PlayerUtils;
+import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.player.LocalPlayer;
@@ -88,6 +89,7 @@ public class InventoryUtils {
 
     public static void setHotbarSlot(int slot, Inventory inventory) {
         setSelectedSlot(inventory, slot);
+        syncSelectedHotbarSlot();
     }
 
     public static void syncSelectedHotbarSlot() {
@@ -315,6 +317,9 @@ public class InventoryUtils {
     }
 
     public static boolean switchToItems(LocalPlayer player, Item[] items) {
+        if (InventorySwitchGuard.isWaiting()) {
+            return false;
+        }
         if (items == null || items.length == 0) {
             items = new Item[]{Items.AIR};
         }
@@ -330,7 +335,10 @@ public class InventoryUtils {
         // 创造模式下主手不匹配时才执行 pick，避免高速放置时每个方块都重复同步物品。
         if (isCreativeMode) {
             ItemStack stack = new ItemStack(items[0]);
-            return InventoryUtils.setPickedItemToHand(stack, client);
+            if (InventoryUtils.setPickedItemToHand(stack, client)) {
+                return !InventorySwitchGuard.markSwitchIfNeeded(items[0]);
+            }
+            return false;
         }
         // 找到背包中可用的物品
         for (Item item : items) {
@@ -345,7 +353,13 @@ public class InventoryUtils {
             if (slot != -1) {
                 ItemStack itemStack = inventory.getItem(slot);
                 orderlyStoreItem = itemStack;
-                return InventoryUtils.setPickedItemToHand(slot, itemStack, client);
+                if (InventoryUtils.setPickedItemToHand(slot, itemStack, client)) {
+                    return !InventorySwitchGuard.markSwitchIfNeeded(item);
+                }
+                return false;
+            }
+            if (TakeItOutUtils.tryRequestItem(item)) {
+                return false;
             }
             lastNeedItemList.add(item);
         }

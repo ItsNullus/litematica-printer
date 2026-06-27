@@ -30,6 +30,7 @@ import net.minecraft.world.entity.player.Input;
 public class ActionManager {
     public static final ActionManager INSTANCE = new ActionManager();
     private static final float LOOK_SETTLED_EPSILON_DEGREES = 1.0F;
+    private static final double STALE_WAIT_MOVE_DISTANCE_SQR = 0.75D * 0.75D;
 
     private QueuedClick queuedClick;
     @Setter
@@ -68,6 +69,10 @@ public class ActionManager {
     public ActionManager sendQueue(@Nullable LocalPlayer player) {
         QueuedClick click = this.queuedClick;
         if (click == null || player == null) {
+            clearQueue();
+            return this;
+        }
+        if (shouldDropStaleQueuedClick(player, click)) {
             clearQueue();
             return this;
         }
@@ -155,6 +160,17 @@ public class ActionManager {
         Direction lookDirection = DirectionUtils.orderedByNearest(this.look.yaw, this.look.pitch)[0];
         return lookDirection.getAxis().isHorizontal()
                 && !isPlayerLookSettled(player, this.look);
+    }
+
+    private boolean shouldDropStaleQueuedClick(LocalPlayer player, QueuedClick click) {
+        if (!this.needWaitModifyLook || click.queuedPlayerPosition == null) {
+            return false;
+        }
+        long currentTick = Reference.MINECRAFT.level == null ? Long.MIN_VALUE : Reference.MINECRAFT.level.getGameTime();
+        if (currentTick == Long.MIN_VALUE || currentTick <= click.queuedTick) {
+            return false;
+        }
+        return player.position().distanceToSqr(click.queuedPlayerPosition) > STALE_WAIT_MOVE_DISTANCE_SQR;
     }
 
     private static boolean isPlayerLookSettled(LocalPlayer player, PlayerLook look) {

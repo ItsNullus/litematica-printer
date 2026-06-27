@@ -1,9 +1,11 @@
 package me.aleksilassila.litematica.printer.printer;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 final class QueuedClick {
     final BlockPos target;
@@ -12,6 +14,9 @@ final class QueuedClick {
     final boolean useShift;
     boolean useProtocol;
     final int repeatCount;
+    @Nullable
+    final Vec3 queuedPlayerPosition;
+    final long queuedTick;
 
     QueuedClick(@NotNull BlockPos target, @NotNull Direction side, @NotNull Vec3 hitModifier, boolean useShift, int repeatCount) {
         this.target = target;
@@ -19,6 +24,9 @@ final class QueuedClick {
         this.hitModifier = hitModifier;
         this.useShift = useShift;
         this.repeatCount = Math.max(1, repeatCount);
+        Minecraft client = Minecraft.getInstance();
+        this.queuedPlayerPosition = client.player == null ? null : client.player.position();
+        this.queuedTick = client.level == null ? Long.MIN_VALUE : client.level.getGameTime();
     }
 
     void useProtocolHit(Vec3 hitModifier) {

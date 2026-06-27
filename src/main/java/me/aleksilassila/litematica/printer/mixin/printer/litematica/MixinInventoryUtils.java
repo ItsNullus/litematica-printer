@@ -3,6 +3,7 @@ package me.aleksilassila.litematica.printer.mixin.printer.litematica;
 
 import fi.dy.masa.litematica.util.InventoryUtils;
 import me.aleksilassila.litematica.printer.config.Configs;
+import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.player.Player;
@@ -19,12 +20,19 @@ public class MixinInventoryUtils {
     @Inject(at = @At("TAIL"),method = "schematicWorldPickBlock")
     private static void schematicWorldPickBlock(ItemStack stack, BlockPos pos, Level schematicWorld, Minecraft mc, CallbackInfo ci) {
         if (mc.player != null
+                && !stack.isEmpty()
                 && !ItemStack.isSameItemSameComponents(mc.player.getMainHandItem(), stack)
                 && Configs.Placement.QUICK_SHULKER.getBooleanValue()
+                && !isPrinterControlledMode()
         ) {
             me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.lastNeedItemList.add(stack.getItem());
             me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.switchItem();
         }
+    }
+
+    private static boolean isPrinterControlledMode() {
+        return ConfigUtils.isEnable()
+                && (ConfigUtils.isPrintMode() || ConfigUtils.isFillMode() || ConfigUtils.isFluidMode());
     }
 
     /**

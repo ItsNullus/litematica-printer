@@ -40,6 +40,8 @@ public abstract class Module extends ConfigUtils {
     @Getter
     @Nullable
     public final AtomicReference<PrinterBox> playerInteractionBox;
+    @Nullable
+    private final AtomicReference<PrinterBox> externalScanBoxRef;
     private final InteractionBoxTracker interactionBoxTracker;
     private final GuiBlockInfoBuffer guiBlockInfoBuffer = new GuiBlockInfoBuffer();
     @Getter
@@ -90,12 +92,13 @@ public abstract class Module extends ConfigUtils {
         this.selectionType = selectionType;
         this.interactionBoxTracker = new InteractionBoxTracker(useBox);
         this.playerInteractionBox = this.interactionBoxTracker.getBoxReference();
+        this.externalScanBoxRef = this.playerInteractionBox == null ? null : new AtomicReference<>();
         this.updateVariables();
     }
 
     @Nullable
     public AtomicReference<PrinterBox> getBoxRef() {
-        return this.playerInteractionBox;
+        return this.externalScanBoxRef;
     }
 
     protected void updateVariables() {
@@ -179,19 +182,23 @@ public abstract class Module extends ConfigUtils {
 
     private boolean runIterationIfNeeded() {
         if (this.playerInteractionBox == null || !this.canExecute()) {
+            this.updateExternalScanBox(null);
             return false;
         }
         PrinterBox playerInteractionBox = this.playerInteractionBox.get();
         if (playerInteractionBox == null || !this.canIterate()) {
+            this.updateExternalScanBox(null);
             return false;
         }
         List<PrinterBox> scanSourceBoxes = this.getScanSourceBoxes(playerInteractionBox);
         PrinterBox scanSourceBox = enclosingBox(scanSourceBoxes);
         if (scanSourceBox == null) {
+            this.updateExternalScanBox(null);
             this.lastScanSourceBox = null;
             this.lastScanSourceBoxes = List.of();
             return false;
         }
+        this.updateExternalScanBox(scanSourceBox);
         this.updateScanSource(scanSourceBox, scanSourceBoxes);
         if (!this.isLazyScanEnabled()) {
             this.scanState = ScanState.FULL;
@@ -251,6 +258,12 @@ public abstract class Module extends ConfigUtils {
             return this.runFullIteration(playerInteractionBox);
         }
         return this.runPartialIteration(playerInteractionBox);
+    }
+
+    private void updateExternalScanBox(@Nullable PrinterBox scanSourceBox) {
+        if (this.externalScanBoxRef != null) {
+            this.externalScanBoxRef.set(scanSourceBox);
+        }
     }
 
     private boolean runLazyProbeIteration(PrinterBox playerInteractionBox) {
@@ -424,6 +437,7 @@ public abstract class Module extends ConfigUtils {
         this.scanState = ScanState.FULL;
         this.idleScanTicks = 0;
         this.lastScanSourceBox = null;
+        this.updateExternalScanBox(null);
         this.lastDirtyVersion = DirtyRegionTracker.INSTANCE.currentVersion();
         this.clearDirtyScanQueue();
     }
