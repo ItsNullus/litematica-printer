@@ -7,16 +7,6 @@ Litematica Printer - Hana Version
 
 如果你觉得好用，可以给该项目点个 Star ⭐️ 来以支持我。
 
-这是Hana的爱发电链接~[如果您肯定咱~!](https://afdian.com/a/hanauta)
-
-
-下载
-----------
-
-官方提供的下载渠道有两种: 
-- [**Github Releases**](https://github.com/Yur1Ca/litematica-printer/releases)
-- [**OpenList**](https://openlist.hanauta.icu/Minecraft/Litematica-Printer)
-
 ### 支持的游戏版本
 
 目前该模组支持以下游戏版本：
@@ -58,6 +48,7 @@ Litematica Printer - Hana Version
   - [x] 破基岩模式（在选区内自动执行基岩破除,可输入白名单）
   - [x] 放宽Tweakeroo凭空放置 (可在生存模式使用Tweakeroo的浮空放置~)
   - [x] 支持快捷潜影盒功能（模组 Quick Shulker ）
+  - [x] 支持Take It Out 远程取物功能
   - [x] 替换珊瑚（使用活珊瑚打印投影内的死珊瑚）
   - [x] 更好的破坏错误方块和破冰放水
   - [x] 支持多达 48 种范围迭代逻辑
