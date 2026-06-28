@@ -79,6 +79,15 @@ public class PrintHandler extends Module {
     }
 
     @Override
+    protected void onRuntimeReset() {
+        this.action = null;
+        this.printTaskAction = null;
+        this.ctx = null;
+        this.printTasks.clear();
+        this.sortedTargets.clear();
+    }
+
+    @Override
     protected Iterable<BlockPos> getIterationPositions(PrinterBox playerInteractionBox) {
         WorldSchematic schematic = SchematicWorldHandler.getSchematicWorld();
         BlockPos activeTaskPos = this.printTasks.getActiveTargetPos(level, schematic);

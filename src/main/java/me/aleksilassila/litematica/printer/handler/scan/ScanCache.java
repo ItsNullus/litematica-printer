@@ -59,6 +59,18 @@ public final class ScanCache {
     private ScanCache() {
     }
 
+    public void clear() {
+        this.sections.clear();
+        this.sessions.clear();
+        this.scanMetrics.clear();
+        this.levelIdentity = null;
+        this.schematicIdentity = null;
+        this.tickTime = Long.MIN_VALUE;
+        this.scanBudgetTickTime = Long.MIN_VALUE;
+        this.globalScanBudgetUsedNanos = 0L;
+        DirtyRegionTracker.INSTANCE.clear();
+    }
+
     public record ScanMetrics(
             long scanNanos,
             int scannedBlocks,

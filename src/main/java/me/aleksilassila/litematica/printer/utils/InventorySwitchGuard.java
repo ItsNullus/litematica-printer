@@ -20,6 +20,10 @@ public final class InventorySwitchGuard {
     private InventorySwitchGuard() {
     }
 
+    public static void reset() {
+        clear();
+    }
+
     public static boolean markSwitchIfNeeded(Item item) {
         if (item == null || !isHighSpeedMovement()) {
             return false;

@@ -29,6 +29,7 @@ public class MixinConnection {
 
     @Inject(method = "disconnect*", at = {@At("HEAD")})
     public void disconnect(Component ignored, CallbackInfo ci) {
+        ClientPlayerTickManager.resetRuntime("disconnect");
         exitGameReSet();    // 退出重置
         RailGuide.clearRepairState();
         if (Configs.Core.AUTO_DISABLE_PRINTER.getBooleanValue() && Configs.Core.WORK_SWITCH.getBooleanValue()) {

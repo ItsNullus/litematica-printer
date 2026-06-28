@@ -70,6 +70,12 @@ final class TickScheduler {
         this.packetEpoch++;
     }
 
+    void resetRuntime() {
+        this.packetTick = 0;
+        this.packetEpoch++;
+        this.lastPauseReason = null;
+    }
+
     String getLastPauseReason() {
         return this.lastPauseReason;
     }

@@ -116,6 +116,13 @@ public class FillHandler extends Module {
         this.observedFillScanConfigHash = scanConfigHash;
     }
 
+    @Override
+    protected void onRuntimeReset() {
+        this.clearFillTargets();
+        this.fillScanConfigHash = 0;
+        this.observedFillScanConfigHash = Integer.MIN_VALUE;
+    }
+
     private void updateReplaceableFilterCache() {
         List<String> replaceableList = Configs.Print.REPLACEABLE_LIST.getStrings();
         if (replaceableList.equals(this.replaceableListCache)) {

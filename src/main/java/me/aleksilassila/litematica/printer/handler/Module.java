@@ -105,6 +105,19 @@ public abstract class Module extends ConfigUtils {
         this.updateVariables(TickContext.capture());
     }
 
+    public final void resetRuntimeState() {
+        this.updateVariables();
+        this.resetScanRuntime();
+        this.resetPlayerTracking();
+        this.guiBlockInfoBuffer.resetForTracking(false);
+        this.skipIteration.set(false);
+        this.iterationConsumedEffectiveExecution = true;
+        this.currentIterationDidWork = false;
+        this.currentIterationFoundCandidate = false;
+        this.lastTickTime = -1L;
+        this.onRuntimeReset();
+    }
+
     public void tick() {
         this.tick(TickContext.capture());
     }
@@ -437,6 +450,7 @@ public abstract class Module extends ConfigUtils {
         this.scanState = ScanState.FULL;
         this.idleScanTicks = 0;
         this.lastScanSourceBox = null;
+        this.lastScanSourceBoxes = List.of();
         this.updateExternalScanBox(null);
         this.lastDirtyVersion = DirtyRegionTracker.INSTANCE.currentVersion();
         this.clearDirtyScanQueue();
@@ -565,6 +579,9 @@ public abstract class Module extends ConfigUtils {
     }
 
     protected void stopIteration(boolean interrupt) {
+    }
+
+    protected void onRuntimeReset() {
     }
 
     protected boolean isSchematicBlockHandler() {

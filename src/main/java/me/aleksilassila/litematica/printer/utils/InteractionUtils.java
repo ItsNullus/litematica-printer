@@ -196,6 +196,16 @@ public class InteractionUtils {
         }
     }
 
+    public void resetRuntime() {
+        this.breakQueue.clear();
+        this.queuedBreaks.clear();
+        this.recentlyBroken.clear();
+        this.pendingBroken.clear();
+        this.breakPos = null;
+        this.forceDelayedDestroy = false;
+        this.externalDestroyLockTicks = 0;
+    }
+
     public boolean isNeedHandle() {
         return !breakQueue.isEmpty() || breakPos != null;
     }

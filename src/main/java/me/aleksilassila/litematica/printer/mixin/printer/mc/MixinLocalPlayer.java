@@ -40,6 +40,8 @@ public class MixinLocalPlayer extends AbstractClientPlayer {
 
     @Unique
     private boolean updateChecked;
+    @Unique
+    private boolean litematica_printer$runtimeResetDone;
 
     //#if MC == 11902
     //$$ public MixinLocalPlayer(ClientLevel world, GameProfile profile, @Nullable PlayerPublicKey publicKey) {
@@ -53,6 +55,10 @@ public class MixinLocalPlayer extends AbstractClientPlayer {
 
     @Inject(at = @At("HEAD"), method = "resetPos")
     public void init(CallbackInfo ci) {
+        if (!this.litematica_printer$runtimeResetDone) {
+            ClientPlayerTickManager.resetRuntime("local_player_init");
+            this.litematica_printer$runtimeResetDone = true;
+        }
         if (Configs.Core.UPDATE_CHECK.getBooleanValue() && !updateChecked) {
             CompletableFuture.runAsync(UpdateCheckerUtils::checkForUpdates);
         }

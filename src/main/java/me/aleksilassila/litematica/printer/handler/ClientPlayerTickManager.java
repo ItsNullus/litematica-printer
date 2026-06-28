@@ -1,7 +1,17 @@
 package me.aleksilassila.litematica.printer.handler;
 
 import com.google.common.collect.ImmutableList;
+import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockController;
+import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
 import me.aleksilassila.litematica.printer.handler.handlers.*;
+import me.aleksilassila.litematica.printer.printer.ActionManager;
+import me.aleksilassila.litematica.printer.printer.RttReplayController;
+import me.aleksilassila.litematica.printer.printer.zxy.inventory.SwitchItem;
+import me.aleksilassila.litematica.printer.utils.CooldownUtils;
+import me.aleksilassila.litematica.printer.utils.InteractionUtils;
+import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
+import me.aleksilassila.litematica.printer.utils.minecraft.NetworkUtils;
+import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import net.minecraft.client.Minecraft;
 
 @SuppressWarnings("SpellCheckingInspection")
@@ -40,6 +50,25 @@ public class ClientPlayerTickManager {
 
     public static void recordInboundPacket() {
         SCHEDULER.recordInboundPacket();
+    }
+
+    public static void resetRuntime(String reason) {
+        ActionManager.INSTANCE.clearQueue();
+        NetworkUtils.clearScopedLookOverride();
+        RttReplayController.INSTANCE.reset();
+        ScanCache.INSTANCE.clear();
+        CooldownUtils.INSTANCE.clearAllCooldowns();
+        InteractionUtils.INSTANCE.resetRuntime();
+        InventorySwitchGuard.reset();
+        TakeItOutUtils.resetPending();
+        SwitchItem.reSet();
+        me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.resetRuntime();
+        BedrockController.reset();
+        HudStatsManager.INSTANCE.resetAll();
+        SCHEDULER.resetRuntime();
+        for (Module module : VALUES) {
+            module.resetRuntimeState();
+        }
     }
 
     public static String getLastPauseReason() {

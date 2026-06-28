@@ -132,6 +132,14 @@ public class MineHandler extends Module {
     }
 
     @Override
+    protected void onRuntimeReset() {
+        this.candidates.clear();
+        this.activeMinePos = null;
+        this.analyzer.reset();
+        this.toolSession.reset();
+    }
+
+    @Override
     protected boolean canIterate() {
         return this.activeMinePos == null && !InteractionUtils.INSTANCE.hasActiveDestroyTarget();
     }

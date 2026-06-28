@@ -56,6 +56,11 @@ public class BedrockHandler extends Module {
     }
 
     @Override
+    protected void onRuntimeReset() {
+        BedrockController.reset();
+    }
+
+    @Override
     protected Iterable<BlockPos> getIterationPositions(PrinterBox playerInteractionBox) {
         BedrockController.clearSubmissionPlans();
         if (playerInteractionBox == null || this.level == null || this.player == null) {

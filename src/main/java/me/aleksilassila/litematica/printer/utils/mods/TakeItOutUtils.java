@@ -72,6 +72,17 @@ public final class TakeItOutUtils {
         return tryRequestFromInventoryShulker(required) || tryRequestFromWorldContainers(required);
     }
 
+    public static void resetPending() {
+        clearLocalPending();
+        if (!isLoaded()) {
+            return;
+        }
+        try {
+            setAwaitingStack(ItemStack.EMPTY);
+        } catch (ReflectiveOperationException ignored) {
+        }
+    }
+
     private static boolean tryRequestFromWorldContainers(ItemStack required) {
         try {
             Class<?> sourcesClass = Class.forName(SOURCES_CLASS);

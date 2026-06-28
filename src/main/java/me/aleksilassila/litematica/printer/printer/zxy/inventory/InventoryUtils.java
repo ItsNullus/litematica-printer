@@ -110,6 +110,12 @@ public class InventoryUtils {
         return Configs.Placement.QUICK_SHULKER.getBooleanValue() && hasPendingSwitchRequest();
     }
 
+    public static void resetRuntime() {
+        clearSwitchRequest();
+        shulkerCooldown = 0;
+        ModLoadUtils.closeScreen = 0;
+    }
+
     static int shulkerBoxSlot = -1;
 
     public static void switchInv() {
