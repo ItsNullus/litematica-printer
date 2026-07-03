@@ -58,7 +58,7 @@ public final class PrintPlacementExecutor {
         }
 
         boolean useShift = getUseShift(context, action, side);
-        action.queueAction(blockPos, side, useShift, context.client.player);
+        action.queueAction(blockPos, side, useShift, context.client.player, requiredItems);
         Vec3 hitModifier = LitematicaUtils.usePrecisionPlacement(blockPos, context.requiredState);
         if (hitModifier != null) {
             ActionManager.INSTANCE.useProtocolHitModifier(hitModifier);

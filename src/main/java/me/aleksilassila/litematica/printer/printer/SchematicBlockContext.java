@@ -74,6 +74,6 @@ public class SchematicBlockContext {
     }
 
     public BlockMatchResult compare(Property<?>... propertiesToIgnore) {
-        return BlockMatchResult.compare(this);
+        return BlockMatchResult.compare(this, propertiesToIgnore);
     }
 }

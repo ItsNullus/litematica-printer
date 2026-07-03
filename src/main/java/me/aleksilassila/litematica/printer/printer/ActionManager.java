@@ -14,6 +14,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.util.Mth;
 
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
@@ -51,6 +52,10 @@ public class ActionManager {
     }
 
     public void queueClick(@NotNull BlockPos target, @NotNull Direction side, @NotNull Vec3 hitModifier, boolean useShift, int clickRepeatCount) {
+        this.queueClick(target, side, hitModifier, useShift, clickRepeatCount, null);
+    }
+
+    public void queueClick(@NotNull BlockPos target, @NotNull Direction side, @NotNull Vec3 hitModifier, boolean useShift, int clickRepeatCount, @Nullable Item[] expectedItems) {
         if (Configs.Placement.PLACE_INTERVAL.getIntegerValue() != 0) {
             if (this.queuedClick != null) {
                 System.out.println("Was not ready yet.");
@@ -58,6 +63,7 @@ public class ActionManager {
             }
         }
         this.queuedClick = new QueuedClick(target, side, hitModifier, useShift, clickRepeatCount);
+        this.queuedClick.expectItems(expectedItems);
     }
 
     public void useProtocolHitModifier(@NotNull Vec3 hitModifier) {
@@ -86,6 +92,10 @@ public class ActionManager {
         }
         if (needWaitModifyLook) {
             needWaitModifyLook = false;
+        }
+        if (!isHoldingExpectedItem(player, click)) {
+            clearQueue();
+            return this;
         }
         Direction direction;
         if (look == null) {
@@ -171,6 +181,19 @@ public class ActionManager {
             return false;
         }
         return player.position().distanceToSqr(click.queuedPlayerPosition) > STALE_WAIT_MOVE_DISTANCE_SQR;
+    }
+
+    private static boolean isHoldingExpectedItem(LocalPlayer player, QueuedClick click) {
+        if (click.expectedItems == null || click.expectedItems.length == 0) {
+            return true;
+        }
+        Item heldItem = player.getMainHandItem().getItem();
+        for (Item expectedItem : click.expectedItems) {
+            if (heldItem.equals(expectedItem)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isPlayerLookSettled(LocalPlayer player, PlayerLook look) {

@@ -7,6 +7,7 @@ import me.aleksilassila.litematica.printer.guide.Result;
 import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
 import me.aleksilassila.litematica.printer.printer.action.Action;
 import me.aleksilassila.litematica.printer.utils.minecraft.BlockStateUtils;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.CrossCollisionBlock;
 import net.minecraft.world.level.block.ObserverBlock;
@@ -44,7 +45,7 @@ public class ObserverGuide extends Guide {
         if (input.requiredState.getBlock() instanceof WallBlock) {
             BlockStateUtils.getWallFacingProperty(facing.getOpposite()).ifPresent(inputPropertiesToIgnore::add);
         }
-        if (output.requiredState.getBlock() instanceof CrossCollisionBlock) {
+        if (input.requiredState.getBlock() instanceof CrossCollisionBlock) {
             BlockStateUtils.getCrossCollisionBlock(facing.getOpposite()).ifPresent(inputPropertiesToIgnore::add);
         }
 
@@ -53,24 +54,10 @@ public class ObserverGuide extends Guide {
 
         // 输入端与输出端均正确
         if (inputState == BlockMatchResult.CORRECT && outputState == BlockMatchResult.CORRECT) {
-            // 检查输入端是否是侦测器链
-            SchematicBlockContext temp = input;
-            while (temp.requiredState.getBlock() instanceof ObserverBlock) {
-                Direction tempFacing = temp.requiredState.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING)
-                        ? temp.requiredState.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING) : null;
-                if (tempFacing != null) {
-                    SchematicBlockContext offset = temp.offset(tempFacing);
-                    if (BlockMatchResult.compare(offset) != BlockMatchResult.CORRECT) {
-                        return Result.SKIP;
-                    }
-                    temp = offset;
-                } else {
-                    break;
-                }
+            if (!isObserverInputChainReady(input)) {
+                return Result.SKIP;
             }
-            return Result.success(new Action()
-                    .setLookDirection(facing)
-                    .setNeedWaitModifyLook());
+            return Result.success(placementAction(facing));
         }
 
         // 输入端正确但输出端有问题
@@ -85,20 +72,8 @@ public class ObserverGuide extends Guide {
                 temp = offset;
             }
             if (!output.requiredState.isAir()) {
-                // 检查输入端侦测器链
-                temp = input;
-                while (temp.requiredState.getBlock() instanceof ObserverBlock) {
-                    Direction tempFacing = temp.requiredState.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING)
-                            ? temp.requiredState.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING) : null;
-                    if (tempFacing != null) {
-                        SchematicBlockContext offset = temp.offset(tempFacing);
-                        if (BlockMatchResult.compare(offset) != BlockMatchResult.CORRECT) {
-                            return Result.SKIP;
-                        }
-                        temp = offset;
-                    } else {
-                        break;
-                    }
+                if (!isObserverInputChainReady(input)) {
+                    return Result.SKIP;
                 }
             }
 
@@ -118,17 +93,51 @@ public class ObserverGuide extends Guide {
             return Result.SKIP;
         } else {
             if (!output.requiredState.isAir()) {
+                if (output.currentState.isAir() && input.requiredState.getBlock() instanceof WallBlock) {
+                    return Result.success(placementAction(facing).setCooldownTicksOverride(2));
+                }
                 return Result.SKIP;
+            } else {
+                if (isObserverInputChainReady(input)) {
+                    return Result.success(placementAction(facing));
+                }
+                if (!isObserverInputChainReady(output)) {
+                    return Result.SKIP;
+                }
             }
         }
 
-        return Result.success(new Action()
-                .setLookDirection(facing)
-                .setNeedWaitModifyLook());
+        return Result.success(placementAction(facing));
     }
 
     @Override
     protected Result onBuildActionWrongState(BlockMatchResult state) {
         return Result.SKIP;
+    }
+
+    private static Action placementAction(Direction facing) {
+        return new Action()
+                .setLookDirection(facing)
+                .setNeedWaitModifyLook();
+    }
+
+    private static boolean isObserverInputChainReady(SchematicBlockContext start) {
+        Set<BlockPos> visited = new HashSet<>();
+        SchematicBlockContext temp = start;
+        while (temp.requiredState.getBlock() instanceof ObserverBlock) {
+            if (!visited.add(temp.blockPos)) {
+                return true;
+            }
+            Direction tempFacing = BlockStateUtils.getProperty(temp.requiredState, ObserverBlock.FACING).orElse(null);
+            if (tempFacing == null) {
+                return false;
+            }
+            SchematicBlockContext offset = temp.offset(tempFacing);
+            if (BlockMatchResult.compare(offset) != BlockMatchResult.CORRECT) {
+                return false;
+            }
+            temp = offset;
+        }
+        return true;
     }
 }

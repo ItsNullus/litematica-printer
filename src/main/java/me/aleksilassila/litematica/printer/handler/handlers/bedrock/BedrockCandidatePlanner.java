@@ -67,7 +67,7 @@ public final class BedrockCandidatePlanner {
                 player,
                 scanLimit,
                 ScanIntent.MINE,
-                pos -> true
+                pos -> this.passesCheapFilters(level, pos)
         ).iterator();
         List<CandidateInfo> verticalCandidates = new ArrayList<>();
         List<CandidateInfo> sideCandidates = new ArrayList<>();
@@ -91,9 +91,6 @@ public final class BedrockCandidatePlanner {
                 break;
             }
             scanned++;
-            if (!this.passesCheapFilters(level, pos)) {
-                continue;
-            }
             modeled++;
             CandidateInfo candidate = this.buildModeledCandidate(level, pos, allowSide);
             if (candidate != null) {

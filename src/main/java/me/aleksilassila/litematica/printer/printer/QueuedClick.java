@@ -3,6 +3,7 @@ package me.aleksilassila.litematica.printer.printer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -17,6 +18,8 @@ final class QueuedClick {
     @Nullable
     final Vec3 queuedPlayerPosition;
     final long queuedTick;
+    @Nullable
+    Item[] expectedItems;
 
     QueuedClick(@NotNull BlockPos target, @NotNull Direction side, @NotNull Vec3 hitModifier, boolean useShift, int repeatCount) {
         this.target = target;
@@ -32,5 +35,9 @@ final class QueuedClick {
     void useProtocolHit(Vec3 hitModifier) {
         this.hitModifier = hitModifier;
         this.useProtocol = true;
+    }
+
+    void expectItems(@Nullable Item[] expectedItems) {
+        this.expectedItems = expectedItems == null ? null : expectedItems.clone();
     }
 }

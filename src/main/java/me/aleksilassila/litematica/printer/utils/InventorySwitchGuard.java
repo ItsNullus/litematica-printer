@@ -4,18 +4,14 @@ import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
 import me.aleksilassila.litematica.printer.printer.ActionManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.phys.Vec3;
 
 public final class InventorySwitchGuard {
     private static final Minecraft client = Minecraft.getInstance();
-    private static final int MAX_WAIT_TICKS = 4;
-    private static final double AIRBORNE_RISK_BLOCKS_PER_TICK = 0.20D;
-    private static final double GROUND_RISK_BLOCKS_PER_TICK = 0.35D;
-    private static final double AIRBORNE_RISK_SQR = AIRBORNE_RISK_BLOCKS_PER_TICK * AIRBORNE_RISK_BLOCKS_PER_TICK;
-    private static final double GROUND_RISK_SQR = GROUND_RISK_BLOCKS_PER_TICK * GROUND_RISK_BLOCKS_PER_TICK;
+    private static final int MAX_WAIT_TICKS = 10;
 
     private static Item pendingItem;
     private static long pendingStartedTick;
+    private static int pendingStartedPacketEpoch;
 
     private InventorySwitchGuard() {
     }
@@ -25,11 +21,12 @@ public final class InventorySwitchGuard {
     }
 
     public static boolean markSwitchIfNeeded(Item item) {
-        if (item == null || !isHighSpeedMovement()) {
+        if (item == null) {
             return false;
         }
         pendingItem = item;
         pendingStartedTick = ClientPlayerTickManager.getCurrentHandlerTime();
+        pendingStartedPacketEpoch = ClientPlayerTickManager.getPacketEpoch();
         ActionManager.INSTANCE.clearQueue();
         return true;
     }
@@ -47,7 +44,7 @@ public final class InventorySwitchGuard {
         if (age <= 0) {
             return true;
         }
-        if (isMainHandReady(pendingItem)) {
+        if (isMainHandReady(pendingItem) && ClientPlayerTickManager.getPacketEpoch() > pendingStartedPacketEpoch) {
             clear();
             return false;
         }
@@ -57,15 +54,7 @@ public final class InventorySwitchGuard {
     private static void clear() {
         pendingItem = null;
         pendingStartedTick = 0L;
-    }
-
-    private static boolean isHighSpeedMovement() {
-        if (client.player == null) {
-            return false;
-        }
-        Vec3 movement = client.player.getDeltaMovement();
-        double riskThresholdSqr = client.player.onGround() ? GROUND_RISK_SQR : AIRBORNE_RISK_SQR;
-        return movement.lengthSqr() >= riskThresholdSqr;
+        pendingStartedPacketEpoch = 0;
     }
 
     private static boolean isMainHandReady(Item item) {

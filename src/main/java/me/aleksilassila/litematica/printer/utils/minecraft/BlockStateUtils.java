@@ -20,6 +20,10 @@ public class BlockStateUtils extends BlockUtils {
     private final static EnumProperty<WallSide> wallSouthProperty = BlockStateProperties.SOUTH_WALL;
     private final static EnumProperty<WallSide> wallWestProperty = BlockStateProperties.WEST_WALL;
     private final static EnumProperty<WallSide> wallEastProperty = BlockStateProperties.EAST_WALL;
+    private final static BooleanProperty northProperty = BlockStateProperties.NORTH;
+    private final static BooleanProperty southProperty = BlockStateProperties.SOUTH;
+    private final static BooleanProperty westProperty = BlockStateProperties.WEST;
+    private final static BooleanProperty eastProperty = BlockStateProperties.EAST;
 
     public static boolean statesEqualIgnoreProperties(BlockState state1, BlockState state2, Property<?>... propertiesToIgnore) {
         if (state1.getBlock() != state2.getBlock()) {
@@ -88,13 +92,13 @@ public class BlockStateUtils extends BlockUtils {
     public static Optional<Property<?>> getCrossCollisionBlock(Direction wallFacing) {
         switch (wallFacing) {
             case NORTH:
-                return Optional.of(wallNorthProperty);
+                return Optional.of(northProperty);
             case SOUTH:
-                return Optional.of(wallSouthProperty);
+                return Optional.of(southProperty);
             case WEST:
-                return Optional.of(wallWestProperty);
+                return Optional.of(westProperty);
             case EAST:
-                return Optional.of(wallEastProperty);
+                return Optional.of(eastProperty);
         }
         return Optional.empty();
     }

@@ -336,7 +336,7 @@ public class InventoryUtils {
         if (isCreativeMode) {
             ItemStack stack = new ItemStack(items[0]);
             if (InventoryUtils.setPickedItemToHand(stack, client)) {
-                return !InventorySwitchGuard.markSwitchIfNeeded(items[0]);
+                return true;
             }
             return false;
         }
@@ -353,8 +353,9 @@ public class InventoryUtils {
             if (slot != -1) {
                 ItemStack itemStack = inventory.getItem(slot);
                 orderlyStoreItem = itemStack;
+                boolean needsInventoryConfirmation = !Inventory.isHotbarSlot(slot);
                 if (InventoryUtils.setPickedItemToHand(slot, itemStack, client)) {
-                    return !InventorySwitchGuard.markSwitchIfNeeded(item);
+                    return !needsInventoryConfirmation || !InventorySwitchGuard.markSwitchIfNeeded(item);
                 }
                 return false;
             }

@@ -223,19 +223,27 @@ public class Action {
     }
 
     public Action queueAction(@NotNull BlockPos blockPos, @NotNull Direction side, boolean useShift, @NotNull LocalPlayer player) {
+        return this.queueAction(blockPos, side, useShift, player, null);
+    }
+
+    public Action queueAction(@NotNull BlockPos blockPos, @NotNull Direction side, boolean useShift, @NotNull LocalPlayer player, @Nullable Item[] expectedItems) {
         if (Configs.Print.PLACE_IN_AIR.getBooleanValue() && !this.requiresSupport) {
             ActionManager.INSTANCE.queueClick(
                     blockPos,
                     side.getOpposite(),
                     getSides().get(side),
-                    useShift
+                    useShift,
+                    1,
+                    expectedItems
             );
         } else {
             ActionManager.INSTANCE.queueClick(
                     blockPos.relative(side),
                     side.getOpposite(),
                     getSides().get(side),
-                    useShift
+                    useShift,
+                    1,
+                    expectedItems
             );
         }
         return this;
