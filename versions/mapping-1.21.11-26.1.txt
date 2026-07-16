@@ -7,8 +7,6 @@ net.minecraft.client.multiplayer.MultiPlayerGameMode handleInventoryMouseClick()
 net.minecraft.client.gui.GuiGraphics net.minecraft.client.gui.GuiGraphicsExtractor
 net.minecraft.client.gui.GuiGraphicsExtractor drawString() text()
 
-fi.dy.masa.malilib.util.JsonUtils fi.dy.masa.malilib.util.data.json.JsonUtils
-
 net.minecraft.world.level.block.FarmBlock net.minecraft.world.level.block.FarmlandBlock
 net.minecraft.world.level.block.WaterlilyBlock net.minecraft.world.level.block.LilyPadBlock
 
