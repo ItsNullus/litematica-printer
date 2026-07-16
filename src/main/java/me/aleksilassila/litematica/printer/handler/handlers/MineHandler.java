@@ -89,7 +89,7 @@ public class MineHandler extends Module {
 
     @Override
     protected int getTickInterval() {
-        return 0;
+        return Configs.Break.BREAK_INTERVAL.getIntegerValue();
     }
 
     @Override
@@ -142,6 +142,21 @@ public class MineHandler extends Module {
     @Override
     protected boolean canIterate() {
         return this.activeMinePos == null && !InteractionUtils.INSTANCE.hasActiveDestroyTarget();
+    }
+
+    @Override
+    protected boolean iterationPositionsPrefilterReachAndSelection() {
+        return true;
+    }
+
+    @Override
+    protected boolean iterationPositionsPrefilterCooldown() {
+        return true;
+    }
+
+    @Override
+    protected boolean iterationPositionsAreExactCandidates() {
+        return true;
     }
 
     @Override

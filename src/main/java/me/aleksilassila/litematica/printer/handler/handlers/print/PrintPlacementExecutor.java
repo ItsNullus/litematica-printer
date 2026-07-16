@@ -3,6 +3,7 @@ package me.aleksilassila.litematica.printer.handler.handlers.print;
 import me.aleksilassila.litematica.printer.I18n;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
+import me.aleksilassila.litematica.printer.handler.handlers.PrintHandler;
 import me.aleksilassila.litematica.printer.interfaces.Implementation;
 import me.aleksilassila.litematica.printer.printer.ActionManager;
 import me.aleksilassila.litematica.printer.printer.PlayerLook;
@@ -10,6 +11,7 @@ import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
 import me.aleksilassila.litematica.printer.printer.action.Action;
 import me.aleksilassila.litematica.printer.printer.action.ClickAction;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
+import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.DirectionUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.MessageUtils;
@@ -22,6 +24,10 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Predicate;
+import net.minecraft.world.item.ItemStack;
 
 public final class PrintPlacementExecutor {
     private static final Item[] EMPTY_HAND_ITEMS = {Items.AIR};
@@ -44,7 +50,15 @@ public final class PrintPlacementExecutor {
         }
 
         Item[] requiredItems = normalizeRequiredItems(action.getRequiredItems(context.requiredState.getBlock()));
-        if (!InventoryUtils.switchToItems(context.client.player, requiredItems)) {
+        Predicate<ItemStack> requiredStackPredicate = action.getRequiredStackPredicate();
+        boolean itemReady = requiredStackPredicate == null
+                ? InventoryUtils.switchToItems(context.client.player, requiredItems)
+                : InventoryUtils.switchToMatchingStack(
+                        context.client.player,
+                        requiredStackPredicate,
+                        action.getRequiredCreativeStack()
+                );
+        if (!itemReady) {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "缺少材料");
             // 缺少材料属于无效放置，不应消耗每 tick 的有效放置预算（与重构前行为一致）。
             return PrintPlacementResult.failure(false,
@@ -52,40 +66,103 @@ public final class PrintPlacementExecutor {
                             || me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.shouldPauseForSwitchRequest()
                             || TakeItOutUtils.isAwaitingStack());
         }
-        if (!InventoryUtils.isHoldingAnyItem(context.client.player, requiredItems)) {
+        if (!InventoryUtils.isHoldingAnyItem(context.client.player, requiredItems)
+                || requiredStackPredicate != null
+                && !requiredStackPredicate.test(context.client.player.getMainHandItem())) {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "等待物品同步");
             return PrintPlacementResult.failure(false, true);
         }
 
         boolean useShift = getUseShift(context, action, side);
-        action.queueAction(blockPos, side, useShift, context.client.player, requiredItems);
+        if (!action.queueAction(blockPos, side, useShift, context.client.player, requiredItems)) {
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "动作队列占用");
+            return PrintPlacementResult.cancelled(true);
+        }
+        ActionManager.INSTANCE.setExpectedStackPredicate(requiredStackPredicate);
         Vec3 hitModifier = LitematicaUtils.usePrecisionPlacement(blockPos, context.requiredState);
         if (hitModifier != null) {
             ActionManager.INSTANCE.useProtocolHitModifier(hitModifier);
         }
         ActionManager.INSTANCE.setLook(adjustHorizontalLook(action.getPlayerLook(), context));
         ActionManager.INSTANCE.setNeedWaitModifyLookFromAction(action.isNeedWaitModifyLook());
-        HudStatsManager.INSTANCE.trackExpectedBlockState(HudStatsManager.Mode.PRINT, blockPos, context.requiredState);
-        HudStatsManager.INSTANCE.recordRateUnit(HudStatsManager.Mode.PRINT, 1);
-
         boolean consumedEffectiveExecution = action.isConsumeEffectiveExecution();
-        boolean needWaitModifyLook = ActionManager.INSTANCE.sendQueue(context.client.player).needWaitModifyLook;
-        PrintPlacementResult.TaskEvent taskEvent = needWaitModifyLook
-                ? PrintPlacementResult.TaskEvent.QUEUED
-                : PrintPlacementResult.TaskEvent.SUCCESS;
-
-        if (needWaitModifyLook) {
-            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "等待转头");
-        } else {
-            HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.PRINT, "运行中");
-        }
-
-        boolean skipIteration = needWaitModifyLook
-                || shouldStopAfterTaskAction(taskAction);
         int cooldownTicks = action.getCooldownTicksOverride() >= 0
                 ? action.getCooldownTicksOverride()
                 : ConfigUtils.getPlaceCooldown();
-        return new PrintPlacementResult(consumedEffectiveExecution, skipIteration, taskEvent, cooldownTicks);
+        AtomicBoolean deferred = new AtomicBoolean(false);
+        ActionManager.INSTANCE.setQueueCompletionListener(sendResult -> {
+            if (!deferred.get()) {
+                return;
+            }
+            if (sendResult.isSent()) {
+                recordPlacementSent(context);
+                if (cooldownTicks > 0) {
+                    CooldownUtils.INSTANCE.setCooldown(
+                            context.level,
+                            PrintHandler.NAME,
+                            blockPos,
+                            cooldownTicks
+                    );
+                }
+                if (taskAction != null) {
+                    taskAction.onSuccess(context, action);
+                }
+            } else {
+                HudStatsManager.INSTANCE.recordDeferred(
+                        HudStatsManager.Mode.PRINT,
+                        describeSendFailure(sendResult)
+                );
+                if (taskAction != null) {
+                    taskAction.onCancelled(context, action);
+                }
+            }
+        });
+
+        ActionManager.SendResult sendResult = ActionManager.INSTANCE.sendQueue(context.client.player);
+        if (sendResult.isWaiting()) {
+            deferred.set(true);
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "等待转头");
+            return new PrintPlacementResult(
+                    consumedEffectiveExecution,
+                    true,
+                    PrintPlacementResult.TaskEvent.QUEUED,
+                    -1
+            );
+        }
+        if (!sendResult.isSent()) {
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, describeSendFailure(sendResult));
+            return PrintPlacementResult.cancelled(true);
+        }
+
+        recordPlacementSent(context);
+
+        return new PrintPlacementResult(
+                consumedEffectiveExecution,
+                shouldStopAfterTaskAction(taskAction),
+                PrintPlacementResult.TaskEvent.SUCCESS,
+                cooldownTicks
+        );
+    }
+
+    private static void recordPlacementSent(SchematicBlockContext context) {
+        HudStatsManager.INSTANCE.trackExpectedBlockState(
+                HudStatsManager.Mode.PRINT,
+                context.blockPos,
+                context.requiredState
+        );
+        HudStatsManager.INSTANCE.recordRateUnit(HudStatsManager.Mode.PRINT, 1);
+        HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.PRINT, "运行中");
+    }
+
+    private static String describeSendFailure(ActionManager.SendResult result) {
+        return switch (result) {
+            case STALE_POSITION -> "移动后动作失效";
+            case HELD_ITEM_CHANGED -> "手持物品已变化";
+            case NO_PLAYER, NO_GAME_MODE -> "客户端状态未就绪";
+            case INTERACTION_REJECTED -> "交互被拒绝";
+            case NO_QUEUED_ACTION -> "动作未入队";
+            default -> "动作未发送";
+        };
     }
 
     private static boolean getUseShift(SchematicBlockContext context, Action action, Direction side) {

@@ -20,6 +20,9 @@ final class TickScheduler {
     private int packetTick;
     private int packetEpoch;
     private String lastPauseReason;
+    private boolean runtimeActive;
+    private int executionScopeHash = Integer.MIN_VALUE;
+    private int roundRobinOffset;
 
     TickScheduler(ImmutableList<Module> modules) {
         this.modules = modules;
@@ -28,8 +31,23 @@ final class TickScheduler {
     void tick() {
         HudStatsManager.INSTANCE.tick();
         if (!Configs.Core.WORK_SWITCH.getBooleanValue()) {
+            if (this.runtimeActive) {
+                ClientPlayerTickManager.resetRuntime("work_switch_disabled");
+            }
+            this.runtimeActive = false;
             HudStatsManager.INSTANCE.resetAll();
             this.lastPauseReason = null;
+            return;
+        }
+        int currentScopeHash = this.currentExecutionScopeHash();
+        if (!this.runtimeActive) {
+            this.runtimeActive = true;
+            this.executionScopeHash = currentScopeHash;
+        } else if (this.executionScopeHash != currentScopeHash) {
+            ClientPlayerTickManager.resetRuntime("execution_scope_changed");
+            this.runtimeActive = true;
+            this.executionScopeHash = currentScopeHash;
+            return;
         }
         if (this.pauseForInventoryState("shared_precheck")) {
             return;
@@ -44,10 +62,20 @@ final class TickScheduler {
         TickContext context = TickContext.capture();
         this.resume();
         for (Module handler : this.modules) {
-            if (!(handler instanceof GuiHandler)) {
-                if (this.pauseForHandlerPrecheck(handler)) {
-                    return;
-                }
+            if (handler instanceof GuiHandler) {
+                handler.tick(context);
+            }
+        }
+        int actionableCount = Math.max(0, this.modules.size() - 1);
+        if (actionableCount == 0) {
+            return;
+        }
+        int startIndex = this.roundRobinOffset % actionableCount;
+        this.roundRobinOffset = (this.roundRobinOffset + 1) % actionableCount;
+        for (int offset = 0; offset < actionableCount; offset++) {
+            Module handler = this.modules.get(1 + (startIndex + offset) % actionableCount);
+            if (this.pauseForHandlerPrecheck(handler)) {
+                return;
             }
             handler.tick(context);
         }
@@ -74,6 +102,9 @@ final class TickScheduler {
         this.packetTick = 0;
         this.packetEpoch++;
         this.lastPauseReason = null;
+        this.runtimeActive = false;
+        this.executionScopeHash = Integer.MIN_VALUE;
+        this.roundRobinOffset = 0;
     }
 
     String getLastPauseReason() {
@@ -137,5 +168,16 @@ final class TickScheduler {
             return true;
         }
         return false;
+    }
+
+    private int currentExecutionScopeHash() {
+        int result = Configs.Core.WORK_MODE.getOptionListValue().hashCode();
+        result = 31 * result + Configs.Core.WORK_MODE_TYPE.getOptionListValue().hashCode();
+        result = 31 * result + Boolean.hashCode(Configs.Core.PRINT.getBooleanValue());
+        result = 31 * result + Boolean.hashCode(Configs.Core.MINE.getBooleanValue());
+        result = 31 * result + Boolean.hashCode(Configs.Core.FILL.getBooleanValue());
+        result = 31 * result + Boolean.hashCode(Configs.Core.FLUID.getBooleanValue());
+        result = 31 * result + Boolean.hashCode(Configs.Hotkeys.BEDROCK.getBooleanValue());
+        return result;
     }
 }

@@ -27,32 +27,40 @@ public class SwitchItem {
     public static Map<ItemStack, ItemStatistics> itemStacks = new HashMap<>();
 
     public static void removeItem(ItemStack itemStack) {
-        itemStacks.remove(itemStack);
+        ItemStack key = findRecordedStack(itemStack);
+        if (key != null) {
+            itemStacks.remove(key);
+        }
     }
 
     public static void syncUseTime(ItemStack itemStack) {
-        ItemStatistics itemStatistics = itemStacks.get(itemStack);
+        ItemStatistics itemStatistics = findStatistics(itemStack);
         if (itemStatistics != null) itemStatistics.syncUseTime();
     }
 
     public static void newItem(ItemStack itemStack, int slot, int shulkerBox) {
-        if (shulkerBox != -1) itemStacks.put(itemStack, new ItemStatistics(slot, shulkerBox));
+        if (shulkerBox != -1) itemStacks.put(itemStack.copy(), new ItemStatistics(slot, shulkerBox));
     }
 
     public static void openInv(ItemStack itemStack) {
-        if (!client.player.containerMenu.equals(client.player.inventoryMenu) || ModLoadUtils.closeScreen > 0) {
+        if (client.player == null
+                || reSwitchItem == null
+                || !client.player.containerMenu.equals(client.player.inventoryMenu)
+                || ModLoadUtils.closeScreen > 0) {
             return;
         }
         AbstractContainerMenu sc = client.player.containerMenu;
         if (sc.slots.stream().skip(9).limit(sc.slots.size() - 10)
                 .noneMatch(slot -> InventoryUtils.areStacksEqual(slot.getItem(), reSwitchItem))) {
-            itemStacks.remove(reSwitchItem);
+            removeItem(reSwitchItem);
             reSwitchItem = null;
             return;
         }
-        ItemStatistics itemStatistics = itemStacks.get(itemStack);
+        ItemStatistics itemStatistics = findStatistics(itemStack);
         if (itemStatistics != null) {
-            if (ShulkerUtils.openShulker(sc.slots.get(itemStatistics.shulkerBoxSlot).getItem(), itemStatistics.shulkerBoxSlot)) {
+            if (itemStatistics.shulkerBoxSlot >= 0
+                    && itemStatistics.shulkerBoxSlot < sc.slots.size()
+                    && ShulkerUtils.openShulker(sc.slots.get(itemStatistics.shulkerBoxSlot).getItem(), itemStatistics.shulkerBoxSlot)) {
                 ModLoadUtils.closeScreen++;
             } else {
                 removeItem(reSwitchItem);
@@ -70,10 +78,10 @@ public class SwitchItem {
      * 如果没有可用物品，则在游戏界面显示“背包已满，请先清理”的提示。
      */
     public static void checkItems() {
-        final long[] min = {System.currentTimeMillis()};
+        final long[] min = {Long.MAX_VALUE};
         AtomicReference<ItemStack> key = new AtomicReference<>();
-        itemStacks.keySet().forEach(k -> {
-            long useTime = itemStacks.get(k).useTime;
+        itemStacks.forEach((k, statistics) -> {
+            long useTime = statistics.useTime;
             if (useTime < min[0]) {
                 min[0] = useTime;
                 key.set(k);
@@ -87,10 +95,17 @@ public class SwitchItem {
     }
 
     public static void reSwitchItem() {
-        if (client.player == null || reSwitchItem == null) return;
+        if (client.player == null || client.gameMode == null || reSwitchItem == null) return;
         LocalPlayer player = client.player;
         AbstractContainerMenu sc = player.containerMenu;
         if (sc.equals(player.inventoryMenu)) return;
+        ItemStatistics statistics = findStatistics(reSwitchItem);
+        if (statistics == null || statistics.slot < 0 || statistics.slot >= sc.slots.size()) {
+            removeItem(reSwitchItem);
+            reSwitchItem = null;
+            player.closeContainer();
+            return;
+        }
 
         List<Integer> sameItem = new ArrayList<>();
         for (int i = 0; i < sc.slots.size(); i++) {
@@ -99,8 +114,8 @@ public class SwitchItem {
                     InventoryUtils.areStacksEqual(reSwitchItem, slot.getItem()) &&
                     slot.getItem().getCount() < slot.getItem().getMaxStackSize()
             ) sameItem.add(i);
-            if (slot.container instanceof Inventory && client.gameMode != null && InventoryUtils.areStacksEqual(slot.getItem(), reSwitchItem)) {
-                int slot1 = itemStacks.get(reSwitchItem).slot;
+            if (slot.container instanceof Inventory && InventoryUtils.areStacksEqual(slot.getItem(), reSwitchItem)) {
+                int slot1 = statistics.slot;
                 boolean reInv = false;
                 //检查记录的槽位是否有物品
                 if (sc.slots.get(slot1).getItem().isEmpty()) {
@@ -108,7 +123,7 @@ public class SwitchItem {
                     client.gameMode.handleContainerInput(sc.containerId, slot1, 0, ContainerInput.PICKUP, client.player);
                     reInv = true;
                 } else {
-                    int count = reSwitchItem.getCount();
+                    int count = slot.getItem().getCount();
                     client.gameMode.handleContainerInput(sc.containerId, i, 0, ContainerInput.PICKUP, client.player);
                     for (Integer integer : sameItem) {
                         int count1 = sc.slots.get(integer).getItem().getCount();
@@ -116,24 +131,51 @@ public class SwitchItem {
                         int i1 = maxCount - count1;
                         count -= i1;
                         client.gameMode.handleContainerInput(sc.containerId, integer, 0, ContainerInput.PICKUP, client.player);
-                        if (count <= 0) reInv = true;
+                        if (count <= 0 || sc.getCarried().isEmpty()) {
+                            reInv = true;
+                            break;
+                        }
                     }
                 }
                 removeItem(reSwitchItem);
                 reSwitchItem = null;
-                player.closeContainer();
                 if (!reInv) {
                     MessageUtils.setOverlayMessage(I18n.INVENTORY_RESTORE_FAILED.getName(), false);
                 }
                 client.gameMode.handleContainerInput(sc.containerId, i, 0, ContainerInput.PICKUP, client.player);
+                player.closeContainer();
                 return;
             }
         }
+        removeItem(reSwitchItem);
+        reSwitchItem = null;
+        MessageUtils.setOverlayMessage(I18n.INVENTORY_RESTORE_FAILED.getName(), false);
+        player.closeContainer();
     }
 
     public static void reSet() {
         reSwitchItem = null;
         itemStacks = new HashMap<>();
+    }
+
+    private static ItemStatistics findStatistics(ItemStack stack) {
+        ItemStack key = findRecordedStack(stack);
+        return key == null ? null : itemStacks.get(key);
+    }
+
+    private static ItemStack findRecordedStack(ItemStack stack) {
+        if (stack == null) {
+            return null;
+        }
+        if (itemStacks.containsKey(stack)) {
+            return stack;
+        }
+        for (ItemStack recorded : itemStacks.keySet()) {
+            if (InventoryUtils.areStacksEqual(recorded, stack)) {
+                return recorded;
+            }
+        }
+        return null;
     }
 
     public static class ItemStatistics {

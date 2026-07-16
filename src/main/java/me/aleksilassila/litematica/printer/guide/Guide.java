@@ -59,9 +59,7 @@ public abstract class Guide extends BlockStateUtils {
 
         // 水生植物（海草等）需要水环境才能放置
         if (BlockStateUtils.requiresWaterToPlace(requiredBlock)) {
-            BlockPos waterPos = requiredState.hasProperty(BlockStateProperties.WATERLOGGED)
-                    ? blockPos : blockPos.above();
-            if (!BlockStateUtils.hasSourceWaterFluid(level.getBlockState(waterPos))) {
+            if (!BlockStateUtils.hasSourceWaterFluid(level.getBlockState(blockPos))) {
                 return Result.PASS;
             }
         }

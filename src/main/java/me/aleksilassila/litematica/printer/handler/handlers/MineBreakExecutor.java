@@ -88,9 +88,6 @@ final class MineBreakExecutor {
         if (player == null || !this.shouldResolveBestTool()) {
             return true;
         }
-        if (target.bestToolItem == player.getMainHandItem().getItem()) {
-            return true;
-        }
         return target.currentProgress >= target.bestProgress * CURRENT_TOOL_MIN_EFFICIENCY_RATIO;
     }
 

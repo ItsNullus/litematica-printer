@@ -1,6 +1,7 @@
 package me.aleksilassila.litematica.printer.printer.zxy.inventory;
 
 import me.aleksilassila.litematica.printer.I18n;
+import me.aleksilassila.litematica.printer.Reference;
 import me.aleksilassila.litematica.printer.utils.minecraft.MessageUtils;
 import me.aleksilassila.litematica.printer.utils.mods.ModLoadUtils;
 import me.aleksilassila.litematica.printer.utils.mods.ShulkerUtils;
@@ -120,13 +121,23 @@ public class InventoryUtils {
 
     public static void switchInv() {
         LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null || client.gameMode == null) {
+            clearSwitchRequest();
+            return;
+        }
         AbstractContainerMenu sc = player.containerMenu;
         if (sc.equals(player.inventoryMenu)) {
             return;
         }
         NonNullList<Slot> slots = sc.slots;
+        if (slots.isEmpty()) {
+            clearSwitchRequest();
+            player.closeContainer();
+            return;
+        }
         for (Item item : lastNeedItemList) {
-            for (int y = 0; y < slots.get(0).container.getContainerSize(); y++) {
+            int containerSize = Math.min(slots.size(), slots.get(0).container.getContainerSize());
+            for (int y = 0; y < containerSize; y++) {
                 if (slots.get(y).getItem().getItem().equals(item)) {
                     String[] str = fi.dy.masa.litematica.config.Configs.Generic.PICK_BLOCKABLE_SLOTS.getStringValue().split(",");
                     if (str.length == 0) return;
@@ -149,16 +160,16 @@ public class InventoryUtils {
                             me.aleksilassila.litematica.printer.utils.InventoryUtils.setSelectedSlot(player.getInventory(), c);
                             me.aleksilassila.litematica.printer.utils.InventoryUtils.syncSelectedHotbarSlot();
                             me.aleksilassila.litematica.printer.utils.InventorySwitchGuard.markSwitchIfNeeded(item);
-                            player.closeContainer();
                             //刷新濳影盒
                             if (shulkerBoxSlot != -1) {
                                 client.gameMode.handleContainerInput(sc.containerId, shulkerBoxSlot, 0, ContainerInput.PICKUP, client.player);
                                 client.gameMode.handleContainerInput(sc.containerId, shulkerBoxSlot, 0, ContainerInput.PICKUP, client.player);
                             }
+                            player.closeContainer();
                             clearSwitchRequest();
                             return;
                         } catch (Exception e) {
-                            System.out.println("Item switch error");
+                            Reference.LOGGER.warn("Quick Shulker 物品切换失败", e);
                         }
                     }
                 }

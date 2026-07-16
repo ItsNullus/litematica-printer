@@ -21,6 +21,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
+import java.util.function.Predicate;
+import net.minecraft.world.item.ItemStack;
 
 @SuppressWarnings("UnusedReturnValue")
 public class Action {
@@ -52,6 +54,12 @@ public class Action {
     protected int clickRepeatCount = 1;
     @Getter
     protected boolean needWaitModifyLook = false;
+    @Getter
+    @Nullable
+    protected Predicate<ItemStack> requiredStackPredicate;
+    @Getter
+    @Nullable
+    protected ItemStack requiredCreativeStack;
 
     public Action() {
         this.sides = createDefaultSides();
@@ -207,6 +215,16 @@ public class Action {
         return this.setShift(true);
     }
 
+    public Action setRequiredStackPredicate(@Nullable Predicate<ItemStack> requiredStackPredicate) {
+        this.requiredStackPredicate = requiredStackPredicate;
+        return this;
+    }
+
+    public Action setRequiredCreativeStack(@Nullable ItemStack requiredCreativeStack) {
+        this.requiredCreativeStack = requiredCreativeStack == null ? null : requiredCreativeStack.copy();
+        return this;
+    }
+
     public Action setConsumeEffectiveExecution(boolean consumeEffectiveExecution) {
         this.consumeEffectiveExecution = consumeEffectiveExecution;
         return this;
@@ -222,31 +240,32 @@ public class Action {
         return this;
     }
 
-    public Action queueAction(@NotNull BlockPos blockPos, @NotNull Direction side, boolean useShift, @NotNull LocalPlayer player) {
+    public boolean queueAction(@NotNull BlockPos blockPos, @NotNull Direction side, boolean useShift, @NotNull LocalPlayer player) {
         return this.queueAction(blockPos, side, useShift, player, null);
     }
 
-    public Action queueAction(@NotNull BlockPos blockPos, @NotNull Direction side, boolean useShift, @NotNull LocalPlayer player, @Nullable Item[] expectedItems) {
+    public boolean queueAction(@NotNull BlockPos blockPos, @NotNull Direction side, boolean useShift, @NotNull LocalPlayer player, @Nullable Item[] expectedItems) {
         if (Configs.Print.PLACE_IN_AIR.getBooleanValue() && !this.requiresSupport) {
-            ActionManager.INSTANCE.queueClick(
+            return ActionManager.INSTANCE.queueClick(
                     blockPos,
                     side.getOpposite(),
                     getSides().get(side),
                     useShift,
                     1,
-                    expectedItems
+                    expectedItems,
+                    ActionManager.ActionSource.PRINT
             );
         } else {
-            ActionManager.INSTANCE.queueClick(
+            return ActionManager.INSTANCE.queueClick(
                     blockPos.relative(side),
                     side.getOpposite(),
                     getSides().get(side),
                     useShift,
                     1,
-                    expectedItems
+                    expectedItems,
+                    ActionManager.ActionSource.PRINT
             );
         }
-        return this;
     }
 
     private static @NotNull Map<Direction, Vec3> createDefaultSides() {

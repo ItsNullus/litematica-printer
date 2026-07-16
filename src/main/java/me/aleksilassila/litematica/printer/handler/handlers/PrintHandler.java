@@ -5,7 +5,9 @@ import fi.dy.masa.litematica.world.WorldSchematic;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.enums.PrintModeType;
 import me.aleksilassila.litematica.printer.guide.Guides;
+import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.handler.Module;
+import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
 import me.aleksilassila.litematica.printer.handler.handlers.print.PrintPlacementExecutor;
 import me.aleksilassila.litematica.printer.handler.handlers.print.PrintPlacementResult;
@@ -39,6 +41,7 @@ public class PrintHandler extends Module {
 
     private List<String> printSkipListCache = List.of();
     private String[] printSkipFilters = new String[0];
+    private int observedActionConfigHash = Integer.MIN_VALUE;
 
     public PrintHandler() {
         super(NAME, PrintModeType.PRINTER, Configs.Core.PRINT, Configs.Print.PRINT_SELECTION_TYPE, true);
@@ -76,6 +79,15 @@ public class PrintHandler extends Module {
     @Override
     protected void preprocess() {
         this.updatePrintSkipCache();
+        int actionConfigHash = this.getActionConfigHash();
+        if (this.observedActionConfigHash != Integer.MIN_VALUE
+                && this.observedActionConfigHash != actionConfigHash) {
+            this.sortedTargets.clear();
+            ScanCache.INSTANCE.resetOwner(NAME);
+            ScanCache.INSTANCE.resetOwner("print_sorted");
+            this.requestFullScan();
+        }
+        this.observedActionConfigHash = actionConfigHash;
     }
 
     @Override
@@ -85,6 +97,7 @@ public class PrintHandler extends Module {
         this.ctx = null;
         this.printTasks.clear();
         this.sortedTargets.clear();
+        this.observedActionConfigHash = Integer.MIN_VALUE;
     }
 
     @Override
@@ -117,6 +130,9 @@ public class PrintHandler extends Module {
         this.printTaskAction = null;
         WorldSchematic schematic = SchematicWorldHandler.getSchematicWorld();
         if (schematic == null) return false;
+        if (HudStatsManager.INSTANCE.isPrintPlacementPending(blockPos)) {
+            return false;
+        }
         if (InteractionUtils.INSTANCE.isRecentlyBroken(blockPos) && !this.printTasks.isActiveTaskPos(blockPos)) {
             return false;
         }
@@ -149,6 +165,27 @@ public class PrintHandler extends Module {
         }
         this.printSkipListCache = new ArrayList<>(skipList);
         this.printSkipFilters = this.printSkipListCache.toArray(new String[0]);
+    }
+
+    private int getActionConfigHash() {
+        int result = Boolean.hashCode(Configs.Print.BREAK_WRONG_BLOCK.getBooleanValue());
+        result = 31 * result + Boolean.hashCode(Configs.Print.BREAK_EXTRA_BLOCK.getBooleanValue());
+        result = 31 * result + Boolean.hashCode(Configs.Print.PRINT_SKIP.getBooleanValue());
+        result = 31 * result + this.printSkipListCache.hashCode();
+        result = 31 * result + Boolean.hashCode(Configs.Print.PRINT_REPLACE.getBooleanValue());
+        result = 31 * result + Configs.Print.REPLACEABLE_LIST.getStrings().hashCode();
+        result = 31 * result + Boolean.hashCode(Configs.Print.SKIP_WATERLOGGED_BLOCK.getBooleanValue());
+        result = 31 * result + Boolean.hashCode(Configs.Print.REPLACE_CORAL.getBooleanValue());
+        result = 31 * result + Boolean.hashCode(Configs.Print.PRINT_ICE_FOR_WATER.getBooleanValue());
+        result = 31 * result + Boolean.hashCode(Configs.Print.STRIP_LOGS.getBooleanValue());
+        result = 31 * result + Boolean.hashCode(Configs.Print.NOTE_BLOCK_TUNING.getBooleanValue());
+        result = 31 * result + Boolean.hashCode(Configs.Print.SAFELY_OBSERVER.getBooleanValue());
+        result = 31 * result + Boolean.hashCode(Configs.Print.FILL_COMPOSTER.getBooleanValue());
+        result = 31 * result + Configs.Print.FILL_COMPOSTER_WHITELIST.getStrings().hashCode();
+        result = 31 * result + Boolean.hashCode(Configs.Print.BONEMEAL_CROPS.getBooleanValue());
+        result = 31 * result + Configs.Print.BONEMEAL_CROPS_CLICKS.getIntegerValue();
+        result = 31 * result + Boolean.hashCode(Configs.Print.REPAIR_RAIL_SHAPE.getBooleanValue());
+        return result;
     }
 
     private boolean shouldSkipRequiredState(BlockState requiredState) {
@@ -185,6 +222,7 @@ public class PrintHandler extends Module {
         switch (taskEvent) {
             case SUCCESS -> this.printTasks.onActionSuccess(taskAction, this.ctx, this.action);
             case QUEUED -> this.printTasks.onActionQueued(taskAction, this.ctx, this.action);
+            case CANCELLED -> taskAction.onCancelled(this.ctx, this.action);
             case FAILURE -> this.printTasks.onActionFailure(taskAction, this.ctx, this.action);
         }
     }

@@ -11,6 +11,9 @@ public interface PrintTaskAction {
 
     void onFailure(SchematicBlockContext context, Action action);
 
+    default void onCancelled(SchematicBlockContext context, Action action) {
+    }
+
     default boolean stopIterationAfterAction() {
         return true;
     }

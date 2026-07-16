@@ -52,7 +52,7 @@ public class InteractionUtils {
     public static boolean canBreakBlock(BlockPos pos) {
         ClientLevel world = client.level;
         LocalPlayer player = client.player;
-        if (world == null || player == null) return false;
+        if (world == null || player == null || client.gameMode == null) return false;
         BlockState currentState = world.getBlockState(pos);
         if (Configs.Break.BREAK_CHECK_HARDNESS.getBooleanValue() && currentState.getBlock().defaultDestroyTime() < 0) {
             return false;
@@ -252,8 +252,14 @@ public class InteractionUtils {
                 onTick();
                 return;
             }
-            if (continueDestroyBlock(breakPos, Direction.DOWN) != BlockBreakResult.IN_PROGRESS) {
-                this.markRecentlyBroken(breakPos);
+            BlockBreakResult result = continueDestroyBlock(breakPos, Direction.DOWN);
+            if (result != BlockBreakResult.IN_PROGRESS) {
+                if (result == BlockBreakResult.COMPLETED || result == BlockBreakResult.COMPLETED_WAIT) {
+                    this.markRecentlyBroken(breakPos);
+                    if (result == BlockBreakResult.COMPLETED_WAIT) {
+                        this.markPendingBroken(breakPos, ConfigUtils.getBreakCooldown());
+                    }
+                }
                 breakPos = null;
                 this.forceDelayedDestroy = false;
                 onTick();
@@ -301,6 +307,9 @@ public class InteractionUtils {
 
     public BlockBreakResult continueDestroyBlock(final BlockPos blockPos, Direction direction, boolean localPrediction, boolean trackBreakPos) {
         MultiPlayerGameModeExtension gameMode = (@Nullable MultiPlayerGameModeExtension) client.gameMode;
+        if (gameMode == null || blockPos == null || direction == null) {
+            return BlockBreakResult.FAILED;
+        }
         BlockBreakResult result = gameMode.litematica_printer$continueDestroyBlock(localPrediction, blockPos, direction, this.forceDelayedDestroy);
         if (trackBreakPos && result == BlockBreakResult.IN_PROGRESS) {
             breakPos = blockPos;
@@ -379,6 +388,9 @@ public class InteractionUtils {
 
     public InteractionResult useItemOn(boolean localPrediction, InteractionHand hand, BlockHitResult blockHit) {
         MultiPlayerGameModeExtension gameMode = (@Nullable MultiPlayerGameModeExtension) client.gameMode;
+        if (gameMode == null || hand == null || blockHit == null) {
+            return InteractionResult.FAIL;
+        }
         return gameMode.litematica_printer$useItemOn(localPrediction, hand, blockHit);
     }
 

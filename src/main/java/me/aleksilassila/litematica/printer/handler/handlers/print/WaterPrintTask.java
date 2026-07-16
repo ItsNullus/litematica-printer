@@ -319,11 +319,7 @@ public class WaterPrintTask implements PrintTask {
 
         @Override
         public void onQueued(SchematicBlockContext context, Action action) {
-            if (!this.finalPlacement) {
-                icePlacementSent = true;
-                iceBreakSent = false;
-                refreshState(context.currentState);
-            }
+            refreshState(context.currentState);
         }
 
         @Override
@@ -331,8 +327,18 @@ public class WaterPrintTask implements PrintTask {
             if (this.finalPlacement) {
                 complete = true;
             } else {
-                this.onQueued(context, action);
+                icePlacementSent = true;
+                iceBreakSent = false;
+                refreshState(context.currentState);
             }
+        }
+
+        @Override
+        public void onCancelled(SchematicBlockContext context, Action action) {
+            if (!this.finalPlacement) {
+                icePlacementSent = false;
+            }
+            refreshState(context.currentState);
         }
 
         @Override

@@ -2,7 +2,6 @@ package me.aleksilassila.litematica.printer.printer;
 
 import lombok.Setter;
 import me.aleksilassila.litematica.printer.Reference;
-import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.mixin_extension.MultiPlayerGameModeExtension;
 import me.aleksilassila.litematica.printer.printer.zxy.inventory.SwitchItem;
 import me.aleksilassila.litematica.printer.utils.minecraft.DirectionUtils;
@@ -19,6 +18,10 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+import net.minecraft.world.item.ItemStack;
 
 //#if MC > 12105
 import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket;
@@ -43,27 +46,66 @@ public class ActionManager {
     private long lastQueuedLookTick = Long.MIN_VALUE;
     private float lastQueuedLookYaw;
     private float lastQueuedLookPitch;
+    private boolean printerInteractionActive;
+    private boolean easyPlaceProtocolActive;
+    private ActionSource activeSource = ActionSource.GENERIC;
+
+    public enum ActionSource {
+        GENERIC,
+        PRINT,
+        FILL,
+        FLUID
+    }
+
+    public enum SendResult {
+        SENT,
+        WAITING_FOR_LOOK,
+        NO_QUEUED_ACTION,
+        NO_PLAYER,
+        STALE_POSITION,
+        HELD_ITEM_CHANGED,
+        NO_GAME_MODE,
+        INTERACTION_REJECTED;
+
+        public boolean isSent() {
+            return this == SENT;
+        }
+
+        public boolean isWaiting() {
+            return this == WAITING_FOR_LOOK;
+        }
+    }
 
     private ActionManager() {
     }
 
-    public void queueClick(@NotNull BlockPos target, @NotNull Direction side, @NotNull Vec3 hitModifier, boolean useShift) {
-        this.queueClick(target, side, hitModifier, useShift, 1);
+    public boolean queueClick(@NotNull BlockPos target, @NotNull Direction side, @NotNull Vec3 hitModifier, boolean useShift) {
+        return this.queueClick(target, side, hitModifier, useShift, 1);
     }
 
-    public void queueClick(@NotNull BlockPos target, @NotNull Direction side, @NotNull Vec3 hitModifier, boolean useShift, int clickRepeatCount) {
-        this.queueClick(target, side, hitModifier, useShift, clickRepeatCount, null);
+    public boolean queueClick(@NotNull BlockPos target, @NotNull Direction side, @NotNull Vec3 hitModifier, boolean useShift, int clickRepeatCount) {
+        return this.queueClick(target, side, hitModifier, useShift, clickRepeatCount, null);
     }
 
-    public void queueClick(@NotNull BlockPos target, @NotNull Direction side, @NotNull Vec3 hitModifier, boolean useShift, int clickRepeatCount, @Nullable Item[] expectedItems) {
-        if (Configs.Placement.PLACE_INTERVAL.getIntegerValue() != 0) {
-            if (this.queuedClick != null) {
-                System.out.println("Was not ready yet.");
-                return;
-            }
+    public boolean queueClick(@NotNull BlockPos target, @NotNull Direction side, @NotNull Vec3 hitModifier, boolean useShift, int clickRepeatCount, @Nullable Item[] expectedItems) {
+        return this.queueClick(target, side, hitModifier, useShift, clickRepeatCount, expectedItems, ActionSource.GENERIC);
+    }
+
+    public boolean queueClick(
+            @NotNull BlockPos target,
+            @NotNull Direction side,
+            @NotNull Vec3 hitModifier,
+            boolean useShift,
+            int clickRepeatCount,
+            @Nullable Item[] expectedItems,
+            @NotNull ActionSource source
+    ) {
+        if (this.queuedClick != null) {
+            return false;
         }
-        this.queuedClick = new QueuedClick(target, side, hitModifier, useShift, clickRepeatCount);
+        this.queuedClick = new QueuedClick(target, side, hitModifier, useShift, clickRepeatCount, source);
         this.queuedClick.expectItems(expectedItems);
+        return true;
     }
 
     public void useProtocolHitModifier(@NotNull Vec3 hitModifier) {
@@ -72,15 +114,32 @@ public class ActionManager {
         }
     }
 
-    public ActionManager sendQueue(@Nullable LocalPlayer player) {
+    public boolean setQueueCompletionListener(@Nullable Consumer<SendResult> completionListener) {
+        if (this.queuedClick == null) {
+            return false;
+        }
+        this.queuedClick.onCompletion(completionListener);
+        return true;
+    }
+
+    public boolean setExpectedStackPredicate(@Nullable Predicate<ItemStack> expectedStackPredicate) {
+        if (this.queuedClick == null) {
+            return false;
+        }
+        this.queuedClick.expectStack(expectedStackPredicate);
+        return true;
+    }
+
+    public SendResult sendQueue(@Nullable LocalPlayer player) {
         QueuedClick click = this.queuedClick;
-        if (click == null || player == null) {
-            clearQueue();
-            return this;
+        if (click == null) {
+            return SendResult.NO_QUEUED_ACTION;
+        }
+        if (player == null) {
+            return this.finish(click, SendResult.NO_PLAYER);
         }
         if (shouldDropStaleQueuedClick(player, click)) {
-            clearQueue();
-            return this;
+            return this.finish(click, SendResult.STALE_POSITION);
         }
         if (!needWaitModifyLook && look != null && shouldSendQueuedLook(look)) {
             NetworkUtils.sendLookPacket(player, look);
@@ -88,14 +147,13 @@ public class ActionManager {
         }
         if (shouldWaitForServerLook(player, click)) {
             needWaitModifyLook = true;
-            return this;
+            return SendResult.WAITING_FOR_LOOK;
         }
         if (needWaitModifyLook) {
             needWaitModifyLook = false;
         }
         if (!isHoldingExpectedItem(player, click)) {
-            clearQueue();
-            return this;
+            return this.finish(click, SendResult.HELD_ITEM_CHANGED);
         }
         Direction direction;
         if (look == null) {
@@ -125,20 +183,62 @@ public class ActionManager {
         } else if (!click.useShift && wasSneak) {
             setShift(player, false);
         }
-        MultiPlayerGameModeExtension gameModeExtension = (MultiPlayerGameModeExtension) Reference.MINECRAFT.gameMode;
-        if (gameModeExtension != null) {
+        if (!(Reference.MINECRAFT.gameMode instanceof MultiPlayerGameModeExtension gameModeExtension)) {
+            restoreShift(player, click, wasSneak);
+            return this.finish(click, SendResult.NO_GAME_MODE);
+        }
+
+        boolean accepted = false;
+        this.printerInteractionActive = true;
+        this.easyPlaceProtocolActive = click.useProtocol;
+        this.activeSource = click.source;
+        try {
             BlockHitResult blockHitResult = new BlockHitResult(hitVec, click.side, click.target, false);
             for (int i = 0; i < click.repeatCount; i++) {
-                gameModeExtension.litematica_printer$useItemOn(true, InteractionHand.MAIN_HAND, blockHitResult);
+                accepted |= gameModeExtension.litematica_printer$useItemOn(
+                        true,
+                        InteractionHand.MAIN_HAND,
+                        blockHitResult
+                ) != net.minecraft.world.InteractionResult.FAIL;
             }
+        } finally {
+            this.printerInteractionActive = false;
+            this.easyPlaceProtocolActive = false;
+            this.activeSource = ActionSource.GENERIC;
+            restoreShift(player, click, wasSneak);
         }
+        return this.finish(click, accepted ? SendResult.SENT : SendResult.INTERACTION_REJECTED);
+    }
+
+    private void restoreShift(LocalPlayer player, QueuedClick click, boolean wasSneak) {
         if (click.useShift && !wasSneak) {
             setShift(player, false);
         } else if (!click.useShift && wasSneak) {
             setShift(player, true);
         }
-        clearQueue();
-        return this;
+    }
+
+    private SendResult finish(QueuedClick click, SendResult result) {
+        Consumer<SendResult> completionListener = click.completionListener;
+        this.clearQueue();
+        if (completionListener != null) {
+            completionListener.accept(result);
+        }
+        return result;
+    }
+
+    public boolean isPrinterInteractionActive() {
+        return this.printerInteractionActive;
+    }
+
+    public boolean isPrintInteractionActive() {
+        return this.printerInteractionActive && this.activeSource == ActionSource.PRINT;
+    }
+
+    public boolean isEasyPlaceProtocolActive() {
+        return this.printerInteractionActive
+                && this.activeSource == ActionSource.PRINT
+                && this.easyPlaceProtocolActive;
     }
 
     public void setShift(LocalPlayer player, boolean shift) {
@@ -184,6 +284,10 @@ public class ActionManager {
     }
 
     private static boolean isHoldingExpectedItem(LocalPlayer player, QueuedClick click) {
+        if (click.expectedStackPredicate != null
+                && !click.expectedStackPredicate.test(player.getMainHandItem())) {
+            return false;
+        }
         if (click.expectedItems == null || click.expectedItems.length == 0) {
             return true;
         }
@@ -222,5 +326,8 @@ public class ActionManager {
         this.waitForHorizontalLook = true;
         this.actionRequiresWaitModifyLook = false;
         this.look = null;
+        this.printerInteractionActive = false;
+        this.easyPlaceProtocolActive = false;
+        this.activeSource = ActionSource.GENERIC;
     }
 }

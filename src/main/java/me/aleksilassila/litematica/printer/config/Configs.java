@@ -358,6 +358,8 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 .build();
 
         public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
+                BREAK_INTERVAL,
+                BREAK_BLOCKS_PER_TICK,
                 BREAK_CHECK_HARDNESS,
                 BREAK_AUTO_TOOL,
                 BREAK_USE_DELAYED_DESTROY,

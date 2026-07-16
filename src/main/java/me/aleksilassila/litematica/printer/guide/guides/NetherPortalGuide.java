@@ -7,6 +7,8 @@ import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
 import me.aleksilassila.litematica.printer.printer.action.Action;
 import net.minecraft.world.level.portal.PortalShape;
 import net.minecraft.world.item.Items;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.block.NetherPortalBlock;
 
 /**
  * 下界传送门
@@ -19,7 +21,9 @@ public class NetherPortalGuide extends Guide {
 
     @Override
     protected Result onBuildActionMissingBlock(BlockMatchResult state) {
-        boolean canCreatePortal = PortalShape.findEmptyPortalShape(level, blockPos, net.minecraft.core.Direction.Axis.X).isPresent();
+        Direction.Axis requiredAxis = getProperty(requiredState, NetherPortalBlock.AXIS)
+                .orElse(Direction.Axis.X);
+        boolean canCreatePortal = PortalShape.findEmptyPortalShape(level, blockPos, requiredAxis).isPresent();
         if (canCreatePortal) {
             return Result.success(new Action()
                     .setItems(Items.FLINT_AND_STEEL, Items.FIRE_CHARGE)

@@ -1,6 +1,7 @@
 package me.aleksilassila.litematica.printer.handler.handlers;
 
 import me.aleksilassila.litematica.printer.mixin_extension.BlockBreakResult;
+import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -28,7 +29,8 @@ final class MineToolSession {
     }
 
     void beginTick() {
-        this.remainingInstantBudget = -1;
+        int configuredBudget = Configs.Break.BREAK_BLOCKS_PER_TICK.getIntegerValue();
+        this.remainingInstantBudget = configuredBudget <= 0 ? -1 : configuredBudget;
         this.remainingSafeToolBreaks = InteractionUtils.getCurrentToolSafeBreakBudget();
     }
 

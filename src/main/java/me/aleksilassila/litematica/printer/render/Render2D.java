@@ -492,7 +492,10 @@ public class Render2D {
         return switch (mode) {
             case PRINT, FILL, FLUID -> Configs.Placement.PLACE_BLOCKS_PER_TICK.getIntegerValue()
                     + "/t 间隔" + Configs.Placement.PLACE_INTERVAL.getIntegerValue();
-            case MINE -> "不限速";
+            case MINE -> (Configs.Break.BREAK_BLOCKS_PER_TICK.getIntegerValue() == 0
+                    ? "不限速"
+                    : Configs.Break.BREAK_BLOCKS_PER_TICK.getIntegerValue() + "/t")
+                    + " 间隔" + Configs.Break.BREAK_INTERVAL.getIntegerValue();
             case BEDROCK -> Configs.Bedrock.BEDROCK_BLOCKS_PER_TICK.getIntegerValue()
                     + "/t 间隔" + Configs.Bedrock.BEDROCK_INTERVAL.getIntegerValue();
             case TOTAL -> "--";

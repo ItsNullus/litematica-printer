@@ -111,6 +111,7 @@ public class FillHandler extends Module {
         if (this.observedFillScanConfigHash != Integer.MIN_VALUE
                 && this.observedFillScanConfigHash != scanConfigHash) {
             this.clearFillTargets();
+            ScanCache.INSTANCE.resetOwner(NAME);
             this.requestFullScan();
         }
         this.observedFillScanConfigHash = scanConfigHash;
@@ -135,11 +136,6 @@ public class FillHandler extends Module {
     @Override
     protected boolean canIterate() {
         return fillModeItemList.length > 0;
-    }
-
-    @Override
-    protected boolean usesDirtyRegionWakeup() {
-        return false;
     }
 
     @Override
@@ -315,17 +311,40 @@ public class FillHandler extends Module {
         }
         BlockPos clickTarget = Configs.Print.PLACE_IN_AIR.getBooleanValue() ? blockPos : blockPos.relative(side);
         Direction clickSide = side.getOpposite();
-        ActionManager.INSTANCE.queueClick(clickTarget, clickSide, Vec3.ZERO, false);
+        Item[] expectedItems = handheld
+                ? new Item[]{player.getMainHandItem().getItem()}
+                : this.fillModeItemList;
+        if (!ActionManager.INSTANCE.queueClick(
+                clickTarget,
+                clickSide,
+                Vec3.ZERO,
+                false,
+                1,
+                expectedItems,
+                ActionManager.ActionSource.FILL
+        )) {
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "动作队列占用");
+            setIterationConsumedEffectiveExecution(false);
+            skipIteration.set(true);
+            return;
+        }
         ActionManager.INSTANCE.setLook(new PlayerLook(clickSide));
         ActionManager.INSTANCE.setWaitForHorizontalLook(false);
-        HudStatsManager.INSTANCE.trackExpectedBlockChange(HudStatsManager.Mode.FILL, blockPos, currentState);
-        HudStatsManager.INSTANCE.recordRateUnit(HudStatsManager.Mode.FILL, 1);
-        if (ActionManager.INSTANCE.sendQueue(player).needWaitModifyLook) {
+        ActionManager.SendResult sendResult = ActionManager.INSTANCE.sendQueue(player);
+        if (sendResult.isWaiting()) {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "等待转头");
             skipIteration.set(true);
-        } else {
-            HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.FILL, "运行中");
+            return;
         }
+        if (!sendResult.isSent()) {
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "放置动作未发送");
+            setIterationConsumedEffectiveExecution(false);
+            skipIteration.set(true);
+            return;
+        }
+        HudStatsManager.INSTANCE.trackExpectedBlockChange(HudStatsManager.Mode.FILL, blockPos, currentState);
+        HudStatsManager.INSTANCE.recordRateUnit(HudStatsManager.Mode.FILL, 1);
+        HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.FILL, "运行中");
         this.setBlockPosCooldown(blockPos, ConfigUtils.getPlaceCooldown());
     }
 

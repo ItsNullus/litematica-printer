@@ -10,7 +10,10 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 拼音搜索工具类：将中文字符串转换为全拼/简拼组合，支持拼音包含性判断
@@ -19,6 +22,14 @@ import java.util.List;
 public class PinYinSearchUtils {
     // 复用拼音格式配置（常量），避免重复创建
     private static final HanyuPinyinOutputFormat PINYIN_FORMAT;
+    private static final int MAX_CACHE_ENTRIES = 512;
+    private static final int MAX_COMBINATIONS = 256;
+    private static final Map<String, List<String>> CACHE = new LinkedHashMap<>(64, 0.75F, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, List<String>> eldest) {
+            return this.size() > MAX_CACHE_ENTRIES;
+        }
+    };
 
     static {
         // 静态初始化：配置拼音输出格式（小写、无声调、v代替ü）
@@ -38,6 +49,10 @@ public class PinYinSearchUtils {
         if (str == null || str.isEmpty()) {
             return new ArrayList<>();
         }
+        List<String> cached = CACHE.get(str);
+        if (cached != null) {
+            return new ArrayList<>(cached);
+        }
 
         char[] chars = str.toCharArray();
         // 改用方法内局部变量存储每个字符的拼音数组，移除静态变量
@@ -55,7 +70,7 @@ public class PinYinSearchUtils {
                         // 生僻字/无法识别的汉字：保留原字符
                         charPinyinList.add(new String[]{String.valueOf(c)});
                     } else {
-                        charPinyinList.add(pinyinArray);
+                        charPinyinList.add(new LinkedHashSet<>(List.of(pinyinArray)).toArray(new String[0]));
                     }
                 }
             }
@@ -65,7 +80,9 @@ public class PinYinSearchUtils {
         }
 
         // 生成全拼+简拼组合
-        return generatePinyinCombinations(charPinyinList);
+        ArrayList<String> result = generatePinyinCombinations(charPinyinList);
+        CACHE.put(str, List.copyOf(result));
+        return result;
     }
 
     /**
@@ -90,40 +107,30 @@ public class PinYinSearchUtils {
      */
     @NotNull
     private static ArrayList<String> generatePinyinCombinations(List<String[]> charPinyinList) {
-        ArrayList<String> fullPinyinList = new ArrayList<>();   // 全拼组合列表
-        ArrayList<String> shortPinyinList = new ArrayList<>();  // 简拼组合列表
-        // 遍历每个字符的拼音数组，生成组合
-        for (int i = 0; i < charPinyinList.size(); i++) {
-            String[] currentPinyinArray = charPinyinList.get(i);
-            // 临时存储本轮生成的全拼/简拼
-            ArrayList<String> tempFullList = new ArrayList<>();
-            ArrayList<String> tempShortList = new ArrayList<>();
-            for (String pinyin : currentPinyinArray) {
-                if (i == 0) {
-                    // 第一个字符：直接添加
-                    tempFullList.add(pinyin);
-                    tempShortList.add(String.valueOf(pinyin.charAt(0)));
-                } else {
-                    // 非第一个字符：和已有的组合拼接
-                    for (String existingFull : fullPinyinList) {
-                        tempFullList.add(existingFull + pinyin);
-                    }
-                    for (String existingShort : shortPinyinList) {
-                        tempShortList.add(existingShort + pinyin.charAt(0));
-                    }
+        List<String> fullPinyinList = List.of("");
+        List<String> shortPinyinList = List.of("");
+        for (String[] currentPinyinArray : charPinyinList) {
+            ArrayList<String> nextFull = new ArrayList<>();
+            ArrayList<String> nextShort = new ArrayList<>();
+            for (String existing : fullPinyinList) {
+                for (String pinyin : currentPinyinArray) {
+                    if (nextFull.size() >= MAX_COMBINATIONS) break;
+                    nextFull.add(existing + pinyin);
                 }
+                if (nextFull.size() >= MAX_COMBINATIONS) break;
             }
-            // 更新全拼/简拼列表
-            if (i == 0) {
-                fullPinyinList = tempFullList;
-                shortPinyinList = tempShortList;
-            } else {
-                fullPinyinList = tempFullList;
-                shortPinyinList = tempShortList;
+            for (String existing : shortPinyinList) {
+                for (String pinyin : currentPinyinArray) {
+                    if (nextShort.size() >= MAX_COMBINATIONS) break;
+                    nextShort.add(existing + pinyin.charAt(0));
+                }
+                if (nextShort.size() >= MAX_COMBINATIONS) break;
             }
+            fullPinyinList = nextFull;
+            shortPinyinList = nextShort;
         }
-        // 合并全拼和简拼
-        fullPinyinList.addAll(shortPinyinList);
-        return fullPinyinList;
+        LinkedHashSet<String> combined = new LinkedHashSet<>(fullPinyinList);
+        combined.addAll(shortPinyinList);
+        return new ArrayList<>(combined);
     }
 }

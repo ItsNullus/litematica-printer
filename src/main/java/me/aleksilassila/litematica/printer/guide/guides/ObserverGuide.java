@@ -71,10 +71,8 @@ public class ObserverGuide extends Guide {
                 }
                 temp = offset;
             }
-            if (!output.requiredState.isAir()) {
-                if (!isObserverInputChainReady(input)) {
-                    return Result.SKIP;
-                }
+            if (!isObserverInputChainReady(input)) {
+                return Result.SKIP;
             }
 
             // 侦测器隔空激活活塞检查
@@ -98,12 +96,9 @@ public class ObserverGuide extends Guide {
                 }
                 return Result.SKIP;
             } else {
-                if (isObserverInputChainReady(input)) {
-                    return Result.success(placementAction(facing));
-                }
-                if (!isObserverInputChainReady(output)) {
-                    return Result.SKIP;
-                }
+                // 输出端为空不代表输入端已经安全。安全模式必须等侦测面链条就绪，
+                // 否则放置瞬间仍可能产生非原理图预期的更新脉冲。
+                return Result.SKIP;
             }
         }
 

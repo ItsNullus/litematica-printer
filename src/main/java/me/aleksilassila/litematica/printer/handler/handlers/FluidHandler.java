@@ -8,13 +8,17 @@ import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
 import me.aleksilassila.litematica.printer.printer.ActionManager;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
+import me.aleksilassila.litematica.printer.printer.PrinterUtils;
+import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.RegistryFilterResolver;
+import me.aleksilassila.litematica.printer.utils.minecraft.BlockUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
@@ -25,6 +29,14 @@ import java.util.function.Predicate;
 
 public class FluidHandler extends Module {
     public final static String NAME = "fluid";
+    private static final Direction[] PLACEMENT_SIDE_ORDER = {
+            Direction.DOWN,
+            Direction.NORTH,
+            Direction.SOUTH,
+            Direction.EAST,
+            Direction.WEST,
+            Direction.UP
+    };
 
     private List<String> fillBlocks = new ArrayList<>();
     private List<Item> fillItems = new ArrayList<>();
@@ -32,6 +44,7 @@ public class FluidHandler extends Module {
 
     private List<String> fluidBlocks = new ArrayList<>();
     private Set<Fluid> fluids = Set.of();
+    private int observedScanConfigHash = Integer.MIN_VALUE;
 
     public FluidHandler() {
         super(NAME, PrintModeType.FLUID, Configs.Core.FLUID, Configs.Fluid.FLUID_SELECTION_TYPE, true);
@@ -72,11 +85,23 @@ public class FluidHandler extends Module {
         } else {
             HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.FLUID, "运行中");
         }
+        int scanConfigHash = this.getScanConfigHash();
+        if (this.observedScanConfigHash != Integer.MIN_VALUE
+                && this.observedScanConfigHash != scanConfigHash) {
+            ScanCache.INSTANCE.resetOwner(NAME);
+            this.requestFullScan();
+        }
+        this.observedScanConfigHash = scanConfigHash;
+    }
+
+    @Override
+    protected void onRuntimeReset() {
+        this.observedScanConfigHash = Integer.MIN_VALUE;
     }
 
     @Override
     protected boolean canIterate() {
-        return !fillItems.isEmpty() && !fluidBlocks.isEmpty();
+        return !fillItems.isEmpty() && !fluids.isEmpty();
     }
 
     @Override
@@ -131,20 +156,60 @@ public class FluidHandler extends Module {
             }
             return;
         }
-        ActionManager.INSTANCE.queueClick(
-                Configs.Print.PLACE_IN_AIR.getBooleanValue() ? blockPos : blockPos.above(),
-                Direction.DOWN,
+        BlockPos clickTarget = blockPos;
+        Direction clickSide = Direction.DOWN;
+        if (!Configs.Print.PLACE_IN_AIR.getBooleanValue()) {
+            Direction placementSide = this.findPlacementSide(blockPos);
+            if (placementSide == null) {
+                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "无有效放置面");
+                setIterationConsumedEffectiveExecution(false);
+                return;
+            }
+            clickTarget = blockPos.relative(placementSide);
+            clickSide = placementSide.getOpposite();
+        }
+        if (!ActionManager.INSTANCE.queueClick(
+                clickTarget,
+                clickSide,
                 Vec3.ZERO,
-                false
-        );
-        HudStatsManager.INSTANCE.trackExpectedBlockChange(HudStatsManager.Mode.FLUID, blockPos, level.getBlockState(blockPos));
-        HudStatsManager.INSTANCE.recordRateUnit(HudStatsManager.Mode.FLUID, 1);
-        if (ActionManager.INSTANCE.sendQueue(player).needWaitModifyLook) {
+                false,
+                1,
+                fillItemArray,
+                ActionManager.ActionSource.FLUID
+        )) {
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "动作队列占用");
+            setIterationConsumedEffectiveExecution(false);
+            skipIteration.set(true);
+            return;
+        }
+        BlockState previousState = level.getBlockState(blockPos);
+        ActionManager.SendResult sendResult = ActionManager.INSTANCE.sendQueue(player);
+        if (sendResult.isWaiting()) {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "等待转头");
             skipIteration.set(true);
-        } else {
-            HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.FLUID, "运行中");
+            return;
         }
+        if (!sendResult.isSent()) {
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "放置动作未发送");
+            setIterationConsumedEffectiveExecution(false);
+            skipIteration.set(true);
+            return;
+        }
+        HudStatsManager.INSTANCE.trackExpectedBlockChange(HudStatsManager.Mode.FLUID, blockPos, previousState);
+        HudStatsManager.INSTANCE.recordRateUnit(HudStatsManager.Mode.FLUID, 1);
+        HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.FLUID, "运行中");
+        this.setBlockPosCooldown(blockPos, ConfigUtils.getPlaceCooldown());
+    }
+
+    private Direction findPlacementSide(BlockPos blockPos) {
+        for (Direction side : PLACEMENT_SIDE_ORDER) {
+            BlockPos neighborPos = blockPos.relative(side);
+            if (PrinterUtils.canBeClicked(this.level, neighborPos)
+                    && !BlockUtils.isReplaceable(this.level.getBlockState(neighborPos))) {
+                return side;
+            }
+        }
+        return null;
     }
 
     private boolean isTargetFluid(BlockPos blockPos) {
@@ -154,5 +219,12 @@ public class FluidHandler extends Module {
     private boolean isTargetFluid(FluidState fluidState) {
         return fluids.contains(fluidState.getType())
                 && (Configs.Fluid.FILL_FLOWING_FLUID.getBooleanValue() || fluidState.isSource());
+    }
+
+    private int getScanConfigHash() {
+        int result = this.fillBlocks.hashCode();
+        result = 31 * result + this.fluidBlocks.hashCode();
+        result = 31 * result + Boolean.hashCode(Configs.Fluid.FILL_FLOWING_FLUID.getBooleanValue());
+        return result;
     }
 }

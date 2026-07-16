@@ -15,6 +15,7 @@ version = artifactVersion
 group = modMavenGroup
 
 repositories {
+    mavenCentral()
     fun strictMaven(url: String, vararg groups: String) = exclusiveContent {
         forRepository { maven(url) }
         filter {
@@ -24,8 +25,6 @@ repositories {
             }
         }
     }
-    strictMaven("https://mvnrepository.com/artifact/com.belerweb/pinyin4j")
-
     strictMaven("https://maven.fabricmc.net")
     strictMaven("https://maven.fallenbreath.me/releases")
     strictMaven("https://www.cursemaven.com", "curse.maven")

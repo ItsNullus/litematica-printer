@@ -13,6 +13,8 @@ public final class DirtyRegionTracker {
     public static final DirtyRegionTracker INSTANCE = new DirtyRegionTracker();
 
     public static final int REGION_SIZE = 16;
+    private static final int MAX_DIRTY_REGIONS = 8192;
+    private static final long MAX_VERSION_HISTORY = 32768L;
 
     private static final int XZ_BITS = 22;
     private static final int Y_BITS = 20;
@@ -84,6 +86,10 @@ public final class DirtyRegionTracker {
 
     private void markDirtyRegion(int sectionX, int sectionY, int sectionZ) {
         this.dirtyRegions.put(regionKey(sectionX, sectionY, sectionZ), ++this.version);
+        if (this.dirtyRegions.size() > MAX_DIRTY_REGIONS && (this.version & 255L) == 0L) {
+            long minimumVersion = Math.max(0L, this.version - MAX_VERSION_HISTORY);
+            this.dirtyRegions.long2LongEntrySet().removeIf(entry -> entry.getLongValue() < minimumVersion);
+        }
     }
 
     private PrinterBox toBox(long key) {

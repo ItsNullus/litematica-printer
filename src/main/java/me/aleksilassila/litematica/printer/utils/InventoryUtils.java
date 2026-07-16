@@ -23,6 +23,15 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.state.BlockState;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
+
+//#if MC >= 12005
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.alchemy.PotionContents;
+//#else
+//$$ import net.minecraft.world.item.alchemy.PotionUtils;
+//#endif
+import net.minecraft.world.item.alchemy.Potions;
 
 import static fi.dy.masa.malilib.util.InventoryUtils.*;
 import static me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.lastNeedItemList;
@@ -65,17 +74,37 @@ public class InventoryUtils {
         return playerHasAccessToItems(playerEntity, item);
     }
 
+    public static boolean playerHasItemInInventory(LocalPlayer playerEntity, Item item) {
+        if (playerEntity == null || item == null) {
+            return false;
+        }
+        if (PlayerUtils.getAbilities(playerEntity).instabuild) {
+            return true;
+        }
+        Inventory inventory = playerEntity.getInventory();
+        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+            if (inventory.getItem(slot).is(item)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static boolean playerHasAccessToItems(LocalPlayer playerEntity, Item... items) {
         if (items == null || items.length == 0) return true;
-        if (PlayerUtils.getAbilities(playerEntity).mayBuild) return true;
+        if (playerEntity == null) return false;
+        if (PlayerUtils.getAbilities(playerEntity).instabuild) return true;
         if (!playerEntity.containerMenu.equals(playerEntity.inventoryMenu)) return false;
         Inventory inventory = playerEntity.getInventory();
-        for (Item item : items) {
-            for (int i = 0; i < inventory.getContainerSize(); i++) {
-                if (inventory.getItem(i).getItem() == item) {
+        for (int i = 0; i < inventory.getContainerSize(); i++) {
+            Item inventoryItem = inventory.getItem(i).getItem();
+            for (Item item : items) {
+                if (inventoryItem == item) {
                     return true;
                 }
             }
+        }
+        for (Item item : items) {
             me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.lastNeedItemList.add(item);
         }
         return false;
@@ -340,29 +369,53 @@ public class InventoryUtils {
             }
             return false;
         }
-        // 找到背包中可用的物品
+        // 先检查全部可接受物品，避免首选物品缺失时提前发起取货，
+        // 而背包里其实已经有后备物品（例如打火石/火焰弹）。
         for (Item item : items) {
-            int slot = -1;
             for (int i = 0; i < inventory.getContainerSize(); i++) {
                 ItemStack itemStack = inventory.getItem(i);
                 if (itemStack.getItem().equals(item)) {
-                    slot = i;
-                    break;
+                    orderlyStoreItem = itemStack;
+                    boolean needsInventoryConfirmation = !Inventory.isHotbarSlot(i);
+                    if (InventoryUtils.setPickedItemToHand(i, itemStack, client)) {
+                        return !needsInventoryConfirmation || !InventorySwitchGuard.markSwitchIfNeeded(item);
+                    }
+                    return false;
                 }
             }
-            if (slot != -1) {
-                ItemStack itemStack = inventory.getItem(slot);
-                orderlyStoreItem = itemStack;
-                boolean needsInventoryConfirmation = !Inventory.isHotbarSlot(slot);
-                if (InventoryUtils.setPickedItemToHand(slot, itemStack, client)) {
-                    return !needsInventoryConfirmation || !InventorySwitchGuard.markSwitchIfNeeded(item);
-                }
-                return false;
-            }
+        }
+        // 背包里所有后备物品都不存在后，再按优先级请求外部取货。
+        for (Item item : items) {
             if (TakeItOutUtils.tryRequestItem(item)) {
                 return false;
             }
+        }
+        for (Item item : items) {
             lastNeedItemList.add(item);
+        }
+        return false;
+    }
+
+    public static boolean playerHasAccessToMatchingStack(
+            LocalPlayer playerEntity,
+            ItemStack creativeFallback,
+            Predicate<ItemStack> predicate
+    ) {
+        if (playerEntity == null || predicate == null) {
+            return false;
+        }
+        if (PlayerUtils.getAbilities(playerEntity).instabuild) {
+            return creativeFallback != null && predicate.test(creativeFallback);
+        }
+        if (!playerEntity.containerMenu.equals(playerEntity.inventoryMenu)) {
+            return false;
+        }
+        Inventory inventory = playerEntity.getInventory();
+        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            if (!stack.isEmpty() && predicate.test(stack)) {
+                return true;
+            }
         }
         return false;
     }
@@ -378,6 +431,63 @@ public class InventoryUtils {
             }
         }
         return false;
+    }
+
+    public static boolean switchToMatchingStack(
+            LocalPlayer player,
+            Predicate<ItemStack> predicate,
+            ItemStack creativeFallback
+    ) {
+        if (player == null || predicate == null || InventorySwitchGuard.isWaiting()) {
+            return false;
+        }
+        ItemStack mainHandStack = player.getMainHandItem();
+        if (predicate.test(mainHandStack)) {
+            orderlyStoreItem = mainHandStack;
+            return true;
+        }
+
+        Inventory inventory = player.getInventory();
+        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            if (stack.isEmpty() || !predicate.test(stack)) {
+                continue;
+            }
+            orderlyStoreItem = stack;
+            boolean needsInventoryConfirmation = !Inventory.isHotbarSlot(slot);
+            if (setPickedItemToHand(slot, stack, client)) {
+                return !needsInventoryConfirmation
+                        || !InventorySwitchGuard.markSwitchIfNeeded(stack.getItem());
+            }
+            return false;
+        }
+
+        if (PlayerUtils.getAbilities(player).instabuild
+                && creativeFallback != null
+                && predicate.test(creativeFallback)) {
+            return setPickedItemToHand(creativeFallback.copy(), client);
+        }
+        return false;
+    }
+
+    public static ItemStack createWaterPotionStack() {
+        //#if MC >= 12005
+        return PotionContents.createItemStack(Items.POTION, Potions.WATER);
+        //#else
+        //$$ return PotionUtils.setPotion(new ItemStack(Items.POTION), Potions.WATER);
+        //#endif
+    }
+
+    public static boolean isWaterPotion(ItemStack stack) {
+        if (stack == null || !stack.is(Items.POTION)) {
+            return false;
+        }
+        //#if MC >= 12005
+        PotionContents contents = stack.get(DataComponents.POTION_CONTENTS);
+        return contents != null && contents.is(Potions.WATER);
+        //#else
+        //$$ return PotionUtils.getPotion(stack) == Potions.WATER;
+        //#endif
     }
 
     /**

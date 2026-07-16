@@ -78,10 +78,42 @@ public abstract class MixinMultiPlayerGameMode implements MultiPlayerGameModeExt
     @Unique
     private BlockState litematica_printer$pendingBreakSoundState;
 
+    @Override
+    public void litematica_printer$resetRuntime() {
+        LocalPlayer player = this.minecraft.player;
+        if (this.isDestroying) {
+            this.litematica_printer$clearDestroyProgress(player, this.destroyBlockPos);
+        }
+        if (this.hasDelayedDestroy && this.delayedDestroyPos != null) {
+            this.litematica_printer$clearDestroyProgress(player, this.delayedDestroyPos);
+        }
+        this.isDestroying = false;
+        this.destroyProgress = 0.0F;
+        this.destroyBlockPos = BlockPos.ZERO;
+        this.destroyingItem = ItemStack.EMPTY;
+        this.delayedDestroyPos = null;
+        this.hasDelayedDestroy = false;
+        this.delayedDestroyLocalPrediction = false;
+        this.delayedDestroyStartTick = 0L;
+        this.litematica_printer$pendingDelayedDestroys.clear();
+        this.litematica_printer$lastLoggedInProgressPos = null;
+        this.litematica_printer$lastLoggedInProgressTick = Long.MIN_VALUE;
+        this.litematica_printer$pendingBreakSoundPos = null;
+        this.litematica_printer$pendingBreakSoundState = null;
+        this.litematica_printer$resetHitSoundState();
+    }
+
     @Unique
     private void litematica_printer$clearDestroyProgress(LocalPlayer player, BlockPos pos) {
         if (player != null && pos != null && this.minecraft.level != null) {
-            this.minecraft.level.destroyBlockProgress(player.getId(), pos, -1);
+            int playerId;
+            try {
+                playerId = player.getId();
+            } catch (IllegalStateException ignored) {
+                // 26.2 登录包处理期间 LocalPlayer 可能尚未分配实体 ID。
+                return;
+            }
+            this.minecraft.level.destroyBlockProgress(playerId, pos, -1);
         }
     }
 

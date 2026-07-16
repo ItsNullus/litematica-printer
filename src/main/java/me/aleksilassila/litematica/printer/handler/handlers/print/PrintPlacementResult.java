@@ -10,9 +10,14 @@ public record PrintPlacementResult(
         return new PrintPlacementResult(consumedEffectiveExecution, skipIteration, TaskEvent.FAILURE, -1);
     }
 
+    public static PrintPlacementResult cancelled(boolean skipIteration) {
+        return new PrintPlacementResult(false, skipIteration, TaskEvent.CANCELLED, -1);
+    }
+
     public enum TaskEvent {
         SUCCESS,
         QUEUED,
+        CANCELLED,
         FAILURE
     }
 }

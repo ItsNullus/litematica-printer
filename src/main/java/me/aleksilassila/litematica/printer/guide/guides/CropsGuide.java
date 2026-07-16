@@ -87,11 +87,15 @@ public class CropsGuide extends Guide {
     protected Result onBuildActionWrongBlock(BlockMatchResult state) {
         String requiredKey = BlockUtils.getKeyString(requiredBlock);
         String currentKey = BlockUtils.getKeyString(currentBlock);
-        if (requiredKey.contains("pumpkin_stem") && !currentKey.contains("pumpkin_stem")) {
+        boolean wrongStem = requiredKey.contains("pumpkin_stem") && !currentKey.contains("pumpkin_stem")
+                || requiredKey.contains("melon_stem") && !currentKey.contains("melon_stem");
+        if (wrongStem
+                && Configs.Print.BREAK_WRONG_BLOCK.getBooleanValue()
+                && InteractionUtils.canBreakBlock(blockPos)
+                && InteractionUtils.breakRestriction(currentState)) {
             InteractionUtils.INSTANCE.add(context);
-        } else if (requiredKey.contains("melon_stem") && !currentKey.contains("melon_stem")) {
-            InteractionUtils.INSTANCE.add(context);
+            return Result.SKIP;
         }
-        return Result.SKIP;
+        return Result.PASS;
     }
 }

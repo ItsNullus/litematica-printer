@@ -71,6 +71,12 @@ public abstract class Module extends ConfigUtils {
     private PrinterBox activeDirtyScanBox;
     private boolean currentIterationDidWork;
     private boolean currentIterationFoundCandidate;
+    private int lazyProbeTicks;
+    private boolean inventoryFingerprintInitialized;
+    private int lastInventoryFingerprint;
+    private boolean schematicIdentityInitialized;
+    @Nullable
+    private Object lastSchematicIdentity;
 
     protected Minecraft mc;
     protected ClientLevel level;
@@ -114,6 +120,11 @@ public abstract class Module extends ConfigUtils {
         this.iterationConsumedEffectiveExecution = true;
         this.currentIterationDidWork = false;
         this.currentIterationFoundCandidate = false;
+        this.lazyProbeTicks = 0;
+        this.inventoryFingerprintInitialized = false;
+        this.lastInventoryFingerprint = 0;
+        this.schematicIdentityInitialized = false;
+        this.lastSchematicIdentity = null;
         this.lastTickTime = -1L;
         this.onRuntimeReset();
     }
@@ -138,9 +149,12 @@ public abstract class Module extends ConfigUtils {
             this.resetPlayerTracking();
             return;
         }
-        ScanCache.INSTANCE.beginTick(this.level, SchematicWorldHandler.getSchematicWorld(), context.gameTime);
+        WorldSchematic schematic = SchematicWorldHandler.getSchematicWorld();
+        ScanCache.INSTANCE.beginTick(this.level, schematic, context.gameTime);
+        this.wakeForSchematicChange(schematic);
         this.updatePlayerInteractionBox();
         this.preprocess(); // 运行前处理的事情
+        this.wakeForInventoryChange();
         if (!this.isConfigAllowExecute()) {
             this.resetScanRuntime();
             this.resetPlayerTracking();
@@ -191,6 +205,40 @@ public abstract class Module extends ConfigUtils {
 
     private void updatePlayerInteractionBox() {
         this.interactionBoxTracker.update(this.player);
+    }
+
+    private void wakeForInventoryChange() {
+        int fingerprint = 1;
+        for (int slot = 0; slot < this.player.getInventory().getContainerSize(); slot++) {
+            fingerprint = 31 * fingerprint
+                    + this.player.getInventory().getItem(slot).getItem().hashCode();
+        }
+        if (!this.inventoryFingerprintInitialized) {
+            this.inventoryFingerprintInitialized = true;
+            this.lastInventoryFingerprint = fingerprint;
+            return;
+        }
+        if (this.lastInventoryFingerprint == fingerprint) {
+            return;
+        }
+        this.lastInventoryFingerprint = fingerprint;
+        ScanCache.INSTANCE.resetOwner(this.id);
+        this.requestFullScan();
+    }
+
+    private void wakeForSchematicChange(@Nullable WorldSchematic schematic) {
+        if (!this.schematicIdentityInitialized) {
+            this.schematicIdentityInitialized = true;
+            this.lastSchematicIdentity = schematic;
+            return;
+        }
+        if (this.lastSchematicIdentity == schematic) {
+            return;
+        }
+        this.lastSchematicIdentity = schematic;
+        if (this.isSchematicBlockHandler()) {
+            this.requestFullScan();
+        }
     }
 
     private boolean runIterationIfNeeded() {
@@ -265,6 +313,11 @@ public abstract class Module extends ConfigUtils {
             this.refreshDirtyScanQueue(playerInteractionBox);
         }
         if (this.scanState == ScanState.LAZY) {
+            int fallbackProbeInterval = Math.max(40, Configs.Core.LAZY_ENTER_TICKS.getIntegerValue() * 10);
+            if (++this.lazyProbeTicks < fallbackProbeInterval) {
+                return false;
+            }
+            this.lazyProbeTicks = 0;
             return this.runLazyProbeIteration(playerInteractionBox);
         }
         if (this.scanState == ScanState.FULL) {
@@ -285,6 +338,7 @@ public abstract class Module extends ConfigUtils {
         if (this.currentIterationDidWork || this.currentIterationFoundCandidate) {
             this.scanState = ScanState.FULL;
             this.idleScanTicks = 0;
+            this.lazyProbeTicks = 0;
             return interrupt;
         }
         this.scanState = ScanState.LAZY;
@@ -366,6 +420,7 @@ public abstract class Module extends ConfigUtils {
         if (++this.idleScanTicks >= lazyThreshold) {
             this.scanState = ScanState.LAZY;
             this.idleScanTicks = 0;
+            this.lazyProbeTicks = 0;
             this.clearDirtyScanQueue();
         }
     }
@@ -378,6 +433,7 @@ public abstract class Module extends ConfigUtils {
         if (!this.hasPendingPartialScan()) {
             this.scanState = ScanState.LAZY;
             this.idleScanTicks = 0;
+            this.lazyProbeTicks = 0;
             this.pendingDirtyRegionCount = 0;
         }
     }
@@ -443,12 +499,14 @@ public abstract class Module extends ConfigUtils {
     protected final void requestFullScan() {
         this.scanState = ScanState.FULL;
         this.idleScanTicks = 0;
+        this.lazyProbeTicks = 0;
         this.clearDirtyScanQueue();
     }
 
     private void resetScanRuntime() {
         this.scanState = ScanState.FULL;
         this.idleScanTicks = 0;
+        this.lazyProbeTicks = 0;
         this.lastScanSourceBox = null;
         this.lastScanSourceBoxes = List.of();
         this.updateExternalScanBox(null);

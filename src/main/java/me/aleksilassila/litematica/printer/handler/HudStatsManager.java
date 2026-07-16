@@ -1,5 +1,7 @@
 package me.aleksilassila.litematica.printer.handler;
 
+import me.aleksilassila.litematica.printer.config.Configs;
+import me.aleksilassila.litematica.printer.printer.RttReplayController;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.state.BlockState;
@@ -73,12 +75,26 @@ public final class HudStatsManager {
         if (mode != Mode.PRINT || pos == null || expectedState == null) {
             return;
         }
-        Minecraft client = Minecraft.getInstance();
-        if (client.level != null && client.level.getBlockState(pos).equals(expectedState)) {
-            return;
-        }
         long now = ClientPlayerTickManager.getCurrentHandlerTime();
-        this.pendingPrintStates.put(pos.immutable(), new PendingBlockState(expectedState, now + PRINT_CONFIRM_TIMEOUT_TICKS));
+        this.pendingPrintStates.put(
+                pos.immutable(),
+                new PendingBlockState(expectedState, now, now + PRINT_CONFIRM_TIMEOUT_TICKS)
+        );
+    }
+
+    public boolean isPrintPlacementPending(BlockPos pos) {
+        if (pos == null) {
+            return false;
+        }
+        PendingBlockState pending = this.pendingPrintStates.get(pos);
+        if (pending == null) {
+            return false;
+        }
+        if (ClientPlayerTickManager.getCurrentHandlerTime() > pending.expireTick()) {
+            this.pendingPrintStates.remove(pos);
+            return false;
+        }
+        return true;
     }
 
     public void trackExpectedMineClear(Mode mode, BlockPos pos) {
@@ -122,9 +138,8 @@ public final class HudStatsManager {
         long now = ClientPlayerTickManager.getCurrentHandlerTime();
         BlockState currentState = client.level.getBlockState(pos);
 
-        PendingBlockState printPending = this.pendingPrintStates.get(pos);
+        PendingBlockState printPending = this.pendingPrintStates.remove(pos);
         if (printPending != null && currentState.equals(printPending.expectedState())) {
-            this.pendingPrintStates.remove(pos);
             this.stats.get(Mode.PRINT).recordConfirmedUnit(now, 1);
         }
 
@@ -167,6 +182,7 @@ public final class HudStatsManager {
     }
 
     private void flushConfirmedPrintPlacements(Minecraft client, long now, int maxChecks) {
+        int confirmationFloorTicks = this.getPrintConfirmationFloorTicks();
         for (int checked = 0; checked < maxChecks && !this.pendingPrintStates.isEmpty(); checked++) {
             Iterator<Map.Entry<BlockPos, PendingBlockState>> iterator = this.pendingPrintStates.entrySet().iterator();
             Map.Entry<BlockPos, PendingBlockState> entry = iterator.next();
@@ -176,12 +192,24 @@ public final class HudStatsManager {
             if (now > pending.expireTick()) {
                 continue;
             }
+            if (now - pending.sentTick() < confirmationFloorTicks) {
+                this.pendingPrintStates.put(pos, pending);
+                continue;
+            }
             if (client.level.getBlockState(pos).equals(pending.expectedState())) {
                 this.stats.get(Mode.PRINT).recordConfirmedUnit(now, 1);
-            } else {
-                this.pendingPrintStates.put(pos, pending);
             }
         }
+    }
+
+    private int getPrintConfirmationFloorTicks() {
+        int safetyPercent = Configs.Placement.RTT_ADAPTIVE_INTERVAL.getBooleanValue()
+                ? Configs.Placement.RTT_SAFETY_PERCENT.getIntegerValue()
+                : 100;
+        return Math.max(
+                2,
+                RttReplayController.INSTANCE.getExtraIntervalTicks(safetyPercent)
+        );
     }
 
     private void flushConfirmedMineClears(Minecraft client, long now, int maxChecks) {
@@ -334,7 +362,7 @@ public final class HudStatsManager {
         }
     }
 
-    private record PendingBlockState(BlockState expectedState, long expireTick) {
+    private record PendingBlockState(BlockState expectedState, long sentTick, long expireTick) {
     }
 
     private record PendingStateChange(BlockState originalState, long expireTick) {

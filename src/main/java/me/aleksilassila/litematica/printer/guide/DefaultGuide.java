@@ -127,4 +127,14 @@ public class DefaultGuide extends Guide {
         }
         return Result.PASS;
     }
+
+    @Override
+    protected Result onBuildActionWrongState(BlockMatchResult state) {
+        if (Configs.Print.BREAK_WRONG_BLOCK.getBooleanValue()
+                && InteractionUtils.canBreakBlock(blockPos)
+                && InteractionUtils.breakRestriction(currentState)) {
+            InteractionUtils.INSTANCE.add(context);
+        }
+        return Result.PASS;
+    }
 }

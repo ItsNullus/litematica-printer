@@ -13,6 +13,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.LiquidBlock;
+import net.minecraft.world.level.block.BaseRailBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayDeque;
@@ -146,6 +147,14 @@ public final class ScanCache {
         for (SectionScanSession session : this.sessions.values()) {
             session.invalidate(pos);
         }
+    }
+
+    public void resetOwner(String ownerKey) {
+        if (ownerKey == null || ownerKey.isBlank()) {
+            return;
+        }
+        String prefix = ownerKey + ":";
+        this.sessions.keySet().removeIf(key -> key.startsWith(prefix));
     }
 
     public Iterable<BlockPos> rawIterable(
@@ -1108,10 +1117,16 @@ public final class ScanCache {
                         return 0;
                     }
                     BlockState requiredState = schematic.getBlockState(this.liveMutable);
+                    if (requiredState.equals(state)
+                            && !(requiredState.getBlock() instanceof BaseRailBlock)) {
+                        return 0;
+                    }
                     if (!requiredState.isAir()) {
                         return (byte) (ScanFlags.SCHEMATIC_SAMPLED | ScanFlags.SCHEMATIC_NON_AIR);
                     }
-                    if (!state.isAir() && !(state.getBlock() instanceof LiquidBlock)) {
+                    if (Configs.Print.BREAK_EXTRA_BLOCK.getBooleanValue()
+                            && !state.isAir()
+                            && !(state.getBlock() instanceof LiquidBlock)) {
                         return (byte) (ScanFlags.SCHEMATIC_SAMPLED | ScanFlags.WORLD_NON_AIR);
                     }
                     return 0;
@@ -1441,7 +1456,14 @@ public final class ScanCache {
                 );
                 BlockPos.MutableBlockPos first = new BlockPos.MutableBlockPos();
                 if (cursor.next(first)) {
-                    this.cursors.add(new BoxCursorNode(index, cursor, first.immutable(), region));
+                    this.cursors.add(new BoxCursorNode(
+                            index,
+                            cursor,
+                            first.getX(),
+                            first.getY(),
+                            first.getZ(),
+                            region
+                    ));
                 }
             }
             this.complete = this.cursors.isEmpty();
@@ -1455,25 +1477,31 @@ public final class ScanCache {
         boolean next(BlockPos.MutableBlockPos target) {
             while (!this.cursors.isEmpty()) {
                 BoxCursorNode node = this.cursors.poll();
-                BlockPos result = node.pos;
-                BlockPos.MutableBlockPos following = new BlockPos.MutableBlockPos();
-                if (node.cursor.next(following)) {
-                    node.pos = following.immutable();
+                int resultX = node.x;
+                int resultY = node.y;
+                int resultZ = node.z;
+                if (node.cursor.next(node.following)) {
+                    node.x = node.following.getX();
+                    node.y = node.following.getY();
+                    node.z = node.following.getZ();
                     this.cursors.add(node);
                 }
-                if (this.claimedByEarlierBox(node.boxIndex, result)) {
+                if (this.claimedByEarlierBox(node.boxIndex, resultX, resultY, resultZ)) {
                     continue;
                 }
-                target.set(result);
+                target.set(resultX, resultY, resultZ);
                 return true;
             }
             this.complete = true;
             return false;
         }
 
-        private boolean claimedByEarlierBox(int boxIndex, BlockPos pos) {
+        private boolean claimedByEarlierBox(int boxIndex, int x, int y, int z) {
             for (int index = 0; index < boxIndex; index++) {
-                if (this.boxes.get(index).contains(pos)) {
+                PrinterBox box = this.boxes.get(index);
+                if (x >= box.minX && x <= box.maxX
+                        && y >= box.minY && y <= box.maxY
+                        && z >= box.minZ && z <= box.maxZ) {
                     return true;
                 }
             }
@@ -1486,17 +1514,24 @@ public final class ScanCache {
             private final int centerX;
             private final int centerY;
             private final int centerZ;
-            private BlockPos pos;
+            private final BlockPos.MutableBlockPos following = new BlockPos.MutableBlockPos();
+            private int x;
+            private int y;
+            private int z;
 
             private BoxCursorNode(
                     int boxIndex,
                     BoxDistanceCursor cursor,
-                    BlockPos pos,
+                    int x,
+                    int y,
+                    int z,
                     SectionRegion region
             ) {
                 this.boxIndex = boxIndex;
                 this.cursor = cursor;
-                this.pos = pos;
+                this.x = x;
+                this.y = y;
+                this.z = z;
                 this.centerX = region.centerX();
                 this.centerY = region.centerY();
                 this.centerZ = region.centerZ();
@@ -1508,15 +1543,15 @@ public final class ScanCache {
                 if (result != 0) {
                     return result;
                 }
-                result = Integer.compare(this.pos.getX(), other.pos.getX());
+                result = Integer.compare(this.x, other.x);
                 if (result != 0) {
                     return result;
                 }
-                result = Integer.compare(this.pos.getY(), other.pos.getY());
+                result = Integer.compare(this.y, other.y);
                 if (result != 0) {
                     return result;
                 }
-                result = Integer.compare(this.pos.getZ(), other.pos.getZ());
+                result = Integer.compare(this.z, other.z);
                 if (result != 0) {
                     return result;
                 }
@@ -1524,9 +1559,9 @@ public final class ScanCache {
             }
 
             private long distanceSqr() {
-                long dx = this.pos.getX() - (long) this.centerX;
-                long dy = this.pos.getY() - (long) this.centerY;
-                long dz = this.pos.getZ() - (long) this.centerZ;
+                long dx = this.x - (long) this.centerX;
+                long dy = this.y - (long) this.centerY;
+                long dz = this.z - (long) this.centerZ;
                 return dx * dx + dy * dy + dz * dz;
             }
         }
@@ -1697,25 +1732,26 @@ public final class ScanCache {
                 return new int[0];
             }
             int[] coordinates = new int[max - min + 1];
-            for (int index = 0; index < coordinates.length; index++) {
-                coordinates[index] = min + index;
-            }
-
-            for (int index = 1; index < coordinates.length; index++) {
-                int value = coordinates[index];
-                long valueDistance = axisDistanceSqr(value, center);
-                int insertionIndex = index;
-                while (insertionIndex > 0) {
-                    int previous = coordinates[insertionIndex - 1];
-                    long previousDistance = axisDistanceSqr(previous, center);
-                    if (previousDistance < valueDistance
-                            || previousDistance == valueDistance && previous <= value) {
-                        break;
-                    }
-                    coordinates[insertionIndex] = previous;
-                    insertionIndex--;
+            int pivot = Math.max(min, Math.min(max, center));
+            int left = pivot;
+            int right = pivot + 1;
+            int index = 0;
+            while (left >= min || right <= max) {
+                if (left < min) {
+                    coordinates[index++] = right++;
+                    continue;
                 }
-                coordinates[insertionIndex] = value;
+                if (right > max) {
+                    coordinates[index++] = left--;
+                    continue;
+                }
+                long leftDistance = axisDistanceSqr(left, center);
+                long rightDistance = axisDistanceSqr(right, center);
+                if (leftDistance <= rightDistance) {
+                    coordinates[index++] = left--;
+                } else {
+                    coordinates[index++] = right++;
+                }
             }
             return coordinates;
         }

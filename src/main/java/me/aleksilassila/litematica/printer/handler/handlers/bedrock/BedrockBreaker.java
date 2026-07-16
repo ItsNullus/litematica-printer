@@ -1,12 +1,11 @@
 package me.aleksilassila.litematica.printer.handler.handlers.bedrock;
 
 import me.aleksilassila.litematica.printer.mixin_extension.MultiPlayerGameModeExtension;
+import me.aleksilassila.litematica.printer.mixin_extension.BlockBreakResult;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
-import me.aleksilassila.litematica.printer.utils.minecraft.NetworkUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 
 public final class BedrockBreaker {
     private static final Minecraft CLIENT = Minecraft.getInstance();
@@ -42,45 +41,16 @@ public final class BedrockBreaker {
             return false;
         }
 
-        if (CLIENT.gameMode instanceof MultiPlayerGameModeExtension gameModeExtension && !shouldPredictRemoval()) {
-            gameModeExtension.litematica_printer$continueDestroyBlock(false, pos, direction);
+        if (CLIENT.gameMode instanceof MultiPlayerGameModeExtension gameModeExtension) {
+            BlockBreakResult result = gameModeExtension.litematica_printer$continueDestroyBlock(
+                    false,
+                    pos,
+                    direction,
+                    false,
+                    false
+            );
+            return result != BlockBreakResult.FAILED && result != BlockBreakResult.ABORTED;
         }
-
-        //#if MC >= 11900
-        NetworkUtils.sendPacket(sequence -> new ServerboundPlayerActionPacket(
-                ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK,
-                pos,
-                direction,
-                sequence
-        ));
-        NetworkUtils.sendPacket(sequence -> new ServerboundPlayerActionPacket(
-                ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK,
-                pos,
-                direction,
-                sequence
-        ));
-        //#else
-        //$$ NetworkUtils.sendPacket(new ServerboundPlayerActionPacket(
-        //$$         ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK,
-        //$$         pos,
-        //$$         Direction.DOWN
-        //$$ ));
-        //$$ NetworkUtils.sendPacket(new ServerboundPlayerActionPacket(
-        //$$         ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK,
-        //$$         pos,
-        //$$         Direction.DOWN
-        //$$ ));
-        //#endif
-
-        boolean allowPrediction = predictRemoval && shouldPredictRemoval();
-        if (allowPrediction) {
-            CLIENT.level.removeBlock(pos, false);
-        }
-
-        return true;
-    }
-
-    private static boolean shouldPredictRemoval() {
         return false;
     }
 }

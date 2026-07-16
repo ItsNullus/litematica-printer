@@ -20,8 +20,14 @@ public class LanternGuide extends Guide {
     @Override
     protected Result onBuildActionMissingBlock(BlockMatchResult state) {
         if (getProperty(requiredState, LanternBlock.HANGING).orElse(false)) {
-            return Result.success(new Action().setLookDirection(Direction.UP));
+            return Result.success(new Action()
+                    .setSides(Direction.UP)
+                    .setLookDirection(Direction.UP)
+                    .setRequiresSupport());
         }
-        return Result.success(new Action().setLookDirection(Direction.DOWN));
+        return Result.success(new Action()
+                .setSides(Direction.DOWN)
+                .setLookDirection(Direction.DOWN)
+                .setRequiresSupport());
     }
 }
