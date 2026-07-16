@@ -27,6 +27,7 @@ repositories {
     }
     strictMaven("https://maven.fabricmc.net")
     strictMaven("https://maven.fallenbreath.me/releases")
+    strictMaven("https://masa.dy.fi/maven/sakura-ryoko", "fi.dy.masa")
     strictMaven("https://www.cursemaven.com", "curse.maven")
     strictMaven("https://api.modrinth.com/maven", "maven.modrinth")
 
@@ -42,13 +43,23 @@ repositories {
     strictMaven("https://jitpack.io")
 }
 
+fun masaDependency(mod: String): String {
+    val artifact = propStrOrNull("${mod}_artifact")?.takeIf { it.isNotBlank() }
+    return artifact?.let { "fi.dy.masa.$mod:$it:${prop(mod)}" }
+        ?: "maven.modrinth:$mod:${prop(mod)}"
+}
+
+val malilibDependency = masaDependency("malilib")
+val litematicaDependency = masaDependency("litematica")
+val tweakerooDependency = masaDependency("tweakeroo")
+
 // https://github.com/FabricMC/fabric-loader/issues/783
 configurations.all {
     resolutionStrategy {
         force("net.fabricmc:fabric-loader:$fabricLoaderVersion")
-        force("maven.modrinth:malilib:${prop("malilib")}")
-        force("maven.modrinth:litematica:${prop("litematica")}")
-        force("maven.modrinth:tweakeroo:${prop("tweakeroo")}")
+        force(malilibDependency)
+        force(litematicaDependency)
+        force(tweakerooDependency)
         force("maven.modrinth:modmenu:${prop("modmenu")}")
     }
 }
@@ -62,13 +73,9 @@ dependencies {
 
     modImplementation("maven.modrinth:modmenu:${prop("modmenu")}")
 
-    // modImplementation("com.github.sakura-ryoko:malilib:${props["malilib"]}")
-    // modImplementation("com.github.sakura-ryoko:litematica:${props["litematica"]}")
-    // modImplementation("com.github.sakura-ryoko:tweakeroo:${props["tweakeroo"]}")
-
-    modImplementation("maven.modrinth:malilib:$malilib")
-    modImplementation("maven.modrinth:litematica:$litematica")
-    modImplementation("maven.modrinth:tweakeroo:${prop("tweakeroo")}")
+    modImplementation(malilibDependency)
+    modImplementation(litematicaDependency)
+    modImplementation(tweakerooDependency)
 
     // 快捷潜影盒
     if (mcVersionInt >= 12006) {

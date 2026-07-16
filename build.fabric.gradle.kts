@@ -31,6 +31,7 @@ repositories {
     }
     strictMaven("https://maven.fabricmc.net")
     strictMaven("https://maven.fallenbreath.me/releases")
+    strictMaven("https://masa.dy.fi/maven/sakura-ryoko", "fi.dy.masa")
 
     strictMaven("https://www.cursemaven.com", "curse.maven")
     strictMaven("https://api.modrinth.com/maven", "maven.modrinth")
@@ -40,13 +41,23 @@ repositories {
     strictMaven("https://jitpack.io")
 }
 
+fun masaDependency(mod: String): String {
+    val artifact = propStrOrNull("${mod}_artifact")?.takeIf { it.isNotBlank() }
+    return artifact?.let { "fi.dy.masa.$mod:$it:${prop(mod)}" }
+        ?: "maven.modrinth:$mod:${prop(mod)}"
+}
+
+val malilibDependency = masaDependency("malilib")
+val litematicaDependency = masaDependency("litematica")
+val tweakerooDependency = masaDependency("tweakeroo")
+
 // https://github.com/FabricMC/fabric-loader/issues/783
 configurations.all {
     resolutionStrategy {
         force("net.fabricmc:fabric-loader:$fabricLoaderVersion")
-        force("maven.modrinth:malilib:${prop("malilib")}")
-        force("maven.modrinth:litematica:${prop("litematica")}")
-        force("maven.modrinth:tweakeroo:${prop("tweakeroo")}")
+        force(malilibDependency)
+        force(litematicaDependency)
+        force(tweakerooDependency)
         force("maven.modrinth:modmenu:${prop("modmenu")}")
     }
 }
@@ -62,9 +73,9 @@ dependencies {
     implementation("maven.modrinth:modmenu:${prop("modmenu")}")
 
     // masa
-    implementation("maven.modrinth:malilib:$malilib")
-    implementation("maven.modrinth:litematica:$litematica")
-    implementation("maven.modrinth:tweakeroo:${prop("tweakeroo")}")
+    implementation(malilibDependency)
+    implementation(litematicaDependency)
+    implementation(tweakerooDependency)
 
     // 快捷潜影盒
     val quickshulkerUrl = prop("quickshulker").toString()
