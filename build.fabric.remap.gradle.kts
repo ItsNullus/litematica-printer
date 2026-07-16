@@ -52,15 +52,21 @@ fun masaDependency(mod: String): String {
 val malilibDependency = masaDependency("malilib")
 val litematicaDependency = masaDependency("litematica")
 val tweakerooDependency = masaDependency("tweakeroo")
+val modMenuDependency = "maven.modrinth:modmenu:${prop("modmenu")}"
 
 // https://github.com/FabricMC/fabric-loader/issues/783
 configurations.all {
     resolutionStrategy {
+        dependencySubstitution {
+            substitute(module("com.terraformersmc:modmenu"))
+                .using(module(modMenuDependency))
+                .because("Use one Mod Menu coordinate when dependencies request the official Maven module")
+        }
         force("net.fabricmc:fabric-loader:$fabricLoaderVersion")
         force(malilibDependency)
         force(litematicaDependency)
         force(tweakerooDependency)
-        force("maven.modrinth:modmenu:${prop("modmenu")}")
+        force(modMenuDependency)
     }
 }
 
@@ -71,7 +77,7 @@ dependencies {
     modImplementation("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
     modImplementation("com.belerweb:pinyin4j:${prop("pinyin_version")}")?.let { include(it) }
 
-    modImplementation("maven.modrinth:modmenu:${prop("modmenu")}")
+    modImplementation(modMenuDependency)
 
     modImplementation(malilibDependency)
     modImplementation(litematicaDependency)
