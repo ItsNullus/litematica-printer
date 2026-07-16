@@ -59,6 +59,21 @@ configurations.all {
             substitute(module("com.terraformersmc:modmenu"))
                 .using(module(modMenuDependency))
                 .because("Use one Mod Menu coordinate when dependencies request the official Maven module")
+            substitute(module("com.github.sakura-ryoko:malilib"))
+                .using(module(malilibDependency))
+                .because("Use the configured MaLiLib artifact instead of a legacy Sakura-Ryoko coordinate")
+            substitute(module("com.github.sakura-ryoko:litematica"))
+                .using(module(litematicaDependency))
+                .because("Use the configured Litematica artifact instead of a legacy Sakura-Ryoko coordinate")
+            substitute(module("com.github.sakura-ryoko:tweakeroo"))
+                .using(module(tweakerooDependency))
+                .because("Use the configured Tweakeroo artifact instead of a legacy Sakura-Ryoko coordinate")
+
+            if (propStrOrNull("malilib_artifact")?.isNotBlank() == true) {
+                substitute(module("maven.modrinth:malilib")).using(module(malilibDependency))
+                substitute(module("maven.modrinth:litematica")).using(module(litematicaDependency))
+                substitute(module("maven.modrinth:tweakeroo")).using(module(tweakerooDependency))
+            }
         }
         force("net.fabricmc:fabric-loader:$fabricLoaderVersion")
         force(malilibDependency)

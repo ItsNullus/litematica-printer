@@ -21,33 +21,30 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Validate gradle wrapper
-        uses: gradle/actions/wrapper-validation@v6
-
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
           java-version: '25'
           distribution: 'microsoft'
 
-      - name: Cache Gradle dependencies
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Cache Loom workspace
         uses: actions/cache@v5
         with:
           path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            ./.gradle
+            ./.gradle/loom-cache
             ./libs
-          key: ${{ runner.os }}-gradle-common-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts', '**/gradle.properties', 'buildSrc/**') }}
+          key: ${{ runner.os }}-loom-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts', '**/gradle.properties', 'buildSrc/**') }}
           restore-keys: |
-            ${{ runner.os }}-gradle-common-
-            ${{ runner.os }}-gradle-
+            ${{ runner.os }}-loom-
 
       - name: Make gradle wrapper executable
         run: chmod +x ./gradlew
 
       - name: Build fabricWrapper subproject
-        run: ./gradlew :fabricWrapper:build --stacktrace
+        run: ./gradlew :fabricWrapper:build --stacktrace --console=plain
 
       - name: Delete wrapper sources jar
         run: |
