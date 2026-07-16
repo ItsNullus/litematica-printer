@@ -11,7 +11,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import static me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.isOpenHandler;
-import static me.aleksilassila.litematica.printer.printer.zxy.inventory.SwitchItem.reSwitchItem;
 
 @Mixin(ClientPacketListener.class)
 public abstract class MixinClientPacketListener {
@@ -33,8 +32,8 @@ public abstract class MixinClientPacketListener {
         if (isOpenHandler) {
             InventoryUtils.switchInv();
         }
-        if (reSwitchItem != null) {
-            SwitchItem.reSwitchItem();
+        if (SwitchItem.isWaitingForRestoreContainer()) {
+            SwitchItem.restorePendingItem();
         }
     }
 }

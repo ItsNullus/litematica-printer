@@ -11,18 +11,24 @@ import net.minecraft.world.inventory.Slot;
 public class ZxyUtils {
     private static final Minecraft client = Minecraft.getInstance();
 
-    public static void switchPlayerInvToHotbarAir(int slot) {
-        if (client.player == null) return;
+    public static int switchPlayerInvToHotbarAir(int slot) {
+        if (client.player == null) return -1;
         LocalPlayer player = client.player;
         AbstractContainerMenu sc = player.containerMenu;
         NonNullList<Slot> slots = sc.slots;
         int i = sc.equals(player.inventoryMenu) ? 9 : 0;
+        int playerSlotOrdinal = 0;
         for (; i < slots.size(); i++) {
-            if (slots.get(i).getItem().isEmpty() && slots.get(i).container instanceof Inventory) {
-                fi.dy.masa.malilib.util.InventoryUtils.swapSlots(sc, i, slot);
-                return;
+            if (!(slots.get(i).container instanceof Inventory)) {
+                continue;
             }
+            if (slots.get(i).getItem().isEmpty()) {
+                fi.dy.masa.malilib.util.InventoryUtils.swapSlots(sc, i, slot);
+                return playerSlotOrdinal < 27 ? playerSlotOrdinal + 9 : playerSlotOrdinal - 27;
+            }
+            playerSlotOrdinal++;
         }
+        return -1;
     }
 
     public static void exitGameReSet() {

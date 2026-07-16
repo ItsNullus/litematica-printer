@@ -217,7 +217,7 @@
   "litematica-printer.config.selectionType.litematica.selection.abovePlayer": "Projection Selection (Above Player)",
   "litematica-printer.config.selectionType.litematica.selection.belowPlayer": "Projection Selection (Below Player)",
   "litematica-printer.config.storeOrderly": "Orderly Item Storage",
-  "litematica-printer.config.storeOrderly.desc": "When inventory is full, try to put items retrieved from quick shulker boxes back to original positions;\nThis function has poor performance in 1.18.2 version (may cause lag), recommended to disable.\nZhao Xianyu's code quality is not very good, this function may not work well.",
+  "litematica-printer.config.storeOrderly.desc": "When the inventory is full, return items retrieved by Quick Shulker to their original shulker and slot first; if that slot cannot hold them, merge into matching stacks and then use empty slots.",
   "litematica-printer.config.switchPrinterMode": "Switch Mode",
   "litematica-printer.config.switchPrinterMode.desc": "Switch printer's current work mode (printing/mining/bedrock breaking, etc.).",
   "litematica-printer.config.unlockBeaconEffects": "Unlock Beacon Effect Limits",

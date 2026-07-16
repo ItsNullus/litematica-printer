@@ -170,13 +170,7 @@ public class ActionManager {
         } else {
             hitVec = click.hitModifier;
         }
-        if (InventoryUtils.getOrderlyStoreItem() != null) {
-            if (InventoryUtils.getOrderlyStoreItem().isEmpty()) {
-                SwitchItem.removeItem(InventoryUtils.getOrderlyStoreItem());
-            } else {
-                SwitchItem.syncUseTime(InventoryUtils.getOrderlyStoreItem());
-            }
-        }
+        SwitchItem.onMainHandUse(player);
         boolean wasSneak = player.isShiftKeyDown();
         if (click.useShift && !wasSneak) {
             setShift(player, true);

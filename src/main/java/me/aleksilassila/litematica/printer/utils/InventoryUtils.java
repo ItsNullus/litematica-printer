@@ -3,8 +3,6 @@ package me.aleksilassila.litematica.printer.utils;
 import fi.dy.masa.litematica.util.EntityUtils;
 import fi.dy.masa.malilib.gui.Message;
 import fi.dy.masa.malilib.util.InfoUtils;
-import lombok.Getter;
-import lombok.Setter;
 import me.aleksilassila.litematica.printer.mixin.printer.litematica.EasyPlaceUtilsAccessor;
 import me.aleksilassila.litematica.printer.mixin.printer.litematica.InventoryUtilsAccessor;
 import me.aleksilassila.litematica.printer.utils.minecraft.PlayerUtils;
@@ -42,10 +40,6 @@ public class InventoryUtils {
     private static final int OFFHAND_SLOT_INDEX = 40;
     private static final long MESSAGE_COOLDOWN_MS = 5000L;
     private static final Map<String, Long> LAST_MESSAGE_SEND_TIME = new ConcurrentHashMap<>();
-    @Getter
-    @Setter
-    private static ItemStack orderlyStoreItem; //有序存放临时存储
-
     public static int getSelectedSlot(Inventory inventory) {
         //#if MC > 12104
         return inventory.getSelectedSlot();
@@ -356,7 +350,6 @@ public class InventoryUtils {
         ItemStack mainHandStack = player.getMainHandItem();
         for (Item item : items) {
             if (mainHandStack.getItem().equals(item)) {
-                orderlyStoreItem = mainHandStack;
                 return true;
             }
         }
@@ -375,7 +368,6 @@ public class InventoryUtils {
             for (int i = 0; i < inventory.getContainerSize(); i++) {
                 ItemStack itemStack = inventory.getItem(i);
                 if (itemStack.getItem().equals(item)) {
-                    orderlyStoreItem = itemStack;
                     boolean needsInventoryConfirmation = !Inventory.isHotbarSlot(i);
                     if (InventoryUtils.setPickedItemToHand(i, itemStack, client)) {
                         return !needsInventoryConfirmation || !InventorySwitchGuard.markSwitchIfNeeded(item);
@@ -443,7 +435,6 @@ public class InventoryUtils {
         }
         ItemStack mainHandStack = player.getMainHandItem();
         if (predicate.test(mainHandStack)) {
-            orderlyStoreItem = mainHandStack;
             return true;
         }
 
@@ -453,7 +444,6 @@ public class InventoryUtils {
             if (stack.isEmpty() || !predicate.test(stack)) {
                 continue;
             }
-            orderlyStoreItem = stack;
             boolean needsInventoryConfirmation = !Inventory.isHotbarSlot(slot);
             if (setPickedItemToHand(slot, stack, client)) {
                 return !needsInventoryConfirmation

@@ -117,7 +117,7 @@ public class InventoryUtils {
         ModLoadUtils.closeScreen = 0;
     }
 
-    static int shulkerBoxSlot = -1;
+    static int shulkerInventoryMenuSlot = -1;
 
     public static void switchInv() {
         LocalPlayer player = Minecraft.getInstance().player;
@@ -150,21 +150,26 @@ public class InventoryUtils {
                                 MessageUtils.setOverlayMessage(I18n.INVENTORY_SHULKER_OCCUPIED.getName(), false);
                                 continue;
                             }
-                            SwitchItem.newItem(slots.get(y).getItem(), y, shulkerBoxSlot);
                             int a = InventoryUtilsAccessor.getEmptyPickBlockableHotbarSlot(player.getInventory()) == -1 ?
                                     InventoryUtilsAccessor.getPickBlockTargetSlot(player) :
                                     InventoryUtilsAccessor.getEmptyPickBlockableHotbarSlot(player.getInventory());
                             c = a == -1 ? c : a;
-                            ZxyUtils.switchPlayerInvToHotbarAir(c);
+                            ItemStack retrievedStack = slots.get(y).getItem().copy();
+                            ItemStack sourceShulker = player.inventoryMenu.slots
+                                    .get(shulkerInventoryMenuSlot).getItem().copy();
+                            int movedPlayerSlot = ZxyUtils.switchPlayerInvToHotbarAir(c);
+                            SwitchItem.moveTrackedItem(c, movedPlayerSlot);
                             fi.dy.masa.malilib.util.InventoryUtils.swapSlots(sc, y, c);
+                            SwitchItem.newItem(
+                                    retrievedStack,
+                                    sourceShulker,
+                                    y,
+                                    shulkerInventoryMenuSlot,
+                                    c
+                            );
                             me.aleksilassila.litematica.printer.utils.InventoryUtils.setSelectedSlot(player.getInventory(), c);
                             me.aleksilassila.litematica.printer.utils.InventoryUtils.syncSelectedHotbarSlot();
                             me.aleksilassila.litematica.printer.utils.InventorySwitchGuard.markSwitchIfNeeded(item);
-                            //刷新濳影盒
-                            if (shulkerBoxSlot != -1) {
-                                client.gameMode.handleContainerInput(sc.containerId, shulkerBoxSlot, 0, ContainerInput.PICKUP, client.player);
-                                client.gameMode.handleContainerInput(sc.containerId, shulkerBoxSlot, 0, ContainerInput.PICKUP, client.player);
-                            }
                             player.closeContainer();
                             clearSwitchRequest();
                             return;
@@ -195,9 +200,9 @@ public class InventoryUtils {
                     NonNullList<ItemStack> items1 = fi.dy.masa.malilib.util.InventoryUtils.getStoredItems(stack, -1);
                     if (items1.stream().anyMatch(s1 -> s1.getItem().equals(item))) {
                         try {
-                            shulkerBoxSlot = i;
-                            if (!ShulkerUtils.openShulker(stack, shulkerBoxSlot)) {
-                                shulkerBoxSlot = -1;
+                            shulkerInventoryMenuSlot = i;
+                            if (!ShulkerUtils.openShulker(stack, shulkerInventoryMenuSlot)) {
+                                shulkerInventoryMenuSlot = -1;
                                 continue;
                             }
                             ModLoadUtils.closeScreen++;
@@ -215,6 +220,7 @@ public class InventoryUtils {
     }
 
     public static void tick() {
+        SwitchItem.tick();
         if (ModLoadUtils.closeScreen > 0) {
             ModLoadUtils.closeScreen--;
         }
@@ -227,7 +233,7 @@ public class InventoryUtils {
     }
 
     private static void clearSwitchRequest() {
-        shulkerBoxSlot = -1;
+        shulkerInventoryMenuSlot = -1;
         lastNeedItemList = new LinkedHashSet<>();
         isOpenHandler = false;
         openHandlerTimeout = 0;
