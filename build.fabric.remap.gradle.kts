@@ -96,7 +96,11 @@ dependencies {
 
     modImplementation(malilibDependency)
     modImplementation(litematicaDependency)
-    modImplementation(tweakerooDependency)
+    modImplementation(tweakerooDependency) {
+        exclude(group = "com.github.sakura-ryoko", module = "malilib")
+        exclude(group = "maven.modrinth", module = "malilib")
+        exclude(group = "fi.dy.masa.malilib")
+    }
 
     // 快捷潜影盒
     if (mcVersionInt >= 12006) {
@@ -108,13 +112,19 @@ dependencies {
             }
         }
         if (mcVersionInt == 12006) {  // 1.20.6 是 Haocen2004/quickshulker 分支, 所以还是使用之前老版本的依赖
-            modImplementation("net.kyrptonaught:kyrptconfig:${prop("kyrptconfig")}")
+            modImplementation("net.kyrptonaught:kyrptconfig:${prop("kyrptconfig")}") {
+                exclude(group = "com.terraformersmc", module = "modmenu")
+                exclude(group = "maven.modrinth", module = "modmenu")
+            }
         } else {
             modImplementation("me.fallenbreath:conditional-mixin-fabric:0.6.4")
         }
     } else {
         modImplementation("curse.maven:quick-shulker-362669:${prop("quick_shulker")}")
-        modImplementation("net.kyrptonaught:kyrptconfig:${prop("kyrptconfig")}")
+        modImplementation("net.kyrptonaught:kyrptconfig:${prop("kyrptconfig")}") {
+            exclude(group = "com.terraformersmc", module = "modmenu")
+            exclude(group = "maven.modrinth", module = "modmenu")
+        }
     }
 }
 

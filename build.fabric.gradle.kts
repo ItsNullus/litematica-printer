@@ -96,7 +96,11 @@ dependencies {
     // masa
     implementation(malilibDependency)
     implementation(litematicaDependency)
-    implementation(tweakerooDependency)
+    implementation(tweakerooDependency) {
+        exclude(group = "com.github.sakura-ryoko", module = "malilib")
+        exclude(group = "maven.modrinth", module = "malilib")
+        exclude(group = "fi.dy.masa.malilib")
+    }
 
     // 快捷潜影盒
     val quickshulkerUrl = prop("quickshulker").toString()
