@@ -4,6 +4,7 @@ import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.PlayerUtils;
+import me.aleksilassila.litematica.printer.utils.minecraft.ToolSelectionUtils;
 import me.aleksilassila.litematica.printer.utils.mods.ModLoadUtils;
 import me.aleksilassila.litematica.printer.utils.mods.TweakerooUtils;
 import net.minecraft.client.Minecraft;
@@ -54,7 +55,16 @@ final class MineBreakExecutor {
         }
         ItemStack currentStack = player.getMainHandItem();
         if (player.getAbilities().instabuild) {
-            return new Target(pos.immutable(), state, 1.0F, 1.0F, Direction.DOWN, currentStack.getItem());
+            return new Target(
+                    pos.immutable(),
+                    state,
+                    1.0F,
+                    1.0F,
+                    Direction.DOWN,
+                    currentStack.getItem(),
+                    false,
+                    false
+            );
         }
         float currentProgress = this.getCurrentProgress(player, state, currentStack);
         ToolChoice toolChoice = this.getBestToolChoice(player, state, currentStack, currentProgress);
@@ -62,7 +72,16 @@ final class MineBreakExecutor {
         if (bestProgress <= 0.0F && !player.getAbilities().instabuild) {
             return null;
         }
-        return new Target(pos.immutable(), state, currentProgress, bestProgress, Direction.DOWN, toolChoice.item());
+        return new Target(
+                pos.immutable(),
+                state,
+                currentProgress,
+                bestProgress,
+                Direction.DOWN,
+                toolChoice.item(),
+                toolChoice.currentPreservesDrops(),
+                toolChoice.preservesDrops()
+        );
     }
 
     public boolean isInstantWithCurrentTool(Target target) {
@@ -80,13 +99,17 @@ final class MineBreakExecutor {
     }
 
     public boolean canUseBetterTool(Target target) {
-        return target.bestProgress > target.currentProgress;
+        return (target.bestPreservesDrops && !target.currentPreservesDrops)
+                || target.bestProgress > target.currentProgress;
     }
 
     public boolean isCurrentToolEffective(Target target) {
         LocalPlayer player = CLIENT.player;
         if (player == null || !this.shouldResolveBestTool()) {
             return true;
+        }
+        if (target.bestPreservesDrops && !target.currentPreservesDrops) {
+            return false;
         }
         return target.currentProgress >= target.bestProgress * CURRENT_TOOL_MIN_EFFICIENCY_RATIO;
     }
@@ -102,22 +125,30 @@ final class MineBreakExecutor {
         }
         float bestProgress = currentProgress;
         Item bestItem = currentStack.getItem();
+        boolean preferSilkTouch = ToolSelectionUtils.prefersSilkTouchForDrops(state);
+        boolean currentPreservesDrops = preferSilkTouch
+                && InteractionUtils.isToolAllowedByDurabilityProtection(currentStack)
+                && ToolSelectionUtils.hasSilkTouch(currentStack);
+        boolean bestPreservesDrops = currentPreservesDrops;
         if (!this.shouldResolveBestTool()) {
-            ToolChoice choice = new ToolChoice(bestItem, bestProgress);
+            ToolChoice choice = new ToolChoice(bestItem, bestProgress, currentPreservesDrops, bestPreservesDrops);
             this.bestToolCache.put(state, choice);
             return choice;
         }
         for (ItemStack stack : InventoryUtils.getMainStacks(player.getInventory())) {
-            if (stack.isEmpty()) {
+            if (stack.isEmpty() || !InteractionUtils.isToolAllowedByDurabilityProtection(stack)) {
                 continue;
             }
             float progress = this.getDestroyProgress(player, state, stack);
-            if (progress > bestProgress) {
+            boolean stackPreservesDrops = preferSilkTouch && ToolSelectionUtils.hasSilkTouch(stack);
+            if ((stackPreservesDrops && !bestPreservesDrops)
+                    || stackPreservesDrops == bestPreservesDrops && progress > bestProgress) {
                 bestProgress = progress;
                 bestItem = stack.getItem();
+                bestPreservesDrops = stackPreservesDrops;
             }
         }
-        ToolChoice choice = new ToolChoice(bestItem, bestProgress);
+        ToolChoice choice = new ToolChoice(bestItem, bestProgress, currentPreservesDrops, bestPreservesDrops);
         this.bestToolCache.put(state, choice);
         return choice;
     }
@@ -131,6 +162,9 @@ final class MineBreakExecutor {
             return true;
         }
         if (target.bestProgress <= 0.0F) {
+            return false;
+        }
+        if (target.bestPreservesDrops && !target.currentPreservesDrops) {
             return false;
         }
         return target.currentProgress >= target.bestProgress * CURRENT_TOOL_MIN_EFFICIENCY_RATIO;
@@ -168,14 +202,19 @@ final class MineBreakExecutor {
         private final float bestProgress;
         private final Direction direction;
         private final Item bestToolItem;
+        private final boolean currentPreservesDrops;
+        private final boolean bestPreservesDrops;
 
-        private Target(BlockPos pos, BlockState state, float currentProgress, float bestProgress, Direction direction, Item bestToolItem) {
+        private Target(BlockPos pos, BlockState state, float currentProgress, float bestProgress, Direction direction, Item bestToolItem,
+                       boolean currentPreservesDrops, boolean bestPreservesDrops) {
             this.pos = pos;
             this.state = state;
             this.currentProgress = currentProgress;
             this.bestProgress = bestProgress;
             this.direction = direction;
             this.bestToolItem = bestToolItem;
+            this.currentPreservesDrops = currentPreservesDrops;
+            this.bestPreservesDrops = bestPreservesDrops;
         }
 
         public BlockPos pos() {
@@ -197,8 +236,12 @@ final class MineBreakExecutor {
         public Item bestToolItem() {
             return this.bestToolItem;
         }
+
+        public boolean shouldSwitchToRecoveryTool(ItemStack currentStack) {
+            return this.bestPreservesDrops && !ToolSelectionUtils.hasSilkTouch(currentStack);
+        }
     }
 
-    private record ToolChoice(Item item, float progress) {
+    private record ToolChoice(Item item, float progress, boolean currentPreservesDrops, boolean preservesDrops) {
     }
 }

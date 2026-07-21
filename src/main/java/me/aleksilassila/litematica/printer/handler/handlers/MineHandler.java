@@ -274,7 +274,9 @@ public class MineHandler extends Module {
     }
 
     private BlockBreakResult executeSessionTarget(MineBreakExecutor.Target target, boolean allowToolSwitch) {
-        BlockBreakResult result = this.executeMineTarget(target, allowToolSwitch);
+        boolean switchForRecovery = this.player != null
+                && target.shouldSwitchToRecoveryTool(this.player.getMainHandItem());
+        BlockBreakResult result = this.executeMineTarget(target, allowToolSwitch || switchForRecovery);
         if (result != BlockBreakResult.FAILED) {
             this.setBlockPosCooldown(target.pos(), ConfigUtils.getBreakCooldown());
         }

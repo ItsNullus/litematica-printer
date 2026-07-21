@@ -22,6 +22,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.FallingBlock;
+import net.minecraft.world.level.block.SignBlock;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
@@ -90,6 +91,10 @@ public final class PrintPlacementExecutor {
                 ? action.getCooldownTicksOverride()
                 : ConfigUtils.getPlaceCooldown();
         AtomicBoolean deferred = new AtomicBoolean(false);
+        boolean signPlacement = context.requiredState.getBlock() instanceof SignBlock;
+        if (signPlacement) {
+            ActionManager.INSTANCE.armPrintSignEdit(blockPos);
+        }
         ActionManager.INSTANCE.setQueueCompletionListener(sendResult -> {
             if (!deferred.get()) {
                 return;
@@ -108,6 +113,9 @@ public final class PrintPlacementExecutor {
                     taskAction.onSuccess(context, action);
                 }
             } else {
+                if (signPlacement) {
+                    ActionManager.INSTANCE.cancelPrintSignEdit(blockPos);
+                }
                 HudStatsManager.INSTANCE.recordDeferred(
                         HudStatsManager.Mode.PRINT,
                         describeSendFailure(sendResult)
@@ -130,6 +138,9 @@ public final class PrintPlacementExecutor {
             );
         }
         if (!sendResult.isSent()) {
+            if (signPlacement) {
+                ActionManager.INSTANCE.cancelPrintSignEdit(blockPos);
+            }
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, describeSendFailure(sendResult));
             return PrintPlacementResult.cancelled(true);
         }
@@ -145,6 +156,9 @@ public final class PrintPlacementExecutor {
     }
 
     private static void recordPlacementSent(SchematicBlockContext context) {
+        if (context.requiredState.getBlock() instanceof SignBlock) {
+            ActionManager.INSTANCE.confirmPrintSignEditSent(context.blockPos);
+        }
         HudStatsManager.INSTANCE.trackExpectedBlockState(
                 HudStatsManager.Mode.PRINT,
                 context.blockPos,

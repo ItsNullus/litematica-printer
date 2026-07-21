@@ -87,11 +87,12 @@ public class MixinLocalPlayer extends AbstractClientPlayer {
 
     @Unique
     public void openEditSignScreen(SignBlockEntity sign, boolean front, CallbackInfo ci) {
-        if (!Configs.Core.WORK_SWITCH.getBooleanValue()
-                || !ActionManager.INSTANCE.isPrintInteractionActive()) {
+        if (!Configs.Core.WORK_SWITCH.getBooleanValue()) {
             return;
         }
-        getTargetSignEntity(sign).ifPresent(signBlockEntity ->
+        getTargetSignEntity(sign)
+                .filter(signBlockEntity -> ActionManager.INSTANCE.consumePrintSignEdit(sign.getBlockPos()))
+                .ifPresent(signBlockEntity ->
         {
             //#if MC > 11904
             String line1 = signBlockEntity.getText(front).getMessage(0, false).getString();

@@ -1,6 +1,9 @@
 package me.aleksilassila.litematica.printer.printer;
 
 import lombok.Setter;
+//#if MC > 12100
+import fi.dy.masa.litematica.util.EasyPlaceUtils;
+//#endif
 import me.aleksilassila.litematica.printer.Reference;
 import me.aleksilassila.litematica.printer.mixin_extension.MultiPlayerGameModeExtension;
 import me.aleksilassila.litematica.printer.printer.zxy.inventory.SwitchItem;
@@ -19,6 +22,8 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import net.minecraft.world.item.ItemStack;
@@ -35,8 +40,13 @@ public class ActionManager {
     public static final ActionManager INSTANCE = new ActionManager();
     private static final float LOOK_SETTLED_EPSILON_DEGREES = 1.0F;
     private static final double STALE_WAIT_MOVE_DISTANCE_SQR = 0.75D * 0.75D;
+    private static final long PRINT_SIGN_EDIT_ARM_TIMEOUT_NANOS = 30_000_000_000L;
+    private static final long PRINT_SIGN_EDIT_RESPONSE_TIMEOUT_NANOS = 5_000_000_000L;
+    private static final long PRINT_SIGN_EDIT_PRUNE_INTERVAL_NANOS = 1_000_000_000L;
 
     private QueuedClick queuedClick;
+    private final Map<Long, Long> pendingPrintSignEdits = new HashMap<>();
+    private long nextPrintSignEditPruneNanos;
     @Setter
     @Nullable
     public PlayerLook look;
@@ -186,6 +196,13 @@ public class ActionManager {
         this.printerInteractionActive = true;
         this.easyPlaceProtocolActive = click.useProtocol;
         this.activeSource = click.source;
+        boolean litematicaEasyPlaceWasHandling = false;
+        //#if MC > 12100
+        litematicaEasyPlaceWasHandling = EasyPlaceUtils.isHandling();
+        if (!litematicaEasyPlaceWasHandling) {
+            EasyPlaceUtils.setHandling(true);
+        }
+        //#endif
         try {
             BlockHitResult blockHitResult = new BlockHitResult(hitVec, click.side, click.target, false);
             for (int i = 0; i < click.repeatCount; i++) {
@@ -196,6 +213,11 @@ public class ActionManager {
                 ) != net.minecraft.world.InteractionResult.FAIL;
             }
         } finally {
+            //#if MC > 12100
+            if (!litematicaEasyPlaceWasHandling) {
+                EasyPlaceUtils.setHandling(false);
+            }
+            //#endif
             this.printerInteractionActive = false;
             this.easyPlaceProtocolActive = false;
             this.activeSource = ActionSource.GENERIC;
@@ -233,6 +255,37 @@ public class ActionManager {
         return this.printerInteractionActive
                 && this.activeSource == ActionSource.PRINT
                 && this.easyPlaceProtocolActive;
+    }
+
+    public void armPrintSignEdit(BlockPos blockPos) {
+        long now = System.nanoTime();
+        this.pruneExpiredPrintSignEdits(now);
+        this.pendingPrintSignEdits.put(blockPos.asLong(), now + PRINT_SIGN_EDIT_ARM_TIMEOUT_NANOS);
+    }
+
+    public void confirmPrintSignEditSent(BlockPos blockPos) {
+        this.pendingPrintSignEdits.replace(
+                blockPos.asLong(),
+                System.nanoTime() + PRINT_SIGN_EDIT_RESPONSE_TIMEOUT_NANOS
+        );
+    }
+
+    public void cancelPrintSignEdit(BlockPos blockPos) {
+        this.pendingPrintSignEdits.remove(blockPos.asLong());
+    }
+
+    public boolean consumePrintSignEdit(BlockPos blockPos) {
+        long now = System.nanoTime();
+        Long deadline = this.pendingPrintSignEdits.remove(blockPos.asLong());
+        return deadline != null && deadline >= now;
+    }
+
+    private void pruneExpiredPrintSignEdits(long now) {
+        if (now < this.nextPrintSignEditPruneNanos) {
+            return;
+        }
+        this.nextPrintSignEditPruneNanos = now + PRINT_SIGN_EDIT_PRUNE_INTERVAL_NANOS;
+        this.pendingPrintSignEdits.entrySet().removeIf(entry -> entry.getValue() < now);
     }
 
     public void setShift(LocalPlayer player, boolean shift) {
@@ -323,5 +376,11 @@ public class ActionManager {
         this.printerInteractionActive = false;
         this.easyPlaceProtocolActive = false;
         this.activeSource = ActionSource.GENERIC;
+    }
+
+    public void resetRuntime() {
+        this.clearQueue();
+        this.pendingPrintSignEdits.clear();
+        this.nextPrintSignEditPruneNanos = 0L;
     }
 }

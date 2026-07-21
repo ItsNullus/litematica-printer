@@ -404,6 +404,9 @@ public abstract class MixinMultiPlayerGameMode implements MultiPlayerGameModeExt
         if (!InteractionUtils.protectCurrentToolBeforeBreak(blockState)) {
             return BlockBreakResult.FAILED;
         }
+        if (!InteractionUtils.isRecoveryToolReadyForBreak(blockState)) {
+            return BlockBreakResult.FAILED;
+        }
         ensureHasSentCarriedItem();
 
         float destroyProgress = blockState.getDestroyProgress(player, level, blockPos);
@@ -506,6 +509,10 @@ public abstract class MixinMultiPlayerGameMode implements MultiPlayerGameModeExt
         ensureHasSentCarriedItem();
         if (!InteractionUtils.protectCurrentToolBeforeBreak(blockState)) {
             MineDebugLog.write("mine break failed pos=" + MineDebugLog.pos(blockPos) + " reason=tool_durability_protected");
+            return BlockBreakResult.FAILED;
+        }
+        if (!InteractionUtils.isRecoveryToolReadyForBreak(blockState)) {
+            MineDebugLog.write("mine break failed pos=" + MineDebugLog.pos(blockPos) + " reason=recovery_tool_not_ready");
             return BlockBreakResult.FAILED;
         }
         ensureHasSentCarriedItem();

@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-@Mixin(value = BlockItem.class, priority = 981)
+@Mixin(value = BlockItem.class, priority = 1020)
 public abstract class MixinBlockItem extends Item {
     private MixinBlockItem(Item.Properties builder) {
         super(builder);
@@ -28,13 +28,27 @@ public abstract class MixinBlockItem extends Item {
 
     @Inject(method = "getPlacementState", at = @At("HEAD"), cancellable = true)
     private void modifyPlacementState(BlockPlaceContext ctx, CallbackInfoReturnable<BlockState> cir) {
-        if (Configs.Print.EASY_PLACE_PROTOCOL.getBooleanValue()
-                && ActionManager.INSTANCE.isEasyPlaceProtocolActive()) {
-            BlockState stateOrig = this.getBlock().getStateForPlacement(ctx);
-            if (stateOrig != null && this.canPlace(ctx, stateOrig)) {
-                PlacementHandler.UseContext context = PlacementHandler.UseContext.from(ctx, ctx.getHand());
-                cir.setReturnValue(PlacementHandler.applyPlacementProtocolToPlacementState(stateOrig, context));
-            }
+        boolean usePrinterProtocol = Configs.Print.EASY_PLACE_PROTOCOL.getBooleanValue()
+                && ActionManager.INSTANCE.isEasyPlaceProtocolActive();
+        //#if MC > 12100
+        if (!ActionManager.INSTANCE.isPrinterInteractionActive()) {
+            return;
         }
+        //#else
+        //$$ if (!usePrinterProtocol) {
+        //$$     return;
+        //$$ }
+        //#endif
+
+        BlockState state = this.getBlock().getStateForPlacement(ctx);
+        if (state == null || !this.canPlace(ctx, state)) {
+            cir.setReturnValue(null);
+            return;
+        }
+        if (usePrinterProtocol) {
+            PlacementHandler.UseContext context = PlacementHandler.UseContext.from(ctx, ctx.getHand());
+            state = PlacementHandler.applyPlacementProtocolToPlacementState(state, context);
+        }
+        cir.setReturnValue(state);
     }
 }

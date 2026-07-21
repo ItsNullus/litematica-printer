@@ -9,6 +9,7 @@ import me.aleksilassila.litematica.printer.mixin_extension.MultiPlayerGameModeEx
 import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
 import me.aleksilassila.litematica.printer.utils.mods.ModLoadUtils;
 import me.aleksilassila.litematica.printer.utils.mods.TweakerooUtils;
+import me.aleksilassila.litematica.printer.utils.minecraft.ToolSelectionUtils;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
@@ -90,10 +91,19 @@ public class InteractionUtils {
             return false;
         }
         LocalPlayer player = client.player;
+        boolean tweakerooToolSwitch = ModLoadUtils.isTweakerooLoaded() && TweakerooUtils.isToolSwitchEnabled();
+        if (player != null
+                && (Configs.Break.BREAK_AUTO_TOOL.getBooleanValue() || tweakerooToolSwitch)
+                && ToolSelectionUtils.prefersSilkTouchForDrops(blockState)
+                && (!isToolAllowedByDurabilityProtection(player.getMainHandItem())
+                || !ToolSelectionUtils.hasSilkTouch(player.getMainHandItem()))
+                && InventoryUtils.hasUsableSilkTouchTool(player)) {
+            return InventoryUtils.switchToBestTool(player, blockState);
+        }
         if (Configs.Break.BREAK_AUTO_TOOL.getBooleanValue()) {
             return player != null && InventoryUtils.switchToBestTool(player, blockState);
         }
-        if (ModLoadUtils.isTweakerooLoaded() && TweakerooUtils.isToolSwitchEnabled()) {
+        if (tweakerooToolSwitch) {
             TweakerooUtils.trySwitchToEffectiveTool(pos);
             return protectCurrentToolBeforeBreak(blockState);
         }
@@ -102,6 +112,24 @@ public class InteractionUtils {
 
     public static boolean isToolAllowedByDurabilityProtection(ItemStack stack) {
         return !TweakerooUtils.isToolTooDamagedForBreaking(stack);
+    }
+
+    public static boolean isRecoveryToolReadyForBreak(BlockState blockState) {
+        LocalPlayer player = client.player;
+        if (player == null || player.getAbilities().instabuild
+                || !ToolSelectionUtils.prefersSilkTouchForDrops(blockState)) {
+            return true;
+        }
+        boolean toolSwitchEnabled = Configs.Break.BREAK_AUTO_TOOL.getBooleanValue()
+                || ModLoadUtils.isTweakerooLoaded() && TweakerooUtils.isToolSwitchEnabled();
+        if (!toolSwitchEnabled) {
+            return true;
+        }
+        if (isToolAllowedByDurabilityProtection(player.getMainHandItem())
+                && ToolSelectionUtils.hasSilkTouch(player.getMainHandItem())) {
+            return true;
+        }
+        return !InventoryUtils.hasUsableSilkTouchTool(player);
     }
 
     public static int getCurrentToolSafeBreakBudget() {

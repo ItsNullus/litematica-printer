@@ -54,7 +54,7 @@ public class ClientPlayerTickManager {
     }
 
     public static void resetRuntime(String reason) {
-        ActionManager.INSTANCE.clearQueue();
+        ActionManager.INSTANCE.resetRuntime();
         if (mc.gameMode instanceof MultiPlayerGameModeExtension extension) {
             extension.litematica_printer$resetRuntime();
         }

@@ -6,6 +6,7 @@ import fi.dy.masa.malilib.util.InfoUtils;
 import me.aleksilassila.litematica.printer.mixin.printer.litematica.EasyPlaceUtilsAccessor;
 import me.aleksilassila.litematica.printer.mixin.printer.litematica.InventoryUtilsAccessor;
 import me.aleksilassila.litematica.printer.utils.minecraft.PlayerUtils;
+import me.aleksilassila.litematica.printer.utils.minecraft.ToolSelectionUtils;
 import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
@@ -300,10 +301,15 @@ public class InventoryUtils {
 
         Inventory inventory = player.getInventory();
         ItemStack currentStack = player.getMainHandItem();
-        float currentProgress = InteractionUtils.isToolAllowedByDurabilityProtection(currentStack)
+        boolean currentToolAllowed = InteractionUtils.isToolAllowedByDurabilityProtection(currentStack);
+        float currentProgress = currentToolAllowed
                 ? getDestroyProgress(player, blockState, currentStack)
                 : 0.0F;
         float bestProgress = currentProgress;
+        boolean preferSilkTouch = ToolSelectionUtils.prefersSilkTouchForDrops(blockState);
+        boolean bestHasSilkTouch = preferSilkTouch
+                && currentToolAllowed
+                && ToolSelectionUtils.hasSilkTouch(currentStack);
         int bestSlot = -1;
         ItemStack bestStack = ItemStack.EMPTY;
 
@@ -314,8 +320,11 @@ public class InventoryUtils {
                 continue;
             }
             float progress = getDestroyProgress(player, blockState, stack);
-            if (progress > bestProgress) {
+            boolean stackHasSilkTouch = preferSilkTouch && ToolSelectionUtils.hasSilkTouch(stack);
+            if ((stackHasSilkTouch && !bestHasSilkTouch)
+                    || stackHasSilkTouch == bestHasSilkTouch && progress > bestProgress) {
                 bestProgress = progress;
+                bestHasSilkTouch = stackHasSilkTouch;
                 bestSlot = slot;
                 bestStack = stack;
             }
@@ -325,6 +334,20 @@ public class InventoryUtils {
             return false;
         }
         return setPickedItemToHand(bestSlot, bestStack, client);
+    }
+
+    public static boolean hasUsableSilkTouchTool(LocalPlayer player) {
+        if (player == null || PlayerUtils.getAbilities(player).instabuild) {
+            return false;
+        }
+        for (ItemStack stack : getMainStacks(player.getInventory())) {
+            if (!stack.isEmpty()
+                    && InteractionUtils.isToolAllowedByDurabilityProtection(stack)
+                    && ToolSelectionUtils.hasSilkTouch(stack)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static float getDestroyProgress(LocalPlayer player, BlockState state, ItemStack stack) {
