@@ -32,6 +32,8 @@ import net.minecraft.world.item.ItemStack;
 
 public final class PrintPlacementExecutor {
     private static final Item[] EMPTY_HAND_ITEMS = {Items.AIR};
+    private static final long RESERVE_NOTICE_COOLDOWN_TICKS = 100L;
+    private static long lastReserveNoticeTick = Long.MIN_VALUE;
 
     public PrintPlacementResult execute(SchematicBlockContext context, Action action, @Nullable PrintTaskAction taskAction) {
         BlockPos blockPos = context.blockPos;
@@ -52,15 +54,42 @@ public final class PrintPlacementExecutor {
 
         Item[] requiredItems = normalizeRequiredItems(action.getRequiredItems(context.requiredState.getBlock()));
         Predicate<ItemStack> requiredStackPredicate = action.getRequiredStackPredicate();
-        boolean itemReady = requiredStackPredicate == null
-                ? InventoryUtils.switchToItems(context.client.player, requiredItems)
-                : InventoryUtils.switchToMatchingStack(
-                        context.client.player,
-                        requiredStackPredicate,
-                        action.getRequiredCreativeStack()
-                );
+        boolean reserveItems = Configs.Print.PRINT_RESERVE_ITEMS.getBooleanValue();
+        int reserveCount = Configs.Print.PRINT_RESERVE_ITEM_COUNT.getIntegerValue();
+        boolean itemReady;
+        if (requiredStackPredicate == null) {
+            itemReady = reserveItems
+                    ? InventoryUtils.switchToItemsWithReserve(context.client.player, requiredItems, reserveCount)
+                    : InventoryUtils.switchToItems(context.client.player, requiredItems);
+        } else {
+            itemReady = reserveItems
+                    ? InventoryUtils.switchToMatchingStackWithReserve(
+                            context.client.player,
+                            requiredStackPredicate,
+                            action.getRequiredCreativeStack(),
+                            reserveCount
+                    )
+                    : InventoryUtils.switchToMatchingStack(
+                            context.client.player,
+                            requiredStackPredicate,
+                            action.getRequiredCreativeStack()
+                    );
+        }
         if (!itemReady) {
-            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "缺少材料");
+            ItemStack reserveBlockedStack = reserveItems
+                    ? InventoryUtils.findReserveBlockedStack(
+                            context.client.player,
+                            requiredItems,
+                            requiredStackPredicate,
+                            reserveCount
+                    )
+                    : ItemStack.EMPTY;
+            if (reserveBlockedStack.isEmpty()) {
+                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "缺少材料");
+            } else {
+                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "达到保留数量");
+                showReserveNotice(context, reserveBlockedStack);
+            }
             // 缺少材料属于无效放置，不应消耗每 tick 的有效放置预算（与重构前行为一致）。
             return PrintPlacementResult.failure(false,
                     shouldStopAfterTaskAction(taskAction)
@@ -116,6 +145,9 @@ public final class PrintPlacementExecutor {
                 if (signPlacement) {
                     ActionManager.INSTANCE.cancelPrintSignEdit(blockPos);
                 }
+                if (sendResult == ActionManager.SendResult.RESERVE_LIMIT) {
+                    showReserveNotice(context, context.client.player.getMainHandItem());
+                }
                 HudStatsManager.INSTANCE.recordDeferred(
                         HudStatsManager.Mode.PRINT,
                         describeSendFailure(sendResult)
@@ -140,6 +172,9 @@ public final class PrintPlacementExecutor {
         if (!sendResult.isSent()) {
             if (signPlacement) {
                 ActionManager.INSTANCE.cancelPrintSignEdit(blockPos);
+            }
+            if (sendResult == ActionManager.SendResult.RESERVE_LIMIT) {
+                showReserveNotice(context, context.client.player.getMainHandItem());
             }
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, describeSendFailure(sendResult));
             return PrintPlacementResult.cancelled(true);
@@ -172,6 +207,7 @@ public final class PrintPlacementExecutor {
         return switch (result) {
             case STALE_POSITION -> "移动后动作失效";
             case HELD_ITEM_CHANGED -> "手持物品已变化";
+            case RESERVE_LIMIT -> "达到保留数量";
             case NO_PLAYER, NO_GAME_MODE -> "客户端状态未就绪";
             case INTERACTION_REJECTED -> "交互被拒绝";
             case NO_QUEUED_ACTION -> "动作未入队";
@@ -209,5 +245,22 @@ public final class PrintPlacementExecutor {
 
     private static boolean shouldStopAfterTaskAction(@Nullable PrintTaskAction taskAction) {
         return taskAction != null && taskAction.stopIterationAfterAction();
+    }
+
+    private static void showReserveNotice(SchematicBlockContext context, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return;
+        }
+        long currentTick = context.level.getGameTime();
+        if (lastReserveNoticeTick != Long.MIN_VALUE
+                && currentTick >= lastReserveNoticeTick
+                && currentTick - lastReserveNoticeTick < RESERVE_NOTICE_COOLDOWN_TICKS) {
+            return;
+        }
+        lastReserveNoticeTick = currentTick;
+        MessageUtils.setOverlayMessage(I18n.RESERVE_ITEM_SKIP.getName(
+                stack.getHoverName(),
+                Configs.Print.PRINT_RESERVE_ITEM_COUNT.getIntegerValue()
+        ));
     }
 }

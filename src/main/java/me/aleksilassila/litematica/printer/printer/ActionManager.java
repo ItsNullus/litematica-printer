@@ -5,6 +5,7 @@ import lombok.Setter;
 import fi.dy.masa.litematica.util.EasyPlaceUtils;
 //#endif
 import me.aleksilassila.litematica.printer.Reference;
+import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.mixin_extension.MultiPlayerGameModeExtension;
 import me.aleksilassila.litematica.printer.printer.zxy.inventory.SwitchItem;
 import me.aleksilassila.litematica.printer.utils.minecraft.DirectionUtils;
@@ -74,6 +75,7 @@ public class ActionManager {
         NO_PLAYER,
         STALE_POSITION,
         HELD_ITEM_CHANGED,
+        RESERVE_LIMIT,
         NO_GAME_MODE,
         INTERACTION_REJECTED;
 
@@ -165,6 +167,10 @@ public class ActionManager {
         if (!isHoldingExpectedItem(player, click)) {
             return this.finish(click, SendResult.HELD_ITEM_CHANGED);
         }
+        int reserveAllowance = getReserveAllowance(player, click);
+        if (reserveAllowance <= 0) {
+            return this.finish(click, SendResult.RESERVE_LIMIT);
+        }
         Direction direction;
         if (look == null) {
             direction = click.side;
@@ -206,11 +212,18 @@ public class ActionManager {
         try {
             BlockHitResult blockHitResult = new BlockHitResult(hitVec, click.side, click.target, false);
             for (int i = 0; i < click.repeatCount; i++) {
-                accepted |= gameModeExtension.litematica_printer$useItemOn(
+                if (reserveAllowance <= 0) {
+                    break;
+                }
+                boolean interactionAccepted = gameModeExtension.litematica_printer$useItemOn(
                         true,
                         InteractionHand.MAIN_HAND,
                         blockHitResult
                 ) != net.minecraft.world.InteractionResult.FAIL;
+                accepted |= interactionAccepted;
+                if (interactionAccepted && reserveAllowance != Integer.MAX_VALUE) {
+                    reserveAllowance--;
+                }
             }
         } finally {
             //#if MC > 12100
@@ -224,6 +237,19 @@ public class ActionManager {
             restoreShift(player, click, wasSneak);
         }
         return this.finish(click, accepted ? SendResult.SENT : SendResult.INTERACTION_REJECTED);
+    }
+
+    private static int getReserveAllowance(LocalPlayer player, QueuedClick click) {
+        if (click.source != ActionSource.PRINT
+                || !Configs.Print.PRINT_RESERVE_ITEMS.getBooleanValue()) {
+            return Integer.MAX_VALUE;
+        }
+        return InventoryUtils.getConsumableSurplus(
+                player,
+                player.getMainHandItem(),
+                click.expectedStackPredicate,
+                Configs.Print.PRINT_RESERVE_ITEM_COUNT.getIntegerValue()
+        );
     }
 
     private void restoreShift(LocalPlayer player, QueuedClick click, boolean wasSneak) {

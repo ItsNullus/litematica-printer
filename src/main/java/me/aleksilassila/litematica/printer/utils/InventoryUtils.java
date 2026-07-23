@@ -20,6 +20,8 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.state.BlockState;
+import org.jetbrains.annotations.Nullable;
+
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
@@ -39,6 +41,7 @@ import static me.aleksilassila.litematica.printer.printer.zxy.inventory.Inventor
 public class InventoryUtils {
     private static final Minecraft client = Minecraft.getInstance();
     private static final int OFFHAND_SLOT_INDEX = 40;
+    private static final int MAIN_INVENTORY_SLOT_COUNT = 36;
     private static final long MESSAGE_COOLDOWN_MS = 5000L;
     private static final Map<String, Long> LAST_MESSAGE_SEND_TIME = new ConcurrentHashMap<>();
     public static int getSelectedSlot(Inventory inventory) {
@@ -363,6 +366,14 @@ public class InventoryUtils {
     }
 
     public static boolean switchToItems(LocalPlayer player, Item[] items) {
+        return switchToItems(player, items, -1);
+    }
+
+    public static boolean switchToItemsWithReserve(LocalPlayer player, Item[] items, int reserveCount) {
+        return switchToItems(player, items, Math.max(0, reserveCount));
+    }
+
+    private static boolean switchToItems(LocalPlayer player, Item[] items, int reserveCount) {
         if (InventorySwitchGuard.isWaiting()) {
             return false;
         }
@@ -372,7 +383,8 @@ public class InventoryUtils {
         Inventory inventory = player.getInventory();
         ItemStack mainHandStack = player.getMainHandItem();
         for (Item item : items) {
-            if (mainHandStack.getItem().equals(item)) {
+            if (mainHandStack.getItem().equals(item)
+                    && getConsumableSurplus(player, mainHandStack, null, reserveCount) > 0) {
                 return true;
             }
         }
@@ -390,7 +402,8 @@ public class InventoryUtils {
         for (Item item : items) {
             for (int i = 0; i < inventory.getContainerSize(); i++) {
                 ItemStack itemStack = inventory.getItem(i);
-                if (itemStack.getItem().equals(item)) {
+                if (itemStack.getItem().equals(item)
+                        && getConsumableSurplus(player, itemStack, null, reserveCount) > 0) {
                     boolean needsInventoryConfirmation = !Inventory.isHotbarSlot(i);
                     if (InventoryUtils.setPickedItemToHand(i, itemStack, client)) {
                         return !needsInventoryConfirmation || !InventorySwitchGuard.markSwitchIfNeeded(item);
@@ -453,11 +466,30 @@ public class InventoryUtils {
             Predicate<ItemStack> predicate,
             ItemStack creativeFallback
     ) {
+        return switchToMatchingStack(player, predicate, creativeFallback, -1);
+    }
+
+    public static boolean switchToMatchingStackWithReserve(
+            LocalPlayer player,
+            Predicate<ItemStack> predicate,
+            ItemStack creativeFallback,
+            int reserveCount
+    ) {
+        return switchToMatchingStack(player, predicate, creativeFallback, Math.max(0, reserveCount));
+    }
+
+    private static boolean switchToMatchingStack(
+            LocalPlayer player,
+            Predicate<ItemStack> predicate,
+            ItemStack creativeFallback,
+            int reserveCount
+    ) {
         if (player == null || predicate == null || InventorySwitchGuard.isWaiting()) {
             return false;
         }
         ItemStack mainHandStack = player.getMainHandItem();
-        if (predicate.test(mainHandStack)) {
+        if (predicate.test(mainHandStack)
+                && getConsumableSurplus(player, mainHandStack, predicate, reserveCount) > 0) {
             return true;
         }
 
@@ -465,6 +497,9 @@ public class InventoryUtils {
         for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
             ItemStack stack = inventory.getItem(slot);
             if (stack.isEmpty() || !predicate.test(stack)) {
+                continue;
+            }
+            if (getConsumableSurplus(player, stack, predicate, reserveCount) <= 0) {
                 continue;
             }
             boolean needsInventoryConfirmation = !Inventory.isHotbarSlot(slot);
@@ -481,6 +516,88 @@ public class InventoryUtils {
             return setPickedItemToHand(creativeFallback.copy(), client);
         }
         return false;
+    }
+
+    /**
+     * 返回当前物品最多还能安全尝试消耗的次数。
+     * {@link Integer#MAX_VALUE} 表示该物品不受保留数量限制。
+     */
+    public static int getConsumableSurplus(
+            LocalPlayer player,
+            ItemStack stack,
+            @Nullable Predicate<ItemStack> requiredStackPredicate,
+            int reserveCount
+    ) {
+        if (player == null || stack == null) {
+            return 0;
+        }
+        if (reserveCount < 0
+                || PlayerUtils.getAbilities(player).instabuild
+                || stack.isEmpty()
+                || stack.isDamageableItem()) {
+            return Integer.MAX_VALUE;
+        }
+
+        Predicate<ItemStack> predicate = requiredStackPredicate != null
+                ? requiredStackPredicate
+                : candidate -> candidate.is(stack.getItem());
+        return Math.max(0, countMatchingMainInventory(player, predicate) - reserveCount);
+    }
+
+    public static ItemStack findReserveBlockedStack(
+            LocalPlayer player,
+            Item[] items,
+            @Nullable Predicate<ItemStack> requiredStackPredicate,
+            int reserveCount
+    ) {
+        if (player == null
+                || reserveCount < 0
+                || PlayerUtils.getAbilities(player).instabuild) {
+            return ItemStack.EMPTY;
+        }
+
+        Inventory inventory = player.getInventory();
+        int size = Math.min(MAIN_INVENTORY_SLOT_COUNT, inventory.getContainerSize());
+        if (requiredStackPredicate != null) {
+            for (int slot = 0; slot < size; slot++) {
+                ItemStack stack = inventory.getItem(slot);
+                if (!stack.isEmpty()
+                        && requiredStackPredicate.test(stack)
+                        && getConsumableSurplus(player, stack, requiredStackPredicate, reserveCount) <= 0) {
+                    return stack.copy();
+                }
+            }
+            return ItemStack.EMPTY;
+        }
+
+        Item[] targetItems = items == null || items.length == 0 ? new Item[]{Items.AIR} : items;
+        for (Item item : targetItems) {
+            for (int slot = 0; slot < size; slot++) {
+                ItemStack stack = inventory.getItem(slot);
+                if (!stack.isEmpty()
+                        && stack.is(item)
+                        && getConsumableSurplus(player, stack, null, reserveCount) <= 0) {
+                    return stack.copy();
+                }
+            }
+        }
+        return ItemStack.EMPTY;
+    }
+
+    private static int countMatchingMainInventory(
+            LocalPlayer player,
+            Predicate<ItemStack> predicate
+    ) {
+        Inventory inventory = player.getInventory();
+        int size = Math.min(MAIN_INVENTORY_SLOT_COUNT, inventory.getContainerSize());
+        int count = 0;
+        for (int slot = 0; slot < size; slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            if (!stack.isEmpty() && predicate.test(stack)) {
+                count += stack.getCount();
+            }
+        }
+        return count;
     }
 
     public static ItemStack createWaterPotionStack() {

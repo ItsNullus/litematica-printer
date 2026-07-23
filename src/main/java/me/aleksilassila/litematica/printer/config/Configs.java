@@ -444,6 +444,18 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 .defaultValue(false)
                 .build();
 
+        // 保留打印耗材
+        public static final ConfigBoolean PRINT_RESERVE_ITEMS = bool("printReserveItems")
+                .defaultValue(false)
+                .build();
+
+        // 打印耗材保留数量
+        public static final ConfigInteger PRINT_RESERVE_ITEM_COUNT = integer("printReserveItemCount")
+                .defaultValue(1)
+                .range(1, 64)
+                .setVisible(PRINT_RESERVE_ITEMS::getBooleanValue)
+                .build();
+
         // 覆盖打印
         public static final ConfigBoolean PRINT_REPLACE = bool("printReplace")
                 .defaultValue(true)
@@ -524,6 +536,8 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 PRINT_SORT_SIDES,
                 REPAIR_RAIL_SHAPE,
                 PRINT_FORCED_SNEAK,
+                PRINT_RESERVE_ITEMS,
+                PRINT_RESERVE_ITEM_COUNT,
                 BREAK_WRONG_BLOCK,
                 BREAK_EXTRA_BLOCK,
                 PRINT_SKIP,

@@ -29,6 +29,7 @@ public final class TakeItOutUtils {
     private static Item localPendingItem;
     private static long localPendingStartedAtMs;
     private static int localPendingSettleTicks = -1;
+    private static int localPendingInitialCount;
     private static boolean apiFailureLogged;
 
     private TakeItOutUtils() {
@@ -205,9 +206,12 @@ public final class TakeItOutUtils {
         if (item == null) {
             return;
         }
-        localPendingItem = item;
-        localPendingStartedAtMs = System.currentTimeMillis();
-        localPendingSettleTicks = -1;
+        if (localPendingItem == null || !localPendingItem.equals(item)) {
+            localPendingItem = item;
+            localPendingStartedAtMs = System.currentTimeMillis();
+            localPendingSettleTicks = -1;
+            localPendingInitialCount = countInventoryItem(item);
+        }
         ActionManager.INSTANCE.clearQueue();
     }
 
@@ -220,7 +224,7 @@ public final class TakeItOutUtils {
             clearLocalPending();
             return false;
         }
-        if (!hasInventoryItem(localPendingItem)) {
+        if (countInventoryItem(localPendingItem) <= localPendingInitialCount) {
             return true;
         }
         if (localPendingSettleTicks < 0) {
@@ -233,25 +237,27 @@ public final class TakeItOutUtils {
         return false;
     }
 
-    private static boolean hasInventoryItem(Item item) {
+    private static int countInventoryItem(Item item) {
         if (client.player == null || item == null) {
-            return false;
+            return 0;
         }
         Inventory inventory = client.player.getInventory();
         int size = Math.min(36, inventory.getContainerSize());
+        int count = 0;
         for (int slot = 0; slot < size; slot++) {
             ItemStack stack = inventory.getItem(slot);
             if (!stack.isEmpty() && stack.is(item)) {
-                return true;
+                count += stack.getCount();
             }
         }
-        return false;
+        return count;
     }
 
     private static void clearLocalPending() {
         localPendingItem = null;
         localPendingStartedAtMs = 0L;
         localPendingSettleTicks = -1;
+        localPendingInitialCount = 0;
     }
 
     private static void sendPayload(Object payload) throws ReflectiveOperationException {
