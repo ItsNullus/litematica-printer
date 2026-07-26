@@ -8,6 +8,8 @@ import me.aleksilassila.litematica.printer.utils.mods.ShulkerUtils;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.mixin.printer.litematica.InventoryUtilsAccessor;
 import me.aleksilassila.litematica.printer.printer.zxy.utils.ZxyUtils;
+import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
+import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -82,10 +84,10 @@ public class InventoryUtils {
                 return false;
             }
             AbstractContainerMenu sc = player.containerMenu;
-            if (!player.containerMenu.equals(player.inventoryMenu)) return true;
-            //排除合成栏 装备栏 副手
-            if (Configs.Placement.STORE_ORDERLY.getBooleanValue() && sc.slots.stream().skip(9).limit(sc.slots.size() - 10).noneMatch(slot -> slot.getItem().isEmpty())
-                    && Configs.Placement.QUICK_SHULKER.getBooleanValue()) {
+            if (!sc.equals(player.inventoryMenu)) return true;
+            if (Configs.Placement.STORE_ORDERLY.getBooleanValue()
+                    && Configs.Placement.QUICK_SHULKER.getBooleanValue()
+                    && SwitchItem.shouldRestoreForInventoryPressure()) {
                 SwitchItem.checkItems();
                 return true;
             }
@@ -104,7 +106,7 @@ public class InventoryUtils {
     }
 
     public static boolean hasPendingSwitchRequest() {
-        return isOpenHandler || !lastNeedItemList.isEmpty();
+        return isOpenHandler || !lastNeedItemList.isEmpty() || SwitchItem.hasPendingRestore();
     }
 
     public static boolean shouldPauseForSwitchRequest() {
@@ -229,6 +231,13 @@ public class InventoryUtils {
         }
         if (shulkerCooldown > 0) {
             shulkerCooldown--;
+        }
+        if (Configs.Placement.STORE_ORDERLY.getBooleanValue()
+                && Configs.Placement.QUICK_SHULKER.getBooleanValue()
+                && !isOpenHandler
+                && !InventorySwitchGuard.isWaiting()
+                && !TakeItOutUtils.isAwaitingStack()) {
+            SwitchItem.maintainOrderlyStorage();
         }
     }
 

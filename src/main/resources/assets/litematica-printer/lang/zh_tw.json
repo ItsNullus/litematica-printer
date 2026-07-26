@@ -215,7 +215,7 @@
   "litematica-printer.config.selectionType.litematica.selection.abovePlayer": "投影選區(玩家之上)",
   "litematica-printer.config.selectionType.litematica.selection.belowPlayer": "投影選區(玩家之下)",
   "litematica-printer.config.storeOrderly": "物品有序存放",
-  "litematica-printer.config.storeOrderly.desc": "背包滿時，優先將快捷潛影盒取出的物品放回原潛影盒的原槽；原槽無法容納時，會依次使用同類堆疊和空槽。",
+  "litematica-printer.config.storeOrderly.desc": "背包接近滿時會回收最久未使用的快捷潛影盒物品，停止使用後也會自動清場；優先放回原盒原槽，無法容納時依次使用同類堆疊和空槽。",
   "litematica-printer.config.switchPrinterMode": "切換模式",
   "litematica-printer.config.switchPrinterMode.desc": "切換印表機的當前工作模式(列印/挖掘/破基岩等)。",
   "litematica-printer.config.unlockBeaconEffects": "解除信標效果限制",

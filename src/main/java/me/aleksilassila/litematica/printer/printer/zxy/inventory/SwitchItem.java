@@ -16,18 +16,20 @@ import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
 public class SwitchItem {
     private static final int RESTORE_TIMEOUT_TICKS = 40;
+    private static final int FREE_SLOT_BUFFER = 3;
+    private static final int IDLE_RESTORE_DELAY_TICKS = 100;
     private static final Minecraft client = Minecraft.getInstance();
     private static final List<ItemStatistics> trackedItems = new ArrayList<>();
 
     private static ItemStatistics pendingRestore;
     private static boolean waitingForRestoreContainer;
     private static int restoreTimeout;
+    private static long lastTrackedActivityTick = Long.MIN_VALUE;
 
     public static void newItem(
             ItemStack itemStack,
@@ -51,6 +53,7 @@ public class SwitchItem {
                 shulkerInventoryMenuSlot,
                 playerInventorySlot
         ));
+        markTrackedActivity();
     }
 
     public static void moveTrackedItem(int oldPlayerSlot, int newPlayerSlot) {
@@ -96,7 +99,64 @@ public class SwitchItem {
         }
         if (statistics != null) {
             statistics.syncUseTime();
+            markTrackedActivity();
         }
+    }
+
+    /**
+     * Return all tracked Quick Shulker stacks after they have been idle for a
+     * short period. Inventory-pressure cleanup is requested separately by the
+     * missing-item path so a newly retrieved active stack is not put back
+     * before its first use.
+     */
+    public static boolean maintainOrderlyStorage() {
+        LocalPlayer player = client.player;
+        if (player == null || client.level == null || client.gameMode == null
+                //#if MC > 260100
+                //$$ || client.gui.screen() != null
+                //#else
+                || client.screen != null
+                //#endif
+                || !player.containerMenu.equals(player.inventoryMenu)) {
+            return pendingRestore != null;
+        }
+        if (pendingRestore != null) {
+            if (!waitingForRestoreContainer) {
+                openPendingShulker();
+            }
+            return true;
+        }
+
+        reconcileTrackedSlots(player);
+        if (trackedItems.isEmpty()) {
+            lastTrackedActivityTick = Long.MIN_VALUE;
+            return false;
+        }
+
+        long currentTick = client.level.getGameTime();
+        if (lastTrackedActivityTick == Long.MIN_VALUE || currentTick < lastTrackedActivityTick) {
+            lastTrackedActivityTick = currentTick;
+        }
+        boolean idle = currentTick - lastTrackedActivityTick >= IDLE_RESTORE_DELAY_TICKS;
+        if (!idle) {
+            return false;
+        }
+
+        checkItems();
+        return pendingRestore != null;
+    }
+
+    public static boolean shouldRestoreForInventoryPressure() {
+        LocalPlayer player = client.player;
+        if (player == null || !player.containerMenu.equals(player.inventoryMenu)) {
+            return false;
+        }
+        reconcileTrackedSlots(player);
+        return !trackedItems.isEmpty() && countEmptyInventorySlots(player) < FREE_SLOT_BUFFER;
+    }
+
+    public static boolean hasPendingRestore() {
+        return pendingRestore != null;
     }
 
     /**
@@ -214,6 +274,24 @@ public class SwitchItem {
     public static void reSet() {
         trackedItems.clear();
         clearPendingRestore();
+        lastTrackedActivityTick = Long.MIN_VALUE;
+    }
+
+    private static int countEmptyInventorySlots(LocalPlayer player) {
+        int emptySlots = 0;
+        int size = Math.min(36, player.getInventory().getContainerSize());
+        for (int slot = 0; slot < size; slot++) {
+            if (player.getInventory().getItem(slot).isEmpty()) {
+                emptySlots++;
+            }
+        }
+        return emptySlots;
+    }
+
+    private static void markTrackedActivity() {
+        if (client.level != null) {
+            lastTrackedActivityTick = client.level.getGameTime();
+        }
     }
 
     private static void openPendingShulker() {
