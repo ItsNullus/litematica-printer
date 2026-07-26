@@ -90,6 +90,13 @@ val Project.placeholderProps: Map<String, Any?>
         "fabric_api_version" to fabricApiVersion,
         "minecraft_dependency" to mcDependency,
         "compatibility_level" to mixinJavaVersion,
+        "beacon_client_mixins" to if (mcVersionInt < 260200) {
+            "\"printer.mc.BeaconBlockEntityAccessor\",\n" +
+                    "    \"printer.mc.BeaconButtonAccessor\",\n" +
+                    "    \"printer.mc.BeaconScreenMixin\","
+        } else {
+            ""
+        },
         "malilib" to malilib,
         "litematica" to litematica
     ).filterValues { it != null }.mapValues { it.value!! }

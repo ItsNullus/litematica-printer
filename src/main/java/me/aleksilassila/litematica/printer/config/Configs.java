@@ -225,7 +225,9 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 .build();
 
         public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
+                //#if MC < 260200
                 UNLOCK_BEACON_EFFECTS,
+                //#endif
                 TWEAKEROO_ANGEL_BLOCK_MAY_BUILD
         );
     }
