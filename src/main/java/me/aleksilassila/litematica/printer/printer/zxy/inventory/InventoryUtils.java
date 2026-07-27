@@ -87,8 +87,7 @@ public class InventoryUtils {
             if (!sc.equals(player.inventoryMenu)) return true;
             if (Configs.Placement.STORE_ORDERLY.getBooleanValue()
                     && Configs.Placement.QUICK_SHULKER.getBooleanValue()
-                    && SwitchItem.shouldRestoreForInventoryPressure()) {
-                SwitchItem.checkItems();
+                    && SwitchItem.tryRestoreForInventoryPressure()) {
                 return true;
             }
 

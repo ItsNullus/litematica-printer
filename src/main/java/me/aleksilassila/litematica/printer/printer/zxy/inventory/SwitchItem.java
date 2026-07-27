@@ -21,7 +21,10 @@ import java.util.Set;
 
 public class SwitchItem {
     private static final int RESTORE_TIMEOUT_TICKS = 40;
-    private static final int FREE_SLOT_BUFFER = 3;
+    private static final int PRESSURE_TRIGGER_FREE_SLOTS = 4;
+    private static final int PRESSURE_TARGET_FREE_SLOTS = 8;
+    private static final int EMERGENCY_FREE_SLOTS = 1;
+    private static final int RECENT_USE_PROTECTION_TICKS = 40;
     private static final int IDLE_RESTORE_DELAY_TICKS = 100;
     private static final Minecraft client = Minecraft.getInstance();
     private static final List<ItemStatistics> trackedItems = new ArrayList<>();
@@ -29,7 +32,8 @@ public class SwitchItem {
     private static ItemStatistics pendingRestore;
     private static boolean waitingForRestoreContainer;
     private static int restoreTimeout;
-    private static long lastTrackedActivityTick = Long.MIN_VALUE;
+    private static boolean pressureRecoveryActive;
+    private static long lastPrinterActionTick = Long.MIN_VALUE;
 
     public static void newItem(
             ItemStack itemStack,
@@ -51,9 +55,10 @@ public class SwitchItem {
                 sourceShulker,
                 sourceContainerSlot,
                 shulkerInventoryMenuSlot,
-                playerInventorySlot
+                playerInventorySlot,
+                currentGameTick()
         ));
-        markTrackedActivity();
+        markPrinterActivity();
     }
 
     public static void moveTrackedItem(int oldPlayerSlot, int newPlayerSlot) {
@@ -84,6 +89,8 @@ public class SwitchItem {
         if (player == null) {
             return;
         }
+        long currentTick = currentGameTick();
+        lastPrinterActionTick = currentTick;
         int selectedSlot = me.aleksilassila.litematica.printer.utils.InventoryUtils
                 .getSelectedSlot(player.getInventory());
         ItemStack mainHandStack = player.getMainHandItem();
@@ -98,16 +105,13 @@ public class SwitchItem {
             }
         }
         if (statistics != null) {
-            statistics.syncUseTime();
-            markTrackedActivity();
+            statistics.markUsed(currentTick);
         }
     }
 
     /**
-     * Return all tracked Quick Shulker stacks after they have been idle for a
-     * short period. Inventory-pressure cleanup is requested separately by the
-     * missing-item path so a newly retrieved active stack is not put back
-     * before its first use.
+     * Keep enough free inventory slots while printing, then return every
+     * tracked stack after the printer has been idle for a short period.
      */
     public static boolean maintainOrderlyStorage() {
         LocalPlayer player = client.player;
@@ -129,68 +133,52 @@ public class SwitchItem {
 
         reconcileTrackedSlots(player);
         if (trackedItems.isEmpty()) {
-            lastTrackedActivityTick = Long.MIN_VALUE;
+            pressureRecoveryActive = false;
+            lastPrinterActionTick = Long.MIN_VALUE;
             return false;
         }
 
         long currentTick = client.level.getGameTime();
-        if (lastTrackedActivityTick == Long.MIN_VALUE || currentTick < lastTrackedActivityTick) {
-            lastTrackedActivityTick = currentTick;
+        normalizeActivityTicks(currentTick);
+        int freeSlots = countEmptyInventorySlots(player);
+        updatePressureRecovery(freeSlots);
+        if (pressureRecoveryActive) {
+            boolean emergency = freeSlots <= EMERGENCY_FREE_SLOTS;
+            return scheduleRestore(player, currentTick, emergency, false);
         }
-        boolean idle = currentTick - lastTrackedActivityTick >= IDLE_RESTORE_DELAY_TICKS;
-        if (!idle) {
+        if (!me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils
+                .lastNeedItemList.isEmpty()) {
             return false;
         }
 
-        checkItems();
-        return pendingRestore != null;
+        if (currentTick - lastPrinterActionTick < IDLE_RESTORE_DELAY_TICKS) {
+            return false;
+        }
+
+        return scheduleRestore(player, currentTick, false, true);
     }
 
-    public static boolean shouldRestoreForInventoryPressure() {
+    public static boolean tryRestoreForInventoryPressure() {
         LocalPlayer player = client.player;
-        if (player == null || !player.containerMenu.equals(player.inventoryMenu)) {
+        if (player == null || client.level == null || client.gameMode == null
+                || !player.containerMenu.equals(player.inventoryMenu)) {
             return false;
         }
         reconcileTrackedSlots(player);
-        return !trackedItems.isEmpty() && countEmptyInventorySlots(player) < FREE_SLOT_BUFFER;
+        if (trackedItems.isEmpty()) {
+            pressureRecoveryActive = false;
+            return false;
+        }
+        long currentTick = client.level.getGameTime();
+        normalizeActivityTicks(currentTick);
+        int freeSlots = countEmptyInventorySlots(player);
+        updatePressureRecovery(freeSlots);
+        return pressureRecoveryActive
+                && scheduleRestore(player, currentTick, freeSlots <= EMERGENCY_FREE_SLOTS, false);
     }
 
     public static boolean hasPendingRestore() {
         return pendingRestore != null;
-    }
-
-    /**
-     * Select the least recently used tracked stack and open the most likely source shulker.
-     */
-    public static void checkItems() {
-        LocalPlayer player = client.player;
-        if (player == null) {
-            reSet();
-            return;
-        }
-        if (pendingRestore != null) {
-            if (!waitingForRestoreContainer) {
-                openPendingShulker();
-            }
-            return;
-        }
-
-        reconcileTrackedSlots(player);
-        ItemStatistics selected = null;
-        for (ItemStatistics statistics : trackedItems) {
-            if (selected == null
-                    || statistics.useTime < selected.useTime
-                    || statistics.useTime == selected.useTime
-                    && statistics.playerInventorySlot < selected.playerInventorySlot) {
-                selected = statistics;
-            }
-        }
-        if (selected == null) {
-            MessageUtils.setOverlayMessage(I18n.INVENTORY_FULL.getName(), false);
-            return;
-        }
-        pendingRestore = selected;
-        openPendingShulker();
     }
 
     public static boolean isWaitingForRestoreContainer() {
@@ -274,7 +262,8 @@ public class SwitchItem {
     public static void reSet() {
         trackedItems.clear();
         clearPendingRestore();
-        lastTrackedActivityTick = Long.MIN_VALUE;
+        pressureRecoveryActive = false;
+        lastPrinterActionTick = Long.MIN_VALUE;
     }
 
     private static int countEmptyInventorySlots(LocalPlayer player) {
@@ -288,9 +277,106 @@ public class SwitchItem {
         return emptySlots;
     }
 
-    private static void markTrackedActivity() {
-        if (client.level != null) {
-            lastTrackedActivityTick = client.level.getGameTime();
+    private static long currentGameTick() {
+        return client.level == null ? 0L : client.level.getGameTime();
+    }
+
+    private static void markPrinterActivity() {
+        lastPrinterActionTick = currentGameTick();
+    }
+
+    private static void normalizeActivityTicks(long currentTick) {
+        if (lastPrinterActionTick == Long.MIN_VALUE || currentTick < lastPrinterActionTick) {
+            lastPrinterActionTick = currentTick;
+        }
+        for (ItemStatistics statistics : trackedItems) {
+            if (currentTick < statistics.lastUseTick) {
+                statistics.lastUseTick = currentTick;
+            }
+        }
+    }
+
+    private static void updatePressureRecovery(int freeSlots) {
+        if (freeSlots <= PRESSURE_TRIGGER_FREE_SLOTS) {
+            pressureRecoveryActive = true;
+        } else if (freeSlots >= PRESSURE_TARGET_FREE_SLOTS) {
+            pressureRecoveryActive = false;
+        }
+    }
+
+    private static boolean scheduleRestore(
+            LocalPlayer player,
+            long currentTick,
+            boolean allowRecentlyUsed,
+            boolean allowCurrentMainHand
+    ) {
+        if (pendingRestore != null) {
+            if (!waitingForRestoreContainer) {
+                openPendingShulker();
+            }
+            return true;
+        }
+        ItemStatistics selected = selectRestoreCandidate(
+                player,
+                currentTick,
+                allowRecentlyUsed,
+                allowCurrentMainHand
+        );
+        if (selected == null) {
+            return false;
+        }
+        pendingRestore = selected;
+        openPendingShulker();
+        return pendingRestore != null;
+    }
+
+    private static ItemStatistics selectRestoreCandidate(
+            LocalPlayer player,
+            long currentTick,
+            boolean allowRecentlyUsed,
+            boolean allowCurrentMainHand
+    ) {
+        int selectedSlot = me.aleksilassila.litematica.printer.utils.InventoryUtils
+                .getSelectedSlot(player.getInventory());
+        ItemStatistics selected = null;
+        for (ItemStatistics statistics : trackedItems) {
+            if (!isTrackedStackValid(player, statistics)
+                    || (!allowCurrentMainHand && isCurrentMainHand(player, selectedSlot, statistics))
+                    || isRequestedItem(statistics)) {
+                continue;
+            }
+            long age = currentTick - statistics.lastUseTick;
+            if (!allowRecentlyUsed && age < RECENT_USE_PROTECTION_TICKS) {
+                continue;
+            }
+            if (selected == null
+                    || statistics.lastUseTick < selected.lastUseTick
+                    || statistics.lastUseTick == selected.lastUseTick
+                    && statistics.playerInventorySlot < selected.playerInventorySlot) {
+                selected = statistics;
+            }
+        }
+        return selected;
+    }
+
+    private static boolean isCurrentMainHand(
+            LocalPlayer player,
+            int selectedSlot,
+            ItemStatistics statistics
+    ) {
+        return statistics.playerInventorySlot == selectedSlot
+                && matches(statistics.itemStack, player.getMainHandItem());
+    }
+
+    private static boolean isRequestedItem(ItemStatistics statistics) {
+        return me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils
+                .lastNeedItemList.contains(statistics.itemStack.getItem());
+    }
+
+    private static void clearPressureRecoveryIfSatisfied() {
+        LocalPlayer player = client.player;
+        if (player != null && countEmptyInventorySlots(player) >= PRESSURE_TARGET_FREE_SLOTS) {
+            pressureRecoveryActive = false;
         }
     }
 
@@ -616,6 +702,9 @@ public class SwitchItem {
         if (completed != null) {
             trackedItems.remove(completed);
         }
+        if (success) {
+            clearPressureRecoveryIfSatisfied();
+        }
         if (!success) {
             MessageUtils.setOverlayMessage(I18n.INVENTORY_RESTORE_FAILED.getName(), false);
         }
@@ -643,14 +732,15 @@ public class SwitchItem {
         private final int sourceContainerSlot;
         private int shulkerInventoryMenuSlot;
         private int playerInventorySlot;
-        private long useTime = System.currentTimeMillis();
+        private long lastUseTick;
 
         private ItemStatistics(
                 ItemStack itemStack,
                 ItemStack shulkerStack,
                 int sourceContainerSlot,
                 int shulkerInventoryMenuSlot,
-                int playerInventorySlot
+                int playerInventorySlot,
+                long currentTick
         ) {
             this.itemStack = itemStack.copy();
             this.itemStack.setCount(1);
@@ -662,10 +752,11 @@ public class SwitchItem {
             this.sourceContainerSlot = sourceContainerSlot;
             this.shulkerInventoryMenuSlot = shulkerInventoryMenuSlot;
             this.playerInventorySlot = playerInventorySlot;
+            this.lastUseTick = currentTick;
         }
 
-        private void syncUseTime() {
-            this.useTime = System.currentTimeMillis();
+        private void markUsed(long currentTick) {
+            this.lastUseTick = currentTick;
         }
     }
 }
