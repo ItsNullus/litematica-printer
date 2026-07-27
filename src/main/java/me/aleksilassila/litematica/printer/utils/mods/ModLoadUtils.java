@@ -3,7 +3,7 @@ package me.aleksilassila.litematica.printer.utils.mods;
 import net.fabricmc.loader.api.FabricLoader;
 
 public class ModLoadUtils {
-    //阻止UI显示 如果此时已经在UI中 请设置为2因为关闭UI也会调用一次
+    // 快捷潜影盒连续打开的短暂互斥计数；容器界面隐藏由 MixinContainerScreenGuard 处理。
     public static int closeScreen = 0;
 
     public static boolean isLoadMod(String modId) {

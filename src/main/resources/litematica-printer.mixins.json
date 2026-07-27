@@ -15,6 +15,7 @@
   ],
   "client": [
     "MixinClientPacketListener",
+    "MixinContainerScreenGuard",
     "printer.litematica.gui.MixinLitematicaGuiMainMenu",
     "printer.malilib.MixinAbstractCraftingMenu",
     "printer.malilib.MixinGuiStringListEdit",

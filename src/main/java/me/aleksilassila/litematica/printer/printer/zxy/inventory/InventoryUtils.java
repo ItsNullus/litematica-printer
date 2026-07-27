@@ -113,6 +113,13 @@ public class InventoryUtils {
         return Configs.Placement.QUICK_SHULKER.getBooleanValue() && hasPendingSwitchRequest();
     }
 
+    public static boolean shouldSuppressContainerScreen() {
+        LocalPlayer player = client.player;
+        return player != null
+                && !player.containerMenu.equals(player.inventoryMenu)
+                && (isOpenHandler || SwitchItem.isWaitingForRestoreContainer());
+    }
+
     public static void resetRuntime() {
         clearSwitchRequest();
         shulkerCooldown = 0;

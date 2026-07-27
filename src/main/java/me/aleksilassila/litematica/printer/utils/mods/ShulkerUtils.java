@@ -25,8 +25,7 @@ public class ShulkerUtils {
         } else if (openMode == QuickShulkerModeType.INVOKE) {
             if (ModLoadUtils.isQuickShulkerLoaded()) {
                 try {
-                    ClientUtil.CheckAndSend(stack, shulkerBoxSlot);
-                    return true;
+                    return ClientUtil.CheckAndSend(stack, shulkerBoxSlot);
                 } catch (Exception ignored) {
                     return false;
                 }
