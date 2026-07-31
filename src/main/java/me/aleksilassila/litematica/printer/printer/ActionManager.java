@@ -46,11 +46,14 @@ public class ActionManager {
     private static final long PRINT_SIGN_EDIT_RESPONSE_TIMEOUT_NANOS = 5_000_000_000L;
     private static final long PRINT_SIGN_EDIT_PRUNE_INTERVAL_NANOS = 1_000_000_000L;
     private static final long TASK_ANVIL_SCREEN_RESPONSE_TIMEOUT_NANOS = 5_000_000_000L;
+    private static final int MAX_PENDING_TASK_ANVIL_SCREENS = 64;
 
     private QueuedClick queuedClick;
     private final Map<Long, Long> pendingPrintSignEdits = new HashMap<>();
     private long nextPrintSignEditPruneNanos;
+    private int pendingTaskAnvilScreens;
     private long taskAnvilScreenSuppressionDeadlineNanos;
+    private long manualAnvilScreenAllowanceDeadlineNanos;
     @Setter
     @Nullable
     public PlayerLook look;
@@ -205,7 +208,6 @@ public class ActionManager {
         this.printerInteractionActive = true;
         this.easyPlaceProtocolActive = click.useProtocol;
         this.activeSource = click.source;
-        this.armTaskAnvilScreenSuppression(click);
         boolean litematicaEasyPlaceWasHandling = false;
         //#if MC > 12100
         litematicaEasyPlaceWasHandling = EasyPlaceUtils.isHandling();
@@ -225,6 +227,9 @@ public class ActionManager {
                         blockHitResult
                 ) != net.minecraft.world.InteractionResult.FAIL;
                 accepted |= interactionAccepted;
+                if (interactionAccepted) {
+                    this.armTaskAnvilScreenSuppression(click);
+                }
                 if (interactionAccepted && reserveAllowance != Integer.MAX_VALUE) {
                     reserveAllowance--;
                 }
@@ -244,21 +249,59 @@ public class ActionManager {
     }
 
     private void armTaskAnvilScreenSuppression(QueuedClick click) {
-        if (click.source != ActionSource.GENERIC
+        if (!this.hasManualAnvilScreenAllowance()
+                && (click.source == ActionSource.PRINT || click.source == ActionSource.FILL)
                 && Reference.MINECRAFT.level != null
                 && Reference.MINECRAFT.level.getBlockState(click.target).getBlock() instanceof AnvilBlock) {
+            this.pendingTaskAnvilScreens = Math.min(
+                    MAX_PENDING_TASK_ANVIL_SCREENS,
+                    this.pendingTaskAnvilScreens + 1
+            );
             this.taskAnvilScreenSuppressionDeadlineNanos =
                     System.nanoTime() + TASK_ANVIL_SCREEN_RESPONSE_TIMEOUT_NANOS;
         }
     }
 
-    public boolean shouldSuppressTaskAnvilScreen() {
-        long deadline = this.taskAnvilScreenSuppressionDeadlineNanos;
-        if (deadline == 0L) {
+    public boolean consumeTaskAnvilScreenSuppression() {
+        if (this.pendingTaskAnvilScreens <= 0) {
             return false;
         }
-        if (deadline < System.nanoTime()) {
+        if (this.taskAnvilScreenSuppressionDeadlineNanos < System.nanoTime()) {
+            this.clearTaskAnvilScreenSuppressions();
+            return false;
+        }
+        this.pendingTaskAnvilScreens--;
+        if (this.pendingTaskAnvilScreens == 0) {
             this.taskAnvilScreenSuppressionDeadlineNanos = 0L;
+        }
+        return true;
+    }
+
+    public void prioritizeManualAnvilScreen() {
+        this.clearTaskAnvilScreenSuppressions();
+        this.manualAnvilScreenAllowanceDeadlineNanos =
+                System.nanoTime() + TASK_ANVIL_SCREEN_RESPONSE_TIMEOUT_NANOS;
+    }
+
+    public boolean consumeManualAnvilScreenAllowance() {
+        if (!this.hasManualAnvilScreenAllowance()) {
+            return false;
+        }
+        this.manualAnvilScreenAllowanceDeadlineNanos = 0L;
+        return true;
+    }
+
+    public void clearTaskAnvilScreenSuppressions() {
+        this.pendingTaskAnvilScreens = 0;
+        this.taskAnvilScreenSuppressionDeadlineNanos = 0L;
+    }
+
+    private boolean hasManualAnvilScreenAllowance() {
+        if (this.manualAnvilScreenAllowanceDeadlineNanos == 0L) {
+            return false;
+        }
+        if (this.manualAnvilScreenAllowanceDeadlineNanos < System.nanoTime()) {
+            this.manualAnvilScreenAllowanceDeadlineNanos = 0L;
             return false;
         }
         return true;
@@ -433,6 +476,7 @@ public class ActionManager {
         this.clearQueue();
         this.pendingPrintSignEdits.clear();
         this.nextPrintSignEditPruneNanos = 0L;
-        this.taskAnvilScreenSuppressionDeadlineNanos = 0L;
+        this.clearTaskAnvilScreenSuppressions();
+        this.manualAnvilScreenAllowanceDeadlineNanos = 0L;
     }
 }

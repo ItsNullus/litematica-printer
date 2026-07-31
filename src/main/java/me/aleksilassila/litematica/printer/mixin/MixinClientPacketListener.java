@@ -29,8 +29,11 @@ public abstract class MixinClientPacketListener {
             cancellable = true
     )
     private void suppressTaskAnvilScreen(ClientboundOpenScreenPacket packet, CallbackInfo ci) {
-        if (packet.getType() == MenuType.ANVIL
-                && ActionManager.INSTANCE.shouldSuppressTaskAnvilScreen()) {
+        if (packet.getType() != MenuType.ANVIL
+                || ActionManager.INSTANCE.consumeManualAnvilScreenAllowance()) {
+            return;
+        }
+        if (ActionManager.INSTANCE.consumeTaskAnvilScreenSuppression()) {
             NetworkUtils.sendPacket(new ServerboundContainerClosePacket(packet.getContainerId()));
             ci.cancel();
         }
