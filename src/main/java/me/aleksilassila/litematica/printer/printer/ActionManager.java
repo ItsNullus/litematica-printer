@@ -18,6 +18,7 @@ import net.minecraft.util.Mth;
 
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.AnvilBlock;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
@@ -44,10 +45,12 @@ public class ActionManager {
     private static final long PRINT_SIGN_EDIT_ARM_TIMEOUT_NANOS = 30_000_000_000L;
     private static final long PRINT_SIGN_EDIT_RESPONSE_TIMEOUT_NANOS = 5_000_000_000L;
     private static final long PRINT_SIGN_EDIT_PRUNE_INTERVAL_NANOS = 1_000_000_000L;
+    private static final long TASK_ANVIL_SCREEN_RESPONSE_TIMEOUT_NANOS = 5_000_000_000L;
 
     private QueuedClick queuedClick;
     private final Map<Long, Long> pendingPrintSignEdits = new HashMap<>();
     private long nextPrintSignEditPruneNanos;
+    private long taskAnvilScreenSuppressionDeadlineNanos;
     @Setter
     @Nullable
     public PlayerLook look;
@@ -202,6 +205,7 @@ public class ActionManager {
         this.printerInteractionActive = true;
         this.easyPlaceProtocolActive = click.useProtocol;
         this.activeSource = click.source;
+        this.armTaskAnvilScreenSuppression(click);
         boolean litematicaEasyPlaceWasHandling = false;
         //#if MC > 12100
         litematicaEasyPlaceWasHandling = EasyPlaceUtils.isHandling();
@@ -237,6 +241,27 @@ public class ActionManager {
             restoreShift(player, click, wasSneak);
         }
         return this.finish(click, accepted ? SendResult.SENT : SendResult.INTERACTION_REJECTED);
+    }
+
+    private void armTaskAnvilScreenSuppression(QueuedClick click) {
+        if (click.source != ActionSource.GENERIC
+                && Reference.MINECRAFT.level != null
+                && Reference.MINECRAFT.level.getBlockState(click.target).getBlock() instanceof AnvilBlock) {
+            this.taskAnvilScreenSuppressionDeadlineNanos =
+                    System.nanoTime() + TASK_ANVIL_SCREEN_RESPONSE_TIMEOUT_NANOS;
+        }
+    }
+
+    public boolean shouldSuppressTaskAnvilScreen() {
+        long deadline = this.taskAnvilScreenSuppressionDeadlineNanos;
+        if (deadline == 0L) {
+            return false;
+        }
+        if (deadline < System.nanoTime()) {
+            this.taskAnvilScreenSuppressionDeadlineNanos = 0L;
+            return false;
+        }
+        return true;
     }
 
     private static int getReserveAllowance(LocalPlayer player, QueuedClick click) {
@@ -408,5 +433,6 @@ public class ActionManager {
         this.clearQueue();
         this.pendingPrintSignEdits.clear();
         this.nextPrintSignEditPruneNanos = 0L;
+        this.taskAnvilScreenSuppressionDeadlineNanos = 0L;
     }
 }
