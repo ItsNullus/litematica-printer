@@ -121,6 +121,7 @@ public class FluidHandler extends Module {
             return List.of();
         }
         Predicate<BlockPos> selectionPredicate = this.createSelectionRangePredicate();
+        Predicate<BlockPos> reachPredicate = this.createScanReachPredicate();
         
         return ScanCache.INSTANCE.iterable(
                 NAME,
@@ -131,7 +132,7 @@ public class FluidHandler extends Module {
                 this.getScanGuardLimit(),
                 ScanIntent.FLUID,
                 this::isTargetFluid,
-                pos -> this.canReachIterationPosition(pos) && selectionPredicate.test(pos)
+                pos -> reachPredicate.test(pos) && selectionPredicate.test(pos)
         );
     }
 

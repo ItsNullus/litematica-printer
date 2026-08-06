@@ -174,9 +174,10 @@ public class FillHandler extends Module {
         }
 
         Predicate<BlockPos> selectionPredicate = this.createSelectionRangePredicate();
+        Predicate<BlockPos> reachPredicate = this.createScanReachPredicate();
         return () -> new Iterator<>() {
             private final Iterator<BlockPos> sourceIterator =
-                    createSourceIterator(scanSourceBoxes, selectionPredicate);
+                    createSourceIterator(scanSourceBoxes, reachPredicate, selectionPredicate);
             private BlockPos next;
             private boolean prepared;
             private boolean nextAvailable;
@@ -214,6 +215,7 @@ public class FillHandler extends Module {
 
     private Iterator<BlockPos> createSourceIterator(
             List<PrinterBox> scanSourceBoxes,
+            Predicate<BlockPos> reachPredicate,
             Predicate<BlockPos> selectionPredicate
     ) {
         ScanIntent scanIntent = Configs.Print.PLACE_IN_AIR.getBooleanValue()
@@ -228,12 +230,16 @@ public class FillHandler extends Module {
                 this.getScanGuardLimit(),
                 scanIntent,
                 this::isFillTarget,
-                pos -> this.isFillCandidatePreFilter(pos, selectionPredicate)
+                pos -> this.isFillCandidatePreFilter(pos, reachPredicate, selectionPredicate)
         ).iterator();
     }
 
-    private boolean isFillCandidatePreFilter(BlockPos blockPos, Predicate<BlockPos> selectionPredicate) {
-        return this.canReachIterationPosition(blockPos)
+    private boolean isFillCandidatePreFilter(
+            BlockPos blockPos,
+            Predicate<BlockPos> reachPredicate,
+            Predicate<BlockPos> selectionPredicate
+    ) {
+        return reachPredicate.test(blockPos)
                 && selectionPredicate.test(blockPos)
                 && !this.isBlockPosOnCooldown(blockPos);
     }

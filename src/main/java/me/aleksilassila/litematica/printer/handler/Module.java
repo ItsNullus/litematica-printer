@@ -77,6 +77,9 @@ public abstract class Module extends ConfigUtils {
     private boolean schematicIdentityInitialized;
     @Nullable
     private Object lastSchematicIdentity;
+    @Nullable
+    private PrinterBox cachedScanSourceInput;
+    private List<PrinterBox> cachedScanSourceBoxes = List.of();
 
     protected Minecraft mc;
     protected ClientLevel level;
@@ -125,6 +128,7 @@ public abstract class Module extends ConfigUtils {
         this.lastInventoryFingerprint = 0;
         this.schematicIdentityInitialized = false;
         this.lastSchematicIdentity = null;
+        this.clearScanSourceCache();
         this.lastTickTime = -1L;
         this.onRuntimeReset();
     }
@@ -144,6 +148,7 @@ public abstract class Module extends ConfigUtils {
             return;
         }
         this.updateVariables(context);
+        this.clearScanSourceCache();
         if (!this.hasRequiredClientState()) {
             this.resetScanRuntime();
             this.resetPlayerTracking();
@@ -503,6 +508,11 @@ public abstract class Module extends ConfigUtils {
         this.clearDirtyScanQueue();
     }
 
+    private void clearScanSourceCache() {
+        this.cachedScanSourceInput = null;
+        this.cachedScanSourceBoxes = List.of();
+    }
+
     private void resetScanRuntime() {
         this.scanState = ScanState.FULL;
         this.idleScanTicks = 0;
@@ -753,6 +763,7 @@ public abstract class Module extends ConfigUtils {
             return java.util.List.of();
         }
         Predicate<BlockPos> selectionPredicate = this.createSelectionRangePredicate();
+        Predicate<BlockPos> reachPredicate = this.createScanReachPredicate();
         return ScanCache.INSTANCE.iterable(
                 this.id,
                 scanSourceBoxes,
@@ -762,7 +773,7 @@ public abstract class Module extends ConfigUtils {
                 this.getScanGuardLimit(),
                 intent,
                 candidatePredicate,
-                pos -> this.canReachIterationPosition(pos) && selectionPredicate.test(pos)
+                pos -> reachPredicate.test(pos) && selectionPredicate.test(pos)
         );
     }
 
@@ -774,6 +785,9 @@ public abstract class Module extends ConfigUtils {
     protected List<PrinterBox> getScanSourceBoxes(PrinterBox playerInteractionBox) {
         if (playerInteractionBox == null) {
             return List.of();
+        }
+        if (playerInteractionBox.equals(this.cachedScanSourceInput)) {
+            return this.cachedScanSourceBoxes;
         }
 
         List<PrinterBox> baseBoxes;
@@ -793,7 +807,9 @@ public abstract class Module extends ConfigUtils {
                 result.add(bounded);
             }
         }
-        return result;
+        this.cachedScanSourceInput = playerInteractionBox;
+        this.cachedScanSourceBoxes = result.isEmpty() ? List.of() : List.copyOf(result);
+        return this.cachedScanSourceBoxes;
     }
 
     @Nullable
@@ -891,6 +907,10 @@ public abstract class Module extends ConfigUtils {
 
     protected boolean canReachIterationPosition(BlockPos pos) {
         return ConfigUtils.canInteracted(pos);
+    }
+
+    protected Predicate<BlockPos> createScanReachPredicate() {
+        return ConfigUtils.createCanInteractPredicate();
     }
 
     protected boolean isInSelectionRange(BlockPos pos) {
