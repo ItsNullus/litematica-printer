@@ -1,6 +1,5 @@
 package me.aleksilassila.litematica.printer.guide;
 
-import me.aleksilassila.litematica.printer.Reference;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.enums.BlockMatchResult;
 import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
@@ -147,6 +146,12 @@ public class DefaultGuide extends Guide {
                 || requiredState.hasProperty(BlockStateProperties.EAST)
                 || requiredState.hasProperty(BlockStateProperties.SOUTH)
                 || requiredState.hasProperty(BlockStateProperties.WEST)
-                || Reference.isIgnoreWrongStateBlock(requiredBlock);
+                || requiredBlock instanceof BrewingStandBlock
+                || requiredBlock instanceof VegetationBlock
+                || requiredBlock instanceof LeavesBlock
+                //#if MC >= 12000
+                || requiredBlock instanceof ChiseledBookShelfBlock
+                //#endif
+                || requiredBlock instanceof SugarCaneBlock;
     }
 }

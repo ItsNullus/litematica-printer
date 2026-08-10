@@ -25,24 +25,4 @@ public class Reference {
     public static final Item[] HOE_ITEMS = {Items.DIAMOND_HOE, Items.IRON_HOE, Items.GOLDEN_HOE, Items.NETHERITE_HOE, Items.STONE_HOE, Items.WOODEN_HOE};
     public static final Item[] SHOVEL_ITEMS = {Items.DIAMOND_SHOVEL, Items.IRON_SHOVEL, Items.GOLDEN_SHOVEL, Items.NETHERITE_SHOVEL, Items.STONE_SHOVEL, Items.WOODEN_SHOVEL};
     public static final Item[] AXE_ITEMS = {Items.DIAMOND_AXE, Items.IRON_AXE, Items.GOLDEN_AXE, Items.NETHERITE_AXE, Items.STONE_AXE, Items.WOODEN_AXE};
-
-    private static final Class<?>[] WRONG_STATE_BREAK_IGNORED_BLOCKS = {
-            //#if MC >= 12000
-            ChiseledBookShelfBlock.class,
-            //#endif
-            BrewingStandBlock.class,
-            StainedGlassPaneBlock.class,
-            VegetationBlock.class,
-            LeavesBlock.class,
-            SugarCaneBlock.class
-    };
-
-    public static boolean isIgnoreWrongStateBlock(Block block) {
-        for (Class<?> blockClass : WRONG_STATE_BREAK_IGNORED_BLOCKS) {
-            if (blockClass.isInstance(block)) {
-                return true;
-            }
-        }
-        return false;
-    }
 }
