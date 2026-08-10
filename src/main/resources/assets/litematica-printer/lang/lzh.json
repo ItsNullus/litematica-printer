@@ -143,6 +143,8 @@
   "litematica-printer.config.printBreakExtraBlock.desc": "摹形時自破圖樣中本無之多出石。\n受摹形自破限制所制。",
   "litematica-printer.config.printBreakWrongBlock": "破誤石",
   "litematica-printer.config.printBreakWrongBlock.desc": "摹形時自破與圖樣全然不合之石。\n受摹形自破限制所制。",
+  "litematica-printer.config.printBreakWrongStateBlock": "破誤態石（試）",
+  "litematica-printer.config.printBreakWrongStateBlock.desc": "摹形時，石類合而態不合者自破之。\n連接之態及隨境而變之石略過。默認關。",
   "litematica-printer.config.printFallingBlockCheck": "察落石",
   "litematica-printer.config.printFallingBlockCheck.desc": "啟後將察落石之下石是否合於圖樣，不合則越而不置。",
   "litematica-printer.config.printForcedSneak": "恆持潛行",

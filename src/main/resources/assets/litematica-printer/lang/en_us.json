@@ -149,6 +149,8 @@
   "litematica-printer.config.printBreakExtraBlock.desc": "Automatically break extra blocks that don't exist in schematic during printing.\nAffected by the print auto-break restriction settings.",
   "litematica-printer.config.printBreakWrongBlock": "Break Wrong Blocks",
   "litematica-printer.config.printBreakWrongBlock.desc": "Automatically break blocks that completely mismatch the schematic during printing.\nAffected by the print auto-break restriction settings.",
+  "litematica-printer.config.printBreakWrongStateBlock": "Break Wrong State Blocks (Experimental)",
+  "litematica-printer.config.printBreakWrongStateBlock.desc": "Automatically break blocks whose type matches the schematic but whose state differs.\nConnection states and some blocks affected by world updates are skipped. Disabled by default.",
   "litematica-printer.config.printFallingBlockCheck": "Falling Block Check",
   "litematica-printer.config.printFallingBlockCheck.desc": "When enabled, will check if blocks below falling blocks match schematic, and skip placement if incorrect.",
   "litematica-printer.config.printForcedSneak": "Always Sneak",

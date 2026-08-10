@@ -170,6 +170,7 @@ public class PrintHandler extends Module {
     private int getActionConfigHash() {
         int result = Boolean.hashCode(Configs.Print.BREAK_WRONG_BLOCK.getBooleanValue());
         result = 31 * result + Boolean.hashCode(Configs.Print.BREAK_EXTRA_BLOCK.getBooleanValue());
+        result = 31 * result + Boolean.hashCode(Configs.Print.BREAK_WRONG_STATE_BLOCK.getBooleanValue());
         result = 31 * result + Boolean.hashCode(Configs.Print.PRINT_SKIP.getBooleanValue());
         result = 31 * result + this.printSkipListCache.hashCode();
         result = 31 * result + Boolean.hashCode(Configs.Print.PRINT_REPLACE.getBooleanValue());

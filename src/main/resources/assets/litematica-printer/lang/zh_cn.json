@@ -149,6 +149,8 @@
   "litematica-printer.config.printBreakExtraBlock.desc": "打印时自动破坏原理图中不存在的多余方块。\n受“打印自动破坏限制”影响。",
   "litematica-printer.config.printBreakWrongBlock": "破坏错误方块",
   "litematica-printer.config.printBreakWrongBlock.desc": "打印时自动破坏与原理图完全不符的方块。\n受“打印自动破坏限制”影响。",
+  "litematica-printer.config.printBreakWrongStateBlock": "破坏错误状态方块",
+  "litematica-printer.config.printBreakWrongStateBlock.desc": "打印时自动破坏方块类型与原理图相同、但状态不符的方块。\n连接状态和部分会随环境变化的方块会被跳过。默认关闭。",
   "litematica-printer.config.printFallingBlockCheck": "下落方块检查",
   "litematica-printer.config.printFallingBlockCheck.desc": "启用后，会检查下落方块下方的方块是否匹配原理图，如果不正确就跳过放置。",
   "litematica-printer.config.printForcedSneak": "始终潜行",

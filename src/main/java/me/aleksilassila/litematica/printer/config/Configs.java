@@ -530,6 +530,11 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 .defaultValue(false)
                 .build();
 
+        // 破坏错误状态方块（实验性）
+        public static final ConfigBoolean BREAK_WRONG_STATE_BLOCK = bool("printBreakWrongStateBlock")
+                .defaultValue(false)
+                .build();
+
         public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
                 PRINT_SELECTION_TYPE,
                 EASY_PLACE_PROTOCOL,
@@ -542,6 +547,7 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 PRINT_RESERVE_ITEM_COUNT,
                 BREAK_WRONG_BLOCK,
                 BREAK_EXTRA_BLOCK,
+                BREAK_WRONG_STATE_BLOCK,
                 PRINT_SKIP,
                 PRINT_SKIP_LIST,
                 PRINT_REPLACE,
