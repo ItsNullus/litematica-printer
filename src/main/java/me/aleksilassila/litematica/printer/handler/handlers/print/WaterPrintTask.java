@@ -7,6 +7,7 @@ import me.aleksilassila.litematica.printer.mixin_extension.BlockBreakResult;
 import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
 import me.aleksilassila.litematica.printer.printer.action.Action;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
+import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.BlockStateUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -269,7 +270,7 @@ public class WaterPrintTask implements PrintTask {
 
     private static boolean hasIceForWaterWorkflow() {
         Minecraft client = Minecraft.getInstance();
-        return client.player != null && client.player.getInventory().countItem(Items.ICE) > 0;
+        return client.player != null && InventoryUtils.playerHasAccessToItem(client.player, Items.ICE);
     }
 
     private static boolean canIceBecomeWaterSource(ClientLevel level, BlockPos pos) {
