@@ -171,14 +171,16 @@ public class BedrockTarget {
                 if (!BedrockPlacer.preparePistonPlacementLook(this.pistonPos, this.layout.getExecuteFacing())) {
                     break;
                 }
-                for (BlockPos torchPos : getOwnedTorchPositions()) {
-                    BedrockBreaker.breakBlock(torchPos, Direction.DOWN, !this.conservativeSync);
-                }
-                BedrockBreaker.breakBlock(this.pistonPos, this.layout.getExecuteFacing(), !this.conservativeSync);
                 for (int offset = 1; offset < 6; offset++) {
                     recordTemp(this.pistonPos.relative(this.layout.getPistonOffset(), offset));
                 }
-                if (!BedrockPlacer.placePiston(this.pistonPos, this.layout.getExecuteFacing())) {
+                if (!BedrockCriticalExecutor.submit(
+                        this.level,
+                        this.bedrockPos,
+                        this.pistonPos,
+                        this.layout.getExecuteFacing(),
+                        getOwnedTorchPositions()
+                )) {
                     break;
                 }
                 this.hasTried = true;

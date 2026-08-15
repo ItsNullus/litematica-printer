@@ -46,7 +46,10 @@ public final class BedrockController {
     private static final Map<BlockPos, Integer> EXPOSURE_BYPASS_USES = new HashMap<>();
     private static final Map<BlockPos, SubmissionPlan> SUBMISSION_PLANS = new HashMap<>();
     private static long nextAcceptTick = 0L;
-    private static long nextExecuteTick = 0L;
+    private static int executeCredits = 0;
+    private static int executeCreditThroughput = -1;
+    private static int executeCreditInterval = -1;
+    private static boolean preferFastLaneExtra = true;
     private static long lastProcessedTick = Long.MIN_VALUE;
     private static int acceptedThisTick = 0;
     private static int rejectedThisTick = 0;
@@ -69,8 +72,12 @@ public final class BedrockController {
         EXPOSURE_BYPASS_USES.clear();
         SUBMISSION_PLANS.clear();
         BedrockPlacer.clearHorizontalLookState();
+        BedrockCriticalExecutor.reset();
         nextAcceptTick = 0L;
-        nextExecuteTick = 0L;
+        executeCredits = 0;
+        executeCreditThroughput = -1;
+        executeCreditInterval = -1;
+        preferFastLaneExtra = true;
         lastProcessedTick = Long.MIN_VALUE;
         acceptedThisTick = 0;
         rejectedThisTick = 0;
@@ -104,27 +111,52 @@ public final class BedrockController {
         rejectedThisTick = 0;
         blockedCleanupDemandThisTick = 0;
         BLOCKED_CLEANUP_POSITIONS.clear();
+        BedrockCriticalExecutor.beginTick(now);
 
         purgeTargetsOutsideSelection();
-        processCleanupQueue();
         cleanupPressureThisTick = sampleCleanupPressure(level);
-
-        if (BedrockInventory.warningMessage() != null) {
-            return;
-        }
 
         int executeBudget = getExecuteBudget();
         int initialExecuteBudget = executeBudget;
         Set<BedrockTarget> processedTargets = new LinkedHashSet<>();
-        executeBudget = processTargets(level, executeBudget, true, processedTargets, findSideLookTarget());
-        executeBudget = processTargets(level, executeBudget, false, processedTargets, findSideLookTarget());
-
-        if (executeBudget < initialExecuteBudget) {
-            scheduleNextExecuteWindow();
+        BedrockTarget sideLookTarget = findSideLookTarget();
+        // Share one unchanged total budget between time-sensitive execution and machine
+        // preparation. Alternating the odd credit prevents either stage from forming a batch;
+        // unused credits immediately spill into the other lane below.
+        int fastLaneBudget = executeBudget / 2;
+        if ((executeBudget & 1) != 0 && preferFastLaneExtra) {
+            fastLaneBudget++;
         }
+        int preparationBudget = executeBudget - fastLaneBudget;
+        if ((executeBudget & 1) != 0) {
+            preferFastLaneExtra = !preferFastLaneExtra;
+        }
+
+        int unusedFastLaneBudget = processTargets(level, fastLaneBudget, true, processedTargets, sideLookTarget);
+        preparationBudget += unusedFastLaneBudget;
+        int unusedBudget = processTargets(level, preparationBudget, false, processedTargets, sideLookTarget);
+        if (unusedBudget > 0) {
+            unusedBudget = processTargets(level, unusedBudget, true, processedTargets, sideLookTarget);
+        }
+        executeBudget = unusedBudget;
+
+        consumeExecuteCredits(initialExecuteBudget - executeBudget);
+        // Active target reservations already protect every live machine position. Keeping the
+        // whole cleanup queue paused while another target waits for its critical window causes
+        // cleanup pressure and target admission to oscillate in large batches.
+        processCleanupQueue();
+        cleanupPressureThisTick = sampleCleanupPressure(level);
+    }
+
+    public static boolean hasActiveWork() {
+        return !TARGETS.isEmpty() || !CLEANUP_QUEUE.isEmpty();
     }
 
     public static boolean canScanForTargets() {
+        if (BedrockInventory.warningMessage() != null) {
+            lastHudReason = "missing_resources";
+            return false;
+        }
         AcceptProbe probe = probeCanScanForTargets();
         if (!probe.accepted()) {
             lastHudReason = probe.reason();
@@ -311,11 +343,28 @@ public final class BedrockController {
     }
 
     private static int getExecuteBudget() {
-        long now = ClientPlayerTickManager.getCurrentHandlerTime();
-        if (now < nextExecuteTick) {
-            return 0;
+        int throughput = getConfiguredThroughput();
+        int interval = getConfiguredInterval();
+        // Keep the configured throughput / interval rate, but spread it across ticks instead of
+        // releasing every target as one synchronized burst. The extra interval - 1 preserves the
+        // fractional remainder without allowing an idle controller to build up a large burst.
+        int capacity = throughput + interval - 1;
+
+        if (throughput != executeCreditThroughput || interval != executeCreditInterval) {
+            executeCreditThroughput = throughput;
+            executeCreditInterval = interval;
+            executeCredits = capacity;
+        } else {
+            executeCredits = Math.min(capacity, executeCredits + throughput);
         }
-        return getConfiguredThroughput();
+        return executeCredits / interval;
+    }
+
+    private static void consumeExecuteCredits(int consumedActions) {
+        if (consumedActions <= 0) {
+            return;
+        }
+        executeCredits = Math.max(0, executeCredits - consumedActions * getConfiguredInterval());
     }
 
     private static BedrockTarget findConflictTarget(BedrockTarget candidate) {
@@ -465,8 +514,6 @@ public final class BedrockController {
             } else {
                 status = target.tick(false, false);
             }
-            processedTargets.add(target);
-
             if (hadBudget && target.consumedThroughputThisTick()) {
                 executeBudget--;
             }
@@ -478,7 +525,16 @@ public final class BedrockController {
                     || retireOnSuccessfulRetracting) {
                 cleanupTarget(iterator, target, null);
             } else if (target.isHorizontalLayout() && BedrockPlacer.hasPendingHorizontalLook(target.getPistonPos())) {
+                processedTargets.add(target);
                 break;
+            } else {
+                boolean deferredForBudget = activeStatus
+                        && !hadBudget
+                        && countsTowardsActiveCap(status)
+                        && isFastLaneStatus(status) == priorityOnly;
+                if (!deferredForBudget) {
+                    processedTargets.add(target);
+                }
             }
         }
         return executeBudget;
@@ -586,16 +642,8 @@ public final class BedrockController {
     private static int getSubmitCap() {
         int throughput = getConfiguredThroughput();
         int baseSubmitCap = Math.max(1, throughput);
-        if (cleanupPressureThisTick >= getHighCleanupPressureThreshold()) {
-            return 1;
-        }
-        if (cleanupPressureThisTick >= getMediumCleanupPressureThreshold()) {
-            return Math.min(baseSubmitCap, 1);
-        }
-        if (cleanupPressureThisTick >= getLowCleanupPressureThreshold()) {
-            return Math.min(baseSubmitCap, 1);
-        }
-        return baseSubmitCap;
+        int pressureSteps = cleanupPressureThisTick / getLowCleanupPressureThreshold();
+        return Math.max(1, baseSubmitCap - pressureSteps);
     }
 
     private static boolean countsTowardsActiveCap(BedrockTarget.Status status) {
@@ -632,6 +680,10 @@ public final class BedrockController {
 
     private static int getConfiguredThroughput() {
         return Math.max(1, Configs.Bedrock.BEDROCK_BLOCKS_PER_TICK.getIntegerValue());
+    }
+
+    private static int getConfiguredInterval() {
+        return Math.max(1, Configs.Bedrock.BEDROCK_INTERVAL.getIntegerValue());
     }
 
     private static int getLowCleanupPressureThreshold() {
@@ -806,14 +858,6 @@ public final class BedrockController {
             }
         }
         return false;
-    }
-
-    private static void scheduleNextExecuteWindow() {
-        int interval = Math.max(0, Configs.Bedrock.BEDROCK_INTERVAL.getIntegerValue());
-        if (interval <= 0) {
-            return;
-        }
-        nextExecuteTick = ClientPlayerTickManager.getCurrentHandlerTime() + interval;
     }
 
     private static boolean isTargetOnRetryCooldown(BlockPos pos) {

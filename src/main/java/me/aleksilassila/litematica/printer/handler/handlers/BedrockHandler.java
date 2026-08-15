@@ -42,9 +42,11 @@ public class BedrockHandler extends Module {
         }
         String warning = BedrockInventory.warningMessage();
         if (warning != null) {
-            BedrockController.clearHorizontalLookState();
             MessageUtils.setOverlayMessage(me.aleksilassila.litematica.printer.utils.minecraft.StringUtils.translatable(warning));
-            return false;
+            if (!BedrockController.hasActiveWork()) {
+                BedrockController.clearHorizontalLookState();
+                return false;
+            }
         }
         return true;
     }
