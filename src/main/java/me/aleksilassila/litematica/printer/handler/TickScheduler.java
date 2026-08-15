@@ -5,6 +5,7 @@ import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.handler.handlers.GuiHandler;
 import me.aleksilassila.litematica.printer.handler.handlers.MineDebugLog;
 import me.aleksilassila.litematica.printer.printer.ActionManager;
+import me.aleksilassila.litematica.printer.printer.MissingMaterialTracker;
 import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
 import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import net.minecraft.client.Minecraft;
@@ -30,6 +31,10 @@ final class TickScheduler {
 
     void tick() {
         HudStatsManager.INSTANCE.tick();
+        MissingMaterialTracker.INSTANCE.tick(
+                MC.player,
+                MC.level != null ? MC.level.getGameTime() : 0L
+        );
         if (!Configs.Core.WORK_SWITCH.getBooleanValue()) {
             if (this.runtimeActive) {
                 ClientPlayerTickManager.resetRuntime("work_switch_disabled");

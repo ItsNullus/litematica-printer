@@ -12,6 +12,7 @@ import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
 import me.aleksilassila.litematica.printer.printer.PlayerLook;
 import me.aleksilassila.litematica.printer.printer.PrinterUtils;
 import me.aleksilassila.litematica.printer.printer.ActionManager;
+import me.aleksilassila.litematica.printer.printer.MissingMaterialTracker;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.FilterUtils;
@@ -302,12 +303,21 @@ public class FillHandler extends Module {
         }
         if (!handheld && !InventoryUtils.switchToItems(player, this.fillModeItemList)) {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "缺少填充材料");
+            MissingMaterialTracker.INSTANCE.recordMissing(
+                    this.fillModeItemList,
+                    null,
+                    null,
+                    level.getGameTime()
+            );
             setIterationConsumedEffectiveExecution(false);
             if (me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.shouldPauseForSwitchRequest()
                     || me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils.isAwaitingStack()) {
                 skipIteration.set(true);
             }
             return;
+        }
+        if (!handheld) {
+            MissingMaterialTracker.INSTANCE.resolve(this.fillModeItemList, null);
         }
         Direction side = this.getFillPlacementSide(blockPos);
         if (side == null) {

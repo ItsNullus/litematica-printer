@@ -60,6 +60,7 @@ public class InitHandler implements IInitializationHandler {
         Fill.FILL_BLOCK_MODE.setValueChangeCallback(b -> ConfigUi.refresh());
         Core.LAG_CHECK.setValueChangeCallback(b -> ConfigUi.refresh());
         Core.RENDER_HUD.setValueChangeCallback(b -> ConfigUi.refresh());
+        Core.MISSING_MATERIAL_HUD.setValueChangeCallback(b -> ConfigUi.refresh());
         Configs.Placement.RTT_ADAPTIVE_INTERVAL.setValueChangeCallback(b -> ConfigUi.refresh());
     }
 }

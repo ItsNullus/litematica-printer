@@ -6,6 +6,7 @@ import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
 import me.aleksilassila.litematica.printer.handler.handlers.*;
 import me.aleksilassila.litematica.printer.mixin_extension.MultiPlayerGameModeExtension;
 import me.aleksilassila.litematica.printer.printer.ActionManager;
+import me.aleksilassila.litematica.printer.printer.MissingMaterialTracker;
 import me.aleksilassila.litematica.printer.printer.RttReplayController;
 import me.aleksilassila.litematica.printer.printer.zxy.inventory.SwitchItem;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
@@ -69,6 +70,7 @@ public class ClientPlayerTickManager {
         me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.resetRuntime();
         BedrockController.reset();
         HudStatsManager.INSTANCE.resetAll();
+        MissingMaterialTracker.INSTANCE.clear();
         SCHEDULER.resetRuntime();
         for (Module module : VALUES) {
             module.resetRuntimeState();

@@ -69,6 +69,32 @@ public class Render2D {
         if (Configs.Core.RENDER_HUD.getBooleanValue()) {
             drawHudInfo(scaledWidth, scaledHeight);
         }
+        if (Configs.Core.MISSING_MATERIAL_HUD.getBooleanValue()) {
+            int materialHudX = Configs.Core.RENDER_HUD_X.getIntegerValue();
+            int materialHudY = Configs.Core.RENDER_HUD_Y.getIntegerValue();
+            if (Configs.Core.RENDER_HUD.getBooleanValue()) {
+                HudBounds bounds = this.getHudBounds(scaledWidth, scaledHeight);
+                materialHudX = bounds.x();
+                materialHudY = bounds.y() + bounds.height();
+                MissingMaterialHudRenderer.INSTANCE.render(
+                        scaledWidth,
+                        scaledHeight,
+                        materialHudX,
+                        materialHudY,
+                        getHudScale(),
+                        bounds.width()
+                );
+            } else {
+                MissingMaterialHudRenderer.INSTANCE.render(
+                        scaledWidth,
+                        scaledHeight,
+                        materialHudX,
+                        materialHudY,
+                        getHudScale(),
+                        0
+                );
+            }
+        }
     }
 
     public void renderHudPreview(float scaledWidth, float scaledHeight) {

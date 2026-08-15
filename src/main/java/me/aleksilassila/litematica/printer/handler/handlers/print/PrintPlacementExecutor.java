@@ -6,6 +6,7 @@ import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.handler.handlers.PrintHandler;
 import me.aleksilassila.litematica.printer.interfaces.Implementation;
 import me.aleksilassila.litematica.printer.printer.ActionManager;
+import me.aleksilassila.litematica.printer.printer.MissingMaterialTracker;
 import me.aleksilassila.litematica.printer.printer.PlayerLook;
 import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
 import me.aleksilassila.litematica.printer.printer.action.Action;
@@ -86,6 +87,12 @@ public final class PrintPlacementExecutor {
                     : ItemStack.EMPTY;
             if (reserveBlockedStack.isEmpty()) {
                 HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "缺少材料");
+                MissingMaterialTracker.INSTANCE.recordMissing(
+                        requiredItems,
+                        requiredStackPredicate,
+                        action.getRequiredCreativeStack(),
+                        context.level.getGameTime()
+                );
             } else {
                 HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "达到保留数量");
                 showReserveNotice(context, reserveBlockedStack);
@@ -96,6 +103,7 @@ public final class PrintPlacementExecutor {
                             || me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.shouldPauseForSwitchRequest()
                             || TakeItOutUtils.isAwaitingStack());
         }
+        MissingMaterialTracker.INSTANCE.resolve(requiredItems, requiredStackPredicate);
         if (!InventoryUtils.isHoldingAnyItem(context.client.player, requiredItems)
                 || requiredStackPredicate != null
                 && !requiredStackPredicate.test(context.client.player.getMainHandItem())) {

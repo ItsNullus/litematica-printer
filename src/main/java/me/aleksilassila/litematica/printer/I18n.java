@@ -34,6 +34,10 @@ public class I18n {
     public static final I18n INVENTORY_SHULKER_OCCUPIED = of("message.inventory.shulker_occupied");
     public static final I18n RESERVE_ITEM_SKIP = of("message.reserve_item.skip");
 
+    // 缺少材料 HUD
+    public static final I18n MISSING_MATERIAL_TITLE = of("hud.missing.title");
+    public static final I18n MISSING_MATERIAL_OVERFLOW = of("hud.missing.overflow");
+
     private static final String PREFIX_CONFIG = "config";
     private static final String PREFIX_COMMENT = "desc";
 

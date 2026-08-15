@@ -7,6 +7,7 @@ import me.aleksilassila.litematica.printer.handler.Module;
 import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
 import me.aleksilassila.litematica.printer.printer.ActionManager;
+import me.aleksilassila.litematica.printer.printer.MissingMaterialTracker;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import me.aleksilassila.litematica.printer.printer.PrinterUtils;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
@@ -150,6 +151,12 @@ public class FluidHandler extends Module {
         }
         if (!InventoryUtils.switchToItems(player, fillItemArray)) {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "缺少流体填充方块");
+            MissingMaterialTracker.INSTANCE.recordMissing(
+                    fillItemArray,
+                    null,
+                    null,
+                    level.getGameTime()
+            );
             setIterationConsumedEffectiveExecution(false);
             if (me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.shouldPauseForSwitchRequest()
                     || me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils.isAwaitingStack()) {
@@ -157,6 +164,7 @@ public class FluidHandler extends Module {
             }
             return;
         }
+        MissingMaterialTracker.INSTANCE.resolve(fillItemArray, null);
         BlockPos clickTarget = blockPos;
         Direction clickSide = Direction.DOWN;
         if (!Configs.Print.PLACE_IN_AIR.getBooleanValue()) {

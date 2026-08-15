@@ -159,22 +159,27 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 .defaultValue(false)
                 .build();
 
+        // 核心 - 显示执行过程中实际缺少的材料
+        public static final ConfigBoolean MISSING_MATERIAL_HUD = bool("missingMaterialHud")
+                .defaultValue(true)
+                .build();
+
         public static final ConfigInteger RENDER_HUD_X = integer("renderHudX")
                 .defaultValue(10)
                 .range(0, 4096)
-                .setVisible(RENDER_HUD::getBooleanValue)
+                .setVisible(() -> RENDER_HUD.getBooleanValue() || MISSING_MATERIAL_HUD.getBooleanValue())
                 .build();
 
         public static final ConfigInteger RENDER_HUD_Y = integer("renderHudY")
                 .defaultValue(10)
                 .range(0, 4096)
-                .setVisible(RENDER_HUD::getBooleanValue)
+                .setVisible(() -> RENDER_HUD.getBooleanValue() || MISSING_MATERIAL_HUD.getBooleanValue())
                 .build();
 
         public static final ConfigInteger RENDER_HUD_SCALE = integer("renderHudScale")
                 .defaultValue(100)
                 .range(50, 200)
-                .setVisible(RENDER_HUD::getBooleanValue)
+                .setVisible(() -> RENDER_HUD.getBooleanValue() || MISSING_MATERIAL_HUD.getBooleanValue())
                 .build();
 
         // 核心 - 自动禁用打印机
@@ -195,6 +200,7 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 SCAN_TIME_BUDGET_MS,
                 LAZY_ENTER_TICKS,
                 RENDER_HUD,
+                MISSING_MATERIAL_HUD,
                 RENDER_HUD_X,
                 RENDER_HUD_Y,
                 RENDER_HUD_SCALE,
