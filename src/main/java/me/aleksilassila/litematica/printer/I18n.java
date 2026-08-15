@@ -14,12 +14,6 @@ public class I18n {
     public static final I18n AUTO_DISABLE_NOTICE = of("auto_disable_notice");
     public static final I18n FREE_NOTICE = of("free_notice");
 
-    public static final I18n UPDATE_AVAILABLE = of("update.available");
-    public static final I18n UPDATE_DOWNLOAD = of("update.download");
-    public static final I18n UPDATE_FAILED = of("update.failed");
-    public static final I18n UPDATE_PASSWORD = of("update.password");
-    public static final I18n UPDATE_RECOMMENDATION = of("update.recommendation");
-    public static final I18n UPDATE_REPOSITORY = of("update.repository");
 
     // 下落方块检查提示
     public static final I18n FALLING_BLOCK_NO_SUPPORT = of("message.falling_block.no_support");

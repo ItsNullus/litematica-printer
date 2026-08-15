@@ -1,5 +1,6 @@
 package me.aleksilassila.litematica.printer;
 
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
@@ -19,6 +20,10 @@ public class Reference {
     public static final Minecraft MINECRAFT = Minecraft.getInstance();
     public static final String MOD_ID = "litematica-printer";
     public static final String MOD_NAME = "Litematica Printer";
+    public static final String VERSION = FabricLoader.getInstance()
+            .getModContainer(MOD_ID)
+            .map(container -> container.getMetadata().getVersion().getFriendlyString())
+            .orElse("unknown");
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
     public static final Item[] COMPOSTABLE_ITEMS = Arrays.stream(ComposterBlock.COMPOSTABLES.keySet().toArray(ItemLike[]::new)).map(ItemLike::asItem).toArray(Item[]::new);

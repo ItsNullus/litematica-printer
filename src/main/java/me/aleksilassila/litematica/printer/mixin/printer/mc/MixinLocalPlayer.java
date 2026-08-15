@@ -9,7 +9,6 @@ import me.aleksilassila.litematica.printer.printer.ActionManager;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
-import me.aleksilassila.litematica.printer.utils.UpdateCheckerUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
@@ -39,8 +38,6 @@ public class MixinLocalPlayer extends AbstractClientPlayer {
     protected Minecraft minecraft;
 
     @Unique
-    private boolean updateChecked;
-    @Unique
     private boolean litematica_printer$runtimeResetDone;
 
     //#if MC == 11902
@@ -59,10 +56,6 @@ public class MixinLocalPlayer extends AbstractClientPlayer {
             ClientPlayerTickManager.resetRuntime("local_player_init");
             this.litematica_printer$runtimeResetDone = true;
         }
-        if (Configs.Core.UPDATE_CHECK.getBooleanValue() && !updateChecked) {
-            UpdateCheckerUtils.checkForUpdates();
-        }
-        updateChecked = true;
     }
 
     @Inject(at = @At("HEAD"), method = "tick")

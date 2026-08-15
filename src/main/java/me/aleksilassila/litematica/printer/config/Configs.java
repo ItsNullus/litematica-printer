@@ -182,11 +182,6 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 .defaultValue(true)
                 .build();
 
-        // 核心 - 检查更新
-        public static final ConfigBoolean UPDATE_CHECK = bool("updateCheck")
-                .defaultValue(true)
-                .build();
-
         // 通用配置项列表（按功能分类排序）
         public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
                 WORK_SWITCH,
@@ -207,8 +202,7 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 LAG_CHECK_MAX,
                 CHECK_PLAYER_INTERACTION_RANGE,
                 ITERATOR_SHAPE,
-                AUTO_DISABLE_PRINTER,
-                UPDATE_CHECK
+                AUTO_DISABLE_PRINTER
         );
     }
 

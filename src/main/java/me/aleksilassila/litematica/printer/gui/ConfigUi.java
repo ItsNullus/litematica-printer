@@ -10,7 +10,6 @@ import me.aleksilassila.litematica.printer.I18n;
 import me.aleksilassila.litematica.printer.Reference;
 import me.aleksilassila.litematica.printer.mixin_extension.ConfigExtension;
 import me.aleksilassila.litematica.printer.config.Configs;
-import me.aleksilassila.litematica.printer.utils.UpdateCheckerUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import org.jetbrains.annotations.Nullable;
@@ -23,7 +22,7 @@ public class ConfigUi extends GuiConfigsBase {
     private static Tab tab = Tab.CORE;
 
     public ConfigUi(@Nullable Screen parent) {
-        super(10, 50, Reference.MOD_ID, parent, Reference.MOD_NAME + " " + UpdateCheckerUtils.LOCAL_VERSION + "   " + I18n.FREE_NOTICE.getName().getString());
+        super(10, 50, Reference.MOD_ID, parent, Reference.MOD_NAME + " " + Reference.VERSION + "   " + I18n.FREE_NOTICE.getName().getString());
     }
 
     public ConfigUi() {
