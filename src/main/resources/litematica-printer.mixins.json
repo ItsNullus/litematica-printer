@@ -17,6 +17,7 @@
     "MixinClientPacketListener",
     "MixinContainerScreenGuard",
     "MixinMinecraftManualUse",
+    "MixinMinecraftPickBlock",
     "printer.litematica.gui.MixinLitematicaGuiMainMenu",
     "printer.malilib.MixinAbstractCraftingMenu",
     "printer.malilib.MixinGuiStringListEdit",
