@@ -10,6 +10,9 @@ env:
   IS_THIS_RELEASE: false
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -66,3 +69,19 @@ jobs:
           path: fabricWrapper/build/libs/jars/
           if-no-files-found: error
           retention-days: 1
+
+      - name: Publish development build to Modrinth
+        if: >-
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/master' &&
+          github.repository == 'Yur1Ca/litematica-printer'
+        shell: bash
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          MODRINTH_VERSION_TYPE: alpha
+          MODRINTH_VERSION_NAME: Development build ${{ github.run_number }}
+          MODRINTH_CHANGELOG: |
+            Automated development build from `${{ github.sha }}`.
+
+            [View commit](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
+        run: bash .github/scripts/publish-modrinth.sh
