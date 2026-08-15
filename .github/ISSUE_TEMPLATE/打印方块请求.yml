@@ -1,52 +1,124 @@
-name: 打印方块请求
-description: 请求添加新的可打印方块。
-title: "[方块请求] （将此位置【替换】为方块名称）"
-labels: ["enhancement", "block-request"]
+name: 方块放置与状态问题
+description: 报告原版方块被跳过、放错方向、放错状态或错误破坏
+title: "[方块支持] "
+labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        感谢您提出方块打印请求。请提供以下方块的详细信息，以便我们添加到支持列表中。
-        您可以填写多个方块请求，无需提交多个 issue。
+        此模板用于报告原版方块的放置规则或状态处理问题。一个 Issue 可以包含同一家族、同一根因的多个方块；无关方块请分别提交。
+
+        如果问题是所有方块都停止打印、扫描不唤醒或材料切换错误，请改用 **Bug 反馈** 模板。
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已经搜索过现有 Issues，确认没有相同方块或相同状态问题。
+          required: true
+        - label: 我已使用当前适用的最新 Alpha 或 Beta 版本测试。
+          required: true
+        - label: 我已在较保守的工作间隔下复测，并排除了明显的服务器反作弊或高延迟影响。
+          required: true
+        - label: 这是原版方块；非原版内容目前不保证提供专门适配。
+          required: true
+
+  - type: dropdown
+    id: problem_type
+    attributes:
+      label: 问题类型
+      options:
+        - 方块被跳过
+        - 无法放置
+        - 朝向错误
+        - 方块状态错误
+        - 含水/流体状态错误
+        - 被错误加入破坏任务
+        - 放置时错误打开 GUI
+        - 其他
+    validations:
+      required: true
 
   - type: input
     id: block_name
     attributes:
       label: 方块名称
-      description: 请填写方块在游戏中显示的名称
-      placeholder: "例如：橡木台阶"
+      placeholder: "例如：侦测器"
     validations:
       required: true
 
   - type: input
     id: block_id
     attributes:
-      label: 方块命名空间ID
-      description: 请填写方块的完整命名空间ID
-      placeholder: "例如：minecraft:oak_slab"
+      label: 方块命名空间 ID
+      placeholder: "例如：minecraft:observer"
     validations:
       required: true
 
   - type: textarea
-    id: block_nbt
+    id: target_state
     attributes:
-      label: NBT数据标签
-      description: 如果这个方块需要特殊的NBT数据，请在这里填写（可选）
-      placeholder: |
-        例如：
-        {
-          BlockState: {
-            type: "double"
-          }
-        }
+      label: 投影中的目标方块状态
+      description: 请填写方向、半砖类型、含水状态、连接状态等属性。可以附 F3 调试信息或截图。
+      placeholder: "例如：facing=north,powered=false"
     validations:
-      required: false
+      required: true
+
+  - type: textarea
+    id: actual_state
+    attributes:
+      label: 实际放置结果
+      description: 写出世界中的实际状态，或者说明方块被跳过、拆除、打开 GUI 等现象。
+    validations:
+      required: true
 
   - type: input
-    id: block_class
+    id: versions
     attributes:
-      label: 方块类名（可选）
-      description: 如果您知道这个方块的类名以及继承类，可以在这里填写
-      placeholder: "例如：SlabBlock"
+      label: Minecraft 与打印机版本
+      placeholder: "例如：Minecraft 26.2，0.7.2.1-Hana-dev377"
     validations:
-      required: false
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: 测试环境
+      description: 请注明单人世界或服务器；服务器请填写核心、反作弊和大致延迟。
+      placeholder: "例如：单人世界；或 Paper 服务器、无反作弊、45 ms"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce_steps
+    attributes:
+      label: 最小复现步骤
+      description: 尽量使用只包含少量相关方块的小投影，并写明打印模式和关键配置。
+      placeholder: |
+        1. 创建只包含……的小投影
+        2. 将方块状态设置为……
+        3. 使用……模式开始打印
+        4. 实际得到……
+    validations:
+      required: true
+
+  - type: textarea
+    id: attachments
+    attributes:
+      label: 截图、视频或最小投影文件
+      description: 请直接拖拽上传目标状态和实际状态的截图。方向、同 Tick 状态变化或错误破坏问题最好提供短视频。
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: 其他补充
+      description: 可以填写方块类名、相关放置规则、BlockState、邻近方块条件或可参考的原版行为。
+
+  - type: checkboxes
+    id: final_confirmation
+    attributes:
+      label: 最后确认
+      options:
+        - label: 我提供的信息足以区分投影目标状态与世界中的实际状态。
+          required: true

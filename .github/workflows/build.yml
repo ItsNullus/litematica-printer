@@ -1,9 +1,36 @@
 name: build
 
 on:
+  # Automatic builds are limited to files that can change the produced JARs.
+  # CI and release workflow changes can still be verified with workflow_dispatch.
   push:
-    paths-ignore: ['*.md']
+    branches: [master]
+    paths:
+      - 'src/**'
+      - 'versions/**'
+      - 'fabricWrapper/src/**'
+      - 'fabricWrapper/build.gradle.kts'
+      - 'fabricWrapper/gradle.properties'
+      - 'buildSrc/**'
+      - 'gradle/**'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
   pull_request:
+    branches: [master]
+    paths:
+      - 'src/**'
+      - 'versions/**'
+      - 'fabricWrapper/src/**'
+      - 'fabricWrapper/build.gradle.kts'
+      - 'fabricWrapper/gradle.properties'
+      - 'buildSrc/**'
+      - 'gradle/**'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
   workflow_dispatch:
 
 env:

@@ -1,141 +1,153 @@
-Litematica Printer - Hana Version
-==================
+# Litematica Printer — Hana
 
-该模组为 投影 的 Minecraft Fabric 1.18.2 至 26.2 版本添加了自动建造功能。允许玩家通过自动放置周围正确方块来快速还原投影。
+**English** | [简体中文](README.zh-CN.md)
 
-这是独立于三改版之外的四改版,主要特色为独立破基岩逻辑和更多小功能在其中~
+[![GitHub Actions](https://github.com/Yur1Ca/litematica-printer/actions/workflows/build.yml/badge.svg)](https://github.com/Yur1Ca/litematica-printer/actions/workflows/build.yml)
+[![Modrinth](https://img.shields.io/modrinth/dt/nriQwbvD?logo=modrinth&label=Modrinth)](https://modrinth.com/mod/litematica-printer-hana)
+[![GitHub release](https://img.shields.io/github/v/release/Yur1Ca/litematica-printer?include_prereleases&label=GitHub)](https://github.com/Yur1Ca/litematica-printer/releases)
+[![License](https://img.shields.io/github/license/Yur1Ca/litematica-printer)](LICENSE.md)
 
-如果你觉得好用，可以给该项目点个 Star ⭐️ 来以支持我。
+Litematica Printer — Hana is a client-side Fabric mod that adds automated schematic building to Litematica. It restores a schematic by placing the correct blocks around the player and also provides filling, fluid removal, mining, bedrock breaking, inventory assistance, and related utilities.
 
-### 支持的游戏版本
+This repository is an independently maintained continuation of earlier Litematica Printer forks, with a rewritten bedrock-breaking workflow, scanner and iterator improvements, and additional building features.
 
-目前该模组支持以下游戏版本：
+## Download and release channels
+
+- [Modrinth](https://modrinth.com/mod/litematica-printer-hana) provides the multi-version Wrapper JAR and is recommended when launcher or Mod Menu update detection is desired.
+- [GitHub Releases](https://github.com/Yur1Ca/litematica-printer/releases) also provides standalone JARs for individual Minecraft versions.
+- Automated `devXXX` builds are published as **Alpha** versions.
+- Manually created releases are published as **Beta** versions.
+- There is currently no stable release channel.
+
+## Supported Minecraft versions
+
 - 1.18.2
 - 1.19.4
-- 1.20.1
-- 1.20.2
-- 1.20.4
-- 1.20.6
-- 1.21(.1)
-- 1.21.3
-- 1.21.4
-- 1.21.5
-- 1.21.6~8
-- 1.21.9~11
-- 26.1+
-- 26.2
+- 1.20.1, 1.20.2, 1.20.4, and 1.20.6
+- 1.21 through 1.21.11
+- 26.1.x and 26.2
 
-暂不接受1.18.2以下版本的更新，之间的小版本是否可用请自行尝试，一般版本进度会跟进上游分支
+Versions older than 1.18.2 are not supported. Intermediate Minecraft versions may work when they are covered by the same compatibility range, but are not always built as separate JARs.
 
+## Requirements
 
-## 前置模组
+Required:
 
-该模组必须先安装 **Fabric API** , **MaLiLib** 和 **Litematica** 作为前置。可选前置有 **Twrakeroo** 和 **Quick Shulker**。
+- [Fabric Loader](https://fabricmc.net/)
+- [Fabric API](https://modrinth.com/mod/fabric-api)
+- [MaLiLib](https://modrinth.com/mod/malilib)
+- [Litematica](https://modrinth.com/mod/litematica)
 
-## 特性
+Optional integrations:
 
-- **🚀优化**
-  - [x] 更流畅的打印体验
-  - [x] 使用数据包打印功能（速度更快，无幽灵方块）
-  - [x] 可视化放置进度条（显示打印HUD）
-  - [x] 服务器卡顿检测，防止因卡顿导致的大量方块放置错误
+- [Tweakeroo](https://modrinth.com/mod/tweakeroo)
+- [Quick Shulker](https://github.com/MoRanpcy/quickshulker)
+- [Take It Out](https://modrinth.com/mod/takeitout), on supported 1.21.x and 26.x versions
 
-- **⏩改进**
-  - [x] 不会因缺少水源而在迭代水时卡死不打印的 bug
-  - [x] 填充功能（使用投影的选区范围）
-  - [x] 排流体功能（自动处理水源和岩浆源）
-  - [x] 挖掘功能（按选区自动挖掘方块）
-  - [x] 破基岩模式（在选区内自动执行基岩破除,可输入白名单）
-  - [x] 放宽Tweakeroo凭空放置 (可在生存模式使用Tweakeroo的浮空放置~)
-  - [x] 支持快捷潜影盒功能（模组 Quick Shulker ）
-  - [x] 支持Take It Out 远程取物功能
-  - [x] 替换珊瑚（使用活珊瑚打印投影内的死珊瑚）
-  - [x] 更好的破坏错误方块和破冰放水
-  - [x] 支持多达 48 种范围迭代逻辑
-  - [x] 支持独立控制破坏多余方块和错误状态方块
-  - [x] 生命恢复2信标
-  - [x] 独立的破基岩功能(可增白名单)
-  - [x] 扫描器性能改进
-  - [x] 含水方块放置逻辑
-  - [x] 挖掘/填充/排流体改进迭代
-  
-- **🛠️修复**
-  - [x] 修复很多方块的放置算法，包括：
-    - 合成器、拉杆、红石粉（非连接模式）
-    - 枯叶、各种花簇的方向数量
-    - 发光浆果、带花的花盆
-    - 楼梯、藤蔓、缠怨藤、垂泪藤
-    - 砂轮、门、活版门、漏斗、箱子
+Dependency versions must match the Minecraft version being launched.
 
-使用方法
-----------
+## Features
 
-1. 在世界中加载一个原理图。
-2. 身移到可以接触到原理图方块的地方。
-3. 按下`Caps Lock`键开启打印机。
-4. 享受自动的打印:)
+### Printing and performance
 
-> [!TIP]
-> 
-> 目前还没有官方的使用教程，但是大部分功能都含有注释可供参考使用。
+- Player-centered placement ordered by distance.
+- Scanner caching and time-budgeted iteration for large schematic areas.
+- Packet-based placement for faster operation without client-side ghost blocks.
+- Placement progress and missing-material HUDs.
+- Server-lag and round-trip-time safeguards for mixed-material printing.
+- Safer handling for directional and state-sensitive blocks.
 
-## 未支持方块列表
-以下方块由于特殊原因暂未实现，打印机将自动跳过，亦或者是呈现错误的打印状态。如果发现其他方块放置错误，请尝试降低建造速度。若问题依旧存在，请提交 [Issue](https://github.com/Yur1Ca/litematica-printer/issues)。
-- 头颅，告示牌，旗帜(以及具有16个朝向的任何方块)
-- 装有液体的炼药锅
-- 实体方块（包括但不限于物品展示框、盔甲架、画等等）
-- 非原版游戏内容
+### Building tools
 
-编译
-----------
-1. 使用任意方式将源码下载至你的机器上。
-2. 运行`gradlew build`进行编译。
-3. 构建出来的多版本jar文件位于 `./fabricWrapper/build/libs/`内，单独版本位于`./fabricWrapper/build/tmp/submods/META-INF/jars`内。
+- Fill within the active schematic or selection area.
+- Drain water and lava source blocks.
+- Mine blocks within the selected area.
+- Independent handling of extra blocks and wrong-state blocks.
+- Bedrock-breaking mode with an allowlist.
+- Waterlogged block placement and ice-breaking water placement.
+- Replacement of dead coral in the schematic using live coral.
 
-如果你想使用IDEA进行编译，请使用以下步骤：
-1. 在IDEA中打开项目。
-2. 在Gradle面板中，找到`Tasks -> build`，双击`build`任务进行编译。
-3. 编译完成后，构建出来的多版本jar文件位于 `./fabricWrapper/build/libs/`内，单独版本位于`./fabricWrapper/build/tmp/submods/META-INF/jars`内。
+### Inventory integrations
 
-> [!TIP]
-> 
-> 在中国大陆环境可能会导致支持库下载失败。请尝试使用**代理**进行下载。
+- Quick Shulker material retrieval and ordered return.
+- Take It Out remote material retrieval on supported versions.
+- Material switching safeguards intended to prevent placement with the previous hotbar item.
 
-常见问题
-----------
+The printer also contains special placement logic for many vanilla blocks, including stairs, doors, trapdoors, hoppers, chests, levers, redstone wire, vines, hanging plants, grindstones, crafters, flower clusters, and other directional blocks.
 
-## 推荐加入QQ群聊
-- 毕竟不是人人都有能力在 GitHub 上提交 Issue ，您可以加入我们的QQ群聊，以便更好的反馈问题，获取更新和获得帮助。
-[点击此处加入QQ群聊](https://qm.qq.com/q/L8wglHf3GI)
+## Basic usage
 
-### 为什么开启打印后，打印机不工作？
-- 由于投影打印机是基于发送静默看向的方式进行打印的，不会考虑点击面合法化，所以会被服务器反作弊检测。
-- `打印机工作间隔`设置过小，导致类似于 Luminol 等有放置速率限制的服务器不会及时响应，请尝试开启`使用数据包打印`功能打印或者调高`打印机工作间隔`。 
-- 某些玄学问题，在开启正版验证的服务器里打印数据交互不正常。可尝试重新登陆游戏账号。（推荐使用[AuthMe](https://modrinth.com/mod/auth-me)模组） 
+1. Load a schematic in the world with Litematica.
+2. Move within interaction range of the schematic blocks.
+3. Press `Caps Lock` to enable the printer.
+4. Adjust printer settings in the configuration screen when required by the server.
 
-如果以上方法都无法解决问题，请尝试提交 [Issue](https://github.com/Yur1Ca/litematica-printer/issues) ，开发者会协助您解决问题。
+Most options include tooltips in the configuration interface. There is not yet an official full tutorial.
 
-### 为什么打印机放置的方块是错的？
+## Known unsupported content
 
-1. 服务器装有反作弊插件，可能会导致打印机无法模拟看向放置。
-2. 打印机工作间隔设置过小，服务器无法及时响应，导致方块出现错误。属于正常现象，请尝试增大`打印机工作间隔`的值。
-3. 识别算法没有考虑到关于的方块，导致打印机不会正确处理。请提交 [Issue](https://github.com/YUR1Ca/litematica-printer/issues/new?template=%E6%89%93%E5%8D%B0%E6%96%B9%E5%9D%97%E8%AF%B7%E6%B1%82.yml) ，表明什么方块出现错误。
+Some content cannot currently be printed reliably and may be skipped or placed with an incorrect state:
 
-### 快捷潜影盒功能无法使用？
+- Skulls, signs, banners, and other blocks with unusually complex state or data handling.
+- Cauldrons containing fluids.
+- Entities such as item frames, armor stands, and paintings.
+- Non-vanilla content unless it is explicitly supported.
 
-1. 服务器未装有可以在背包右键打开潜影盒的插件(推荐使用AxShulkers)，无法使用快捷潜影盒功能。
-2. 投影打印机设置与实际能用的模式不符，请调整为正确支持的模式。
-3. 预选栏位填满了潜影盒。须在Litematica设置中设置好`pickBlockableSlots`（快捷选择栏位）值。如图所示：
-![预设位置](预设位置.png)
+If a vanilla block is placed incorrectly even at a conservative work interval, submit a [block support report](https://github.com/Yur1Ca/litematica-printer/issues/new/choose).
 
-快捷潜影盒仍处于测试阶段，可能会有一些问题，如果遇到问题请提交[Issue](https://github.com/YUR1Ca/litematica-printer/issues)。
+## Troubleshooting
 
+### The printer does not work after being enabled
 
-感谢
-----------
-- [bunny_i](https://github.com/bunnyi116): 为该项目提供了全方面支持。
-- [aleksilassila/litematica-printer](https://github.com/aleksilassila/litematica-printer): 如果没有 [aleksilassila](https://github.com/aleksilassila) 的成果，那么整个改版分支将不存在！
-- [zhaixianyu/litematica-printer](https://github.com/zhaixianyu/litematica-printer): 在原著的基础上解决了很多问题，同时也引进了很多新的内容。
-- [MoRanpcy/quickshulker](https://github.com/MoRanpcy/quickshulker): 新版的快捷潜影盒支持。
-- [bunnyi116/fabric-bedrock-miner](https://github.com/bunnyi116/fabric-bedrock-miner): 新的破基岩模式前置。
-- 以及所有支持开发的人，包括你！
+- Some anti-cheat systems reject the printer's silent rotation or placement interaction.
+- A very short work interval can exceed a server's placement-rate limit. Increase the interval or try packet-based printing when the server supports it.
+- Account or session state can occasionally interfere with interaction packets. Reconnecting the account or server may help.
+
+### Blocks are placed with the wrong state
+
+- Server anti-cheat or high latency may prevent the simulated rotation from being accepted.
+- The work interval may be too short for the server to acknowledge material switching and placement.
+- The block may require placement logic that is not implemented yet. Please include its block ID, target state, Minecraft version, printer version, and a reproducible example in the issue.
+
+### Quick Shulker does not work
+
+- The server must support opening shulker boxes from the inventory for the selected integration mode.
+- The configured mode must match the mod or server behavior actually available.
+- Litematica's `pickBlockableSlots` must contain usable hotbar slots and should not be filled entirely with shulker boxes.
+
+![Recommended pick-block slots](预设位置.png)
+
+## Support and contributing
+
+- Use [GitHub Discussions](https://github.com/Yur1Ca/litematica-printer/discussions) for installation help, configuration questions, compatibility discussions, and general feedback.
+- Use [GitHub Issues](https://github.com/Yur1Ca/litematica-printer/issues/new/choose) only for reproducible bugs, block support problems, and concrete feature requests.
+- Search existing Issues and Discussions before opening a new report.
+- Keep one independently reproducible problem per Issue and attach `latest.log`, crash reports, screenshots, or short recordings where relevant.
+
+## Building
+
+JDK 25 is recommended when building the complete multi-version Wrapper.
+
+```bash
+./gradlew :fabricWrapper:build
+```
+
+Build outputs:
+
+- Multi-version Wrapper: `fabricWrapper/build/libs/`
+- Standalone version JARs: `fabricWrapper/build/libs/jars/`
+
+The first build downloads Minecraft and mod dependencies and may require a working connection to their Maven repositories.
+
+## Acknowledgements
+
+- [bunny_i](https://github.com/bunnyi116) for broad support and contributions to the project.
+- [aleksilassila/litematica-printer](https://github.com/aleksilassila/litematica-printer) for the original project.
+- [zhaixianyu/litematica-printer](https://github.com/zhaixianyu/litematica-printer) for earlier fixes and features.
+- [MoRanpcy/quickshulker](https://github.com/MoRanpcy/quickshulker) for Quick Shulker integration.
+- [bunnyi116/fabric-bedrock-miner](https://github.com/bunnyi116/fabric-bedrock-miner) for the bedrock-breaking foundation.
+- Everyone who tests, reports issues, contributes code, or supports the project.
+
+## License
+
+This project is licensed under the [GNU Affero General Public License v3.0](LICENSE.md).
