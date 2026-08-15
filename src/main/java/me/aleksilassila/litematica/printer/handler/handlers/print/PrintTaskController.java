@@ -29,11 +29,26 @@ public class PrintTaskController {
         return this.activeTask != null && this.activeTask.owns(pos);
     }
 
+    public boolean isWaitingForWorldUpdate(@Nullable ClientLevel level, @Nullable WorldSchematic schematic) {
+        this.cleanup(level, schematic);
+        return this.activeTask != null
+                && level != null
+                && schematic != null
+                && this.activeTask.isWaitingForWorldUpdate(level, schematic);
+    }
+
     public PrintTaskBuildResult buildAction(SchematicBlockContext context) {
         this.cleanup(context.level, context.schematic);
         if (this.activeTask != null) {
             if (!this.activeTask.owns(context.blockPos)) {
-                return PrintTaskBuildResult.SKIP;
+                if (!this.activeTask.isWaitingForWorldUpdate(context.level, context.schematic)) {
+                    return PrintTaskBuildResult.SKIP;
+                }
+                // 世界状态同步期间允许普通打印继续，但不启动第二个多阶段任务，
+                // 避免多个破冰流程争用同一个客户端挖掘状态。
+                return PrintTasks.tryCreate(context) == null
+                        ? PrintTaskBuildResult.PASS
+                        : PrintTaskBuildResult.SKIP;
             }
             PrintTaskBuildResult result = this.activeTask.buildAction(context);
             this.cleanup(context.level, context.schematic);

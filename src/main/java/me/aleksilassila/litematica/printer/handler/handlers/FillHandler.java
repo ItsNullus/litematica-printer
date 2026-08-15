@@ -146,7 +146,7 @@ public class FillHandler extends Module {
 
     @Override
     protected boolean iterationPositionsPrefilterCooldown() {
-        return true;
+        return false;
     }
 
     @Override
@@ -241,8 +241,7 @@ public class FillHandler extends Module {
             Predicate<BlockPos> selectionPredicate
     ) {
         return reachPredicate.test(blockPos)
-                && selectionPredicate.test(blockPos)
-                && !this.isBlockPosOnCooldown(blockPos);
+                && selectionPredicate.test(blockPos);
     }
 
     private void resetFillScan(
@@ -302,16 +301,23 @@ public class FillHandler extends Module {
             return;
         }
         if (!handheld && !InventoryUtils.switchToItems(player, this.fillModeItemList)) {
-            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "缺少填充材料");
-            MissingMaterialTracker.INSTANCE.recordMissing(
-                    this.fillModeItemList,
-                    null,
-                    null,
-                    level.getGameTime()
-            );
+            boolean retrievalPending =
+                    me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.shouldPauseForSwitchRequest()
+                            || me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils.isAwaitingStack();
+            if (retrievalPending) {
+                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "等待取货");
+                MissingMaterialTracker.INSTANCE.resolve(this.fillModeItemList, null);
+            } else {
+                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "缺少填充材料");
+                MissingMaterialTracker.INSTANCE.recordMissing(
+                        this.fillModeItemList,
+                        null,
+                        null,
+                        level.getGameTime()
+                );
+            }
             setIterationConsumedEffectiveExecution(false);
-            if (me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.shouldPauseForSwitchRequest()
-                    || me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils.isAwaitingStack()) {
+            if (retrievalPending) {
                 skipIteration.set(true);
             }
             return;

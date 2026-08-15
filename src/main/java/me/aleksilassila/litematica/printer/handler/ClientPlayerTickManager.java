@@ -46,10 +46,6 @@ public class ClientPlayerTickManager {
         SCHEDULER.setPacketTick(packetTick);
     }
 
-    public static int getPacketEpoch() {
-        return SCHEDULER.getPacketEpoch();
-    }
-
     public static void recordInboundPacket() {
         SCHEDULER.recordInboundPacket();
     }
@@ -71,6 +67,7 @@ public class ClientPlayerTickManager {
         BedrockController.reset();
         HudStatsManager.INSTANCE.resetAll();
         MissingMaterialTracker.INSTANCE.clear();
+        InventoryAvailabilityTracker.INSTANCE.reset();
         SCHEDULER.resetRuntime();
         for (Module module : VALUES) {
             module.resetRuntimeState();

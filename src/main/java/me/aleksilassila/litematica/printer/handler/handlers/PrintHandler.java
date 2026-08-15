@@ -1,5 +1,6 @@
 package me.aleksilassila.litematica.printer.handler.handlers;
 
+import com.google.common.collect.Iterables;
 import fi.dy.masa.litematica.world.SchematicWorldHandler;
 import fi.dy.masa.litematica.world.WorldSchematic;
 import me.aleksilassila.litematica.printer.config.Configs;
@@ -53,7 +54,9 @@ public class PrintHandler extends Module {
 
     @Override
     protected int getTickInterval() {
-        if (this.printTasks.hasActiveTask()) {
+        WorldSchematic schematic = SchematicWorldHandler.getSchematicWorld();
+        if (this.printTasks.hasActiveTask()
+                && !this.printTasks.isWaitingForWorldUpdate(level, schematic)) {
             return 0;
         }
         int baseInterval = Configs.Placement.PLACE_INTERVAL.getIntegerValue();
@@ -104,10 +107,22 @@ public class PrintHandler extends Module {
     protected Iterable<BlockPos> getIterationPositions(PrinterBox playerInteractionBox) {
         WorldSchematic schematic = SchematicWorldHandler.getSchematicWorld();
         BlockPos activeTaskPos = this.printTasks.getActiveTargetPos(level, schematic);
-        if (activeTaskPos != null) {
+        boolean taskWaitingForWorld = activeTaskPos != null
+                && this.printTasks.isWaitingForWorldUpdate(level, schematic);
+        if (activeTaskPos != null && !taskWaitingForWorld) {
             this.sortedTargets.clear();
             return List.of(activeTaskPos);
         }
+        Iterable<BlockPos> normalPositions = this.getNormalIterationPositions(playerInteractionBox, schematic);
+        return activeTaskPos == null
+                ? normalPositions
+                : Iterables.concat(List.of(activeTaskPos), normalPositions);
+    }
+
+    private Iterable<BlockPos> getNormalIterationPositions(
+            PrinterBox playerInteractionBox,
+            @Nullable WorldSchematic schematic
+    ) {
         if (!Configs.Print.PRINT_SORT_TARGETS.getBooleanValue()) {
             this.sortedTargets.clear();
             return this.getCachedFilteredIterationPositions(playerInteractionBox, ScanIntent.PRINT, pos -> true);
@@ -223,6 +238,9 @@ public class PrintHandler extends Module {
         switch (taskEvent) {
             case SUCCESS -> this.printTasks.onActionSuccess(taskAction, this.ctx, this.action);
             case QUEUED -> this.printTasks.onActionQueued(taskAction, this.ctx, this.action);
+            case DEFERRED -> {
+                // 物品换槽或外部取货尚未完成，保留多阶段任务的当前状态。
+            }
             case CANCELLED -> taskAction.onCancelled(this.ctx, this.action);
             case FAILURE -> this.printTasks.onActionFailure(taskAction, this.ctx, this.action);
         }

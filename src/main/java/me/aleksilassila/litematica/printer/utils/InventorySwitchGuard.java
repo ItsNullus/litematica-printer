@@ -7,11 +7,9 @@ import net.minecraft.world.item.Item;
 
 public final class InventorySwitchGuard {
     private static final Minecraft client = Minecraft.getInstance();
-    private static final int MAX_WAIT_TICKS = 10;
-
+    private static final int MAX_SETTLE_TICKS = 20;
     private static Item pendingItem;
     private static long pendingStartedTick;
-    private static int pendingStartedPacketEpoch;
 
     private InventorySwitchGuard() {
     }
@@ -26,8 +24,7 @@ public final class InventorySwitchGuard {
         }
         pendingItem = item;
         pendingStartedTick = ClientPlayerTickManager.getCurrentHandlerTime();
-        pendingStartedPacketEpoch = ClientPlayerTickManager.getPacketEpoch();
-        ActionManager.INSTANCE.clearQueue();
+        ActionManager.INSTANCE.cancelQueue();
         return true;
     }
 
@@ -35,16 +32,21 @@ public final class InventorySwitchGuard {
         if (pendingItem == null) {
             return false;
         }
-        ActionManager.INSTANCE.clearQueue();
+        ActionManager.INSTANCE.cancelQueue();
         long age = ClientPlayerTickManager.getCurrentHandlerTime() - pendingStartedTick;
-        if (age > MAX_WAIT_TICKS) {
-            clear();
-            return false;
-        }
         if (age <= 0) {
             return true;
         }
-        if (isMainHandReady(pendingItem) && ClientPlayerTickManager.getPacketEpoch() > pendingStartedPacketEpoch) {
+        if (isMainHandReady(pendingItem)) {
+            clear();
+            return false;
+        }
+        // Accepted container clicks are client-predicted and normally have no acknowledgement.
+        // Unlocking on the following tick is safe once the local main hand matches: the swap
+        // packet was already queued before any later placement packet on the same connection.
+        // If prediction did not settle, release only to let the normal item selection retry;
+        // every executor validates the main hand again before sending an action.
+        if (age > MAX_SETTLE_TICKS) {
             clear();
             return false;
         }
@@ -54,7 +56,6 @@ public final class InventorySwitchGuard {
     private static void clear() {
         pendingItem = null;
         pendingStartedTick = 0L;
-        pendingStartedPacketEpoch = 0;
     }
 
     private static boolean isMainHandReady(Item item) {

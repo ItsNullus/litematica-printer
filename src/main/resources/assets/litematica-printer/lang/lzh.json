@@ -251,5 +251,18 @@
   "litematica-printer.config.printBonemealCrops": "糞肥催熟",
   "litematica-printer.config.printBonemealCrops.desc": "以骨粉催熟農作物。",
   "litematica-printer.config.printBonemealCropsClicks": "農作催熟連點數",
-  "litematica-printer.config.printBonemealCropsClicks.desc": "每治一作物，連施骨粉之數。\n數愈高則催熟愈疾，然骨粉之耗亦愈甚。"
+  "litematica-printer.config.printBonemealCropsClicks.desc": "每治一作物，連施骨粉之數。\n數愈高則催熟愈疾，然骨粉之耗亦愈甚。",
+  "litematica-printer.config.bedrockInterval": "破基巖之間期",
+  "litematica-printer.config.bedrockInterval.desc": "每輪破基巖之間隔，以遊戲刻計。\n每耗吞吐之限，俟此期而後再行。零則相續，值愈大則愈穩而稍緩。",
+  "litematica-printer.config.bedrockBlocksPerTick": "每刻破基巖數",
+  "litematica-printer.config.bedrockBlocksPerTick.desc": "每遊戲刻所進破基巖之上限。\n兼制推進、納標及並行之數；值愈高則疾，然清理積滯與機巧相犯之虞亦增。",
+  "litematica-printer.config.tweakerooAngelBlockMayBuild": "寬 Tweakeroo 憑空置石之限",
+  "litematica-printer.config.tweakerooAngelBlockMayBuild.desc": "啟之，則 Tweakeroo 憑空置石雖生存亦可行；閉之，仍守其惟創造可用之舊制。",
+  "bedrockminer.fail.missing.survival": "破基巖惟生存、冒險之態可用",
+  "bedrockminer.fail.missing.piston": "破基巖敗：囊中活塞不足",
+  "bedrockminer.fail.missing.redstonetorch": "破基巖敗：囊中無紅石火把",
+  "bedrockminer.fail.missing.slime": "破基巖敗：囊中無黏液塊",
+  "bedrockminer.fail.missing.instantmine": "破基巖敗：須有可瞬破活塞之鎬與狀態",
+  "bedrockminer.fail.place.redstonetorch": "破基巖敗：未得火把可托之位",
+  "bedrockminer.fail.place.piston": "破基巖敗：活塞之構不可置或復"
 }

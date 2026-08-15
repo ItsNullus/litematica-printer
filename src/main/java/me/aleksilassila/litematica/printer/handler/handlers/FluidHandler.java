@@ -150,16 +150,23 @@ public class FluidHandler extends Module {
             return;
         }
         if (!InventoryUtils.switchToItems(player, fillItemArray)) {
-            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "缺少流体填充方块");
-            MissingMaterialTracker.INSTANCE.recordMissing(
-                    fillItemArray,
-                    null,
-                    null,
-                    level.getGameTime()
-            );
+            boolean retrievalPending =
+                    me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.shouldPauseForSwitchRequest()
+                            || me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils.isAwaitingStack();
+            if (retrievalPending) {
+                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "等待取货");
+                MissingMaterialTracker.INSTANCE.resolve(fillItemArray, null);
+            } else {
+                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "缺少流体填充方块");
+                MissingMaterialTracker.INSTANCE.recordMissing(
+                        fillItemArray,
+                        null,
+                        null,
+                        level.getGameTime()
+                );
+            }
             setIterationConsumedEffectiveExecution(false);
-            if (me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.shouldPauseForSwitchRequest()
-                    || me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils.isAwaitingStack()) {
+            if (retrievalPending) {
                 skipIteration.set(true);
             }
             return;

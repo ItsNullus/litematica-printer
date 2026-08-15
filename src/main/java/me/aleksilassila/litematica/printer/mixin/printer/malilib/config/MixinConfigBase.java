@@ -23,7 +23,7 @@ import java.util.function.Consumer;
 @Mixin(value = ConfigBase.class, remap = false)
 public abstract class MixinConfigBase<T extends IConfigBase> implements IConfigBase, IConfigResettable, IConfigNotifiable<T>, ConfigExtension {
     @Unique
-    private final CopyOnWriteArrayList<Consumer<IConfigBase>> litematica_printer$valueChangeCallbacks = new CopyOnWriteArrayList<>();
+    private CopyOnWriteArrayList<Consumer<IConfigBase>> litematica_printer$valueChangeCallbacks;
 
     @Shadow
     protected String prettyName;
@@ -102,12 +102,16 @@ public abstract class MixinConfigBase<T extends IConfigBase> implements IConfigB
 
     @Override
     public CopyOnWriteArrayList<Consumer<IConfigBase>> litematica_printer$getValueChangeCallbacks() {
+        if (this.litematica_printer$valueChangeCallbacks == null) {
+            this.litematica_printer$valueChangeCallbacks = new CopyOnWriteArrayList<>();
+        }
         return litematica_printer$valueChangeCallbacks;
     }
 
     @Inject(method = "onValueChanged", at = @At("HEAD"))
     public void litematica_printer$onValueChanged(CallbackInfo ci) {
-        if (!litematica_printer$valueChangeCallbacks.isEmpty()) {
+        if (litematica_printer$valueChangeCallbacks != null
+                && !litematica_printer$valueChangeCallbacks.isEmpty()) {
             litematica_printer$triggerValueChangeCallbacks(this);
         }
     }

@@ -16,6 +16,10 @@ public interface PrintTask {
 
     boolean shouldKeep(ClientLevel level, WorldSchematic schematic);
 
+    default boolean isWaitingForWorldUpdate(ClientLevel level, WorldSchematic schematic) {
+        return false;
+    }
+
     PrintTaskBuildResult buildAction(SchematicBlockContext context);
 
     @Nullable

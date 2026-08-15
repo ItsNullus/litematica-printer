@@ -71,9 +71,11 @@ public abstract class Module extends ConfigUtils {
     private PrinterBox activeDirtyScanBox;
     private boolean currentIterationDidWork;
     private boolean currentIterationFoundCandidate;
+    private boolean currentIterationCompletedPass;
+    private boolean fullPassCompletedSinceActivity;
     private int lazyProbeTicks;
-    private boolean inventoryFingerprintInitialized;
-    private int lastInventoryFingerprint;
+    private boolean inventoryRevisionInitialized;
+    private long lastInventoryGainRevision;
     private boolean schematicIdentityInitialized;
     @Nullable
     private Object lastSchematicIdentity;
@@ -123,9 +125,11 @@ public abstract class Module extends ConfigUtils {
         this.iterationConsumedEffectiveExecution = true;
         this.currentIterationDidWork = false;
         this.currentIterationFoundCandidate = false;
+        this.currentIterationCompletedPass = false;
+        this.fullPassCompletedSinceActivity = false;
         this.lazyProbeTicks = 0;
-        this.inventoryFingerprintInitialized = false;
-        this.lastInventoryFingerprint = 0;
+        this.inventoryRevisionInitialized = false;
+        this.lastInventoryGainRevision = 0L;
         this.schematicIdentityInitialized = false;
         this.lastSchematicIdentity = null;
         this.clearScanSourceCache();
@@ -213,20 +217,16 @@ public abstract class Module extends ConfigUtils {
     }
 
     private void wakeForInventoryChange() {
-        int fingerprint = 1;
-        for (int slot = 0; slot < this.player.getInventory().getContainerSize(); slot++) {
-            fingerprint = 31 * fingerprint
-                    + this.player.getInventory().getItem(slot).getItem().hashCode();
-        }
-        if (!this.inventoryFingerprintInitialized) {
-            this.inventoryFingerprintInitialized = true;
-            this.lastInventoryFingerprint = fingerprint;
+        long revision = InventoryAvailabilityTracker.INSTANCE.gainRevision();
+        if (!this.inventoryRevisionInitialized) {
+            this.inventoryRevisionInitialized = true;
+            this.lastInventoryGainRevision = revision;
             return;
         }
-        if (this.lastInventoryFingerprint == fingerprint) {
+        if (this.lastInventoryGainRevision == revision) {
             return;
         }
-        this.lastInventoryFingerprint = fingerprint;
+        this.lastInventoryGainRevision = revision;
         ScanCache.INSTANCE.resetOwner(this.id);
         this.requestFullScan();
     }
@@ -268,6 +268,7 @@ public abstract class Module extends ConfigUtils {
         this.updateScanSource(scanSourceBox, scanSourceBoxes);
         if (!this.isLazyScanEnabled()) {
             this.scanState = ScanState.FULL;
+            this.fullPassCompletedSinceActivity = false;
             this.clearDirtyScanQueue();
             return this.runFullIteration(playerInteractionBox);
         }
@@ -295,6 +296,7 @@ public abstract class Module extends ConfigUtils {
                 } else {
                     this.scanState = ScanState.FULL;
                     this.idleScanTicks = 0;
+                    this.fullPassCompletedSinceActivity = false;
                     this.clearDirtyScanQueue();
                 }
             }
@@ -303,13 +305,14 @@ public abstract class Module extends ConfigUtils {
         this.lastScanSourceBox = scanSourceBox;
         this.scanState = ScanState.FULL;
         this.idleScanTicks = 0;
+        this.fullPassCompletedSinceActivity = false;
         this.lastDirtyVersion = DirtyRegionTracker.INSTANCE.currentVersion();
         this.clearDirtyScanQueue();
     }
 
     private boolean runFullIteration(PrinterBox playerInteractionBox) {
         boolean interrupt = this.runIterationLoop(playerInteractionBox);
-        this.updateFullScanIdleState(interrupt);
+        this.updateFullScanIdleState();
         return interrupt;
     }
 
@@ -344,6 +347,7 @@ public abstract class Module extends ConfigUtils {
             this.scanState = ScanState.FULL;
             this.idleScanTicks = 0;
             this.lazyProbeTicks = 0;
+            this.fullPassCompletedSinceActivity = false;
             return interrupt;
         }
         this.scanState = ScanState.LAZY;
@@ -409,23 +413,30 @@ public abstract class Module extends ConfigUtils {
         this.scanState = ScanState.PARTIAL;
     }
 
-    private void updateFullScanIdleState(boolean interrupt) {
-        if (interrupt) {
-            this.idleScanTicks = 0;
-            return;
-        }
+    private void updateFullScanIdleState() {
         if (this.currentIterationDidWork || this.currentIterationFoundCandidate) {
             this.idleScanTicks = 0;
+            this.fullPassCompletedSinceActivity = false;
             return;
+        }
+        if (this.currentIterationCompletedPass) {
+            this.fullPassCompletedSinceActivity = true;
         }
         int lazyThreshold = Configs.Core.LAZY_ENTER_TICKS.getIntegerValue();
         if (lazyThreshold <= 0) {
             return;
         }
-        if (++this.idleScanTicks >= lazyThreshold) {
+        // A large empty range normally needs several budget-limited ticks to finish one pass.
+        // Count those genuinely idle ticks, but enter LAZY only after at least one complete pass
+        // proved that no target was hidden in the unscanned tail.
+        if (this.idleScanTicks < lazyThreshold) {
+            this.idleScanTicks++;
+        }
+        if (this.fullPassCompletedSinceActivity && this.idleScanTicks >= lazyThreshold) {
             this.scanState = ScanState.LAZY;
             this.idleScanTicks = 0;
             this.lazyProbeTicks = 0;
+            this.fullPassCompletedSinceActivity = false;
             this.clearDirtyScanQueue();
         }
     }
@@ -467,6 +478,7 @@ public abstract class Module extends ConfigUtils {
         if (overlapMinX > overlapMaxX || overlapMinY > overlapMaxY || overlapMinZ > overlapMaxZ) {
             this.scanState = ScanState.FULL;
             this.idleScanTicks = 0;
+            this.fullPassCompletedSinceActivity = false;
             this.clearDirtyScanQueue();
             return;
         }
@@ -505,6 +517,7 @@ public abstract class Module extends ConfigUtils {
         this.scanState = ScanState.FULL;
         this.idleScanTicks = 0;
         this.lazyProbeTicks = 0;
+        this.fullPassCompletedSinceActivity = false;
         this.clearDirtyScanQueue();
     }
 
@@ -517,6 +530,8 @@ public abstract class Module extends ConfigUtils {
         this.scanState = ScanState.FULL;
         this.idleScanTicks = 0;
         this.lazyProbeTicks = 0;
+        this.currentIterationCompletedPass = false;
+        this.fullPassCompletedSinceActivity = false;
         this.lastScanSourceBox = null;
         this.lastScanSourceBoxes = List.of();
         this.updateExternalScanBox(null);
@@ -561,8 +576,10 @@ public abstract class Module extends ConfigUtils {
         this.skipIteration.set(false);
         this.currentIterationDidWork = false;
         this.currentIterationFoundCandidate = false;
+        this.currentIterationCompletedPass = false;
         this.guiBlockInfoBuffer.resetForTracking(trackGuiBlockInfo);
 
+        int completedPassesBefore = ScanCache.INSTANCE.metricsFor(this.id).completedPasses();
         Iterable<BlockPos> iterationPositions = this.getIterationPositions(playerInteractionBox);
         for (BlockPos pos : iterationPositions) {
             if (++iterationBudgetChecks % ITERATION_BUDGET_CHECK_INTERVAL == 0
@@ -611,6 +628,10 @@ public abstract class Module extends ConfigUtils {
                 gui.posInSelectionRange = true;
             }
             if (!prefilteredCooldown && isBlockPosOnCooldown(pos)) {
+                // The scanner did find a valid source position; it is only deferred until its
+                // action cooldown expires.  Treating it as an empty pass could enter LAZY and
+                // postpone the retry until the fallback probe.
+                this.currentIterationFoundCandidate = true;
                 this.guiBlockInfoBuffer.add(gui);
                 continue;
             }
@@ -642,6 +663,8 @@ public abstract class Module extends ConfigUtils {
                 break;
             }
         }
+        this.currentIterationCompletedPass = ScanCache.INSTANCE.metricsFor(this.id).completedPasses()
+                > completedPassesBefore;
         stopIteration(interrupt);
         return interrupt;
     }

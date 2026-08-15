@@ -150,8 +150,7 @@ public final class BedrockPlacer {
         }
 
         long sentTick = ClientPlayerTickManager.getCurrentHandlerTime();
-        int packetEpoch = ClientPlayerTickManager.getPacketEpoch();
-        pendingHorizontalPistonPlacements.put(pendingKey, new PendingHorizontalPlacement(facing, sentTick, packetEpoch));
+        pendingHorizontalPistonPlacements.put(pendingKey, new PendingHorizontalPlacement(facing, sentTick));
         NetworkUtils.setScopedLookOverride(look);
         NetworkUtils.sendLookPacketIgnoringQueuedLook(player, look);
         return true;
@@ -159,19 +158,16 @@ public final class BedrockPlacer {
 
     private static boolean isHorizontalLookReady(PendingHorizontalPlacement pendingPlacement) {
         long now = ClientPlayerTickManager.getCurrentHandlerTime();
-        if (now <= pendingPlacement.sentTick()) {
-            return false;
-        }
-        if (ClientPlayerTickManager.getPacketEpoch() > pendingPlacement.packetEpoch()) {
-            return true;
-        }
-        return now - pendingPlacement.sentTick() >= 2L;
+        // Movement and interaction packets share the ordered game connection.  Sending the
+        // placement on the following client tick is sufficient and keeps the original safety
+        // boundary without treating an unrelated inbound packet as an acknowledgement.
+        return now > pendingPlacement.sentTick();
     }
 
     private static void applyPlacementLook(LocalPlayer player, PlayerLook look) {
         NetworkUtils.sendLookPacketIgnoringQueuedLook(player, look);
     }
 
-    private record PendingHorizontalPlacement(Direction facing, long sentTick, int packetEpoch) {
+    private record PendingHorizontalPlacement(Direction facing, long sentTick) {
     }
 }

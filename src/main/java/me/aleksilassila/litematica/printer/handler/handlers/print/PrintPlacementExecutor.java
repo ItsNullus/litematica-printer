@@ -14,6 +14,7 @@ import me.aleksilassila.litematica.printer.printer.action.ClickAction;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
+import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
 import me.aleksilassila.litematica.printer.utils.minecraft.DirectionUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.MessageUtils;
 import me.aleksilassila.litematica.printer.utils.mods.LitematicaUtils;
@@ -77,6 +78,10 @@ public final class PrintPlacementExecutor {
                     );
         }
         if (!itemReady) {
+            boolean retrievalPending =
+                    InventorySwitchGuard.isWaiting()
+                            || me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.shouldPauseForSwitchRequest()
+                            || TakeItOutUtils.isAwaitingStack();
             ItemStack reserveBlockedStack = reserveItems
                     ? InventoryUtils.findReserveBlockedStack(
                             context.client.player,
@@ -85,7 +90,10 @@ public final class PrintPlacementExecutor {
                             reserveCount
                     )
                     : ItemStack.EMPTY;
-            if (reserveBlockedStack.isEmpty()) {
+            if (retrievalPending) {
+                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "等待取货");
+                MissingMaterialTracker.INSTANCE.resolve(requiredItems, requiredStackPredicate);
+            } else if (reserveBlockedStack.isEmpty()) {
                 HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "缺少材料");
                 MissingMaterialTracker.INSTANCE.recordMissing(
                         requiredItems,
@@ -97,18 +105,20 @@ public final class PrintPlacementExecutor {
                 HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "达到保留数量");
                 showReserveNotice(context, reserveBlockedStack);
             }
-            // 缺少材料属于无效放置，不应消耗每 tick 的有效放置预算（与重构前行为一致）。
-            return PrintPlacementResult.failure(false,
-                    shouldStopAfterTaskAction(taskAction)
-                            || me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.shouldPauseForSwitchRequest()
-                            || TakeItOutUtils.isAwaitingStack());
+            if (retrievalPending) {
+                // 换槽或外部取货只是暂时未就绪。多阶段任务必须保留当前阶段，
+                // 否则破冰放水会在材料到达前被当成永久失败并丢失目标。
+                return PrintPlacementResult.deferred(true);
+            }
+            // 真正缺少材料属于无效放置，不应消耗每 tick 的有效放置预算。
+            return PrintPlacementResult.failure(false, shouldStopAfterTaskAction(taskAction));
         }
         MissingMaterialTracker.INSTANCE.resolve(requiredItems, requiredStackPredicate);
         if (!InventoryUtils.isHoldingAnyItem(context.client.player, requiredItems)
                 || requiredStackPredicate != null
                 && !requiredStackPredicate.test(context.client.player.getMainHandItem())) {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "等待物品同步");
-            return PrintPlacementResult.failure(false, true);
+            return PrintPlacementResult.deferred(true);
         }
 
         boolean useShift = getUseShift(context, action, side);

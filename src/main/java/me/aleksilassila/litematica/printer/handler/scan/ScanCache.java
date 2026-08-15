@@ -1,8 +1,6 @@
 package me.aleksilassila.litematica.printer.handler.scan;
 
 import fi.dy.masa.litematica.world.WorldSchematic;
-import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import me.aleksilassila.litematica.printer.config.Configs;
@@ -16,7 +14,6 @@ import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.BaseRailBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
-import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -28,26 +25,11 @@ import java.util.function.Predicate;
 public final class ScanCache {
     public static final ScanCache INSTANCE = new ScanCache();
 
-    private static final int SECTION_SIZE = 16;
-    private static final int SECTION_VOLUME = SECTION_SIZE * SECTION_SIZE * SECTION_SIZE;
-    private static final int MAX_SECTION_CACHE_ENTRIES = 8192;
-    private static final int WORLD_SECTION_TTL_TICKS = 80;
-    private static final int SCHEMATIC_SECTION_TTL_TICKS = 80;
     private static final int BUDGET_CHECK_INTERVAL = 8;
     private static final int SECTION_SCAN_BUDGET_CHECK_INTERVAL = 8;
     private static final int OWNER_SCAN_BUDGET_PERCENT = 75;
-    private static final int MAX_SECTION_ADVANCES_PER_STEP = 16;
-    private static final int SECTION_CANDIDATE_BURST = 8;
-    private static final int LIVE_SECTION_SCAN_SLICE_BLOCKS = 256;
-    private static final int MAX_INTERLEAVED_SECTIONS = 24;
-    private static final byte SAMPLE_AIR = 1;
-    private static final byte SAMPLE_LIQUID_BLOCK = 1 << 1;
-    private static final byte SAMPLE_FLUID = 1 << 2;
-    private static final byte SAMPLE_REPLACEABLE = 1 << 3;
     private static final Direction[] DIRECTIONS = Direction.values();
-    private static final int[][] LOCAL_AXIS_ORDER = buildLocalAxisOrder();
 
-    private final Long2ObjectOpenHashMap<SectionEntry> sections = new Long2ObjectOpenHashMap<>();
     private final Map<String, SectionScanSession> sessions = new HashMap<>();
     private final Map<String, MutableScanMetrics> scanMetrics = new HashMap<>();
 
@@ -61,7 +43,6 @@ public final class ScanCache {
     }
 
     public void clear() {
-        this.sections.clear();
         this.sessions.clear();
         this.scanMetrics.clear();
         this.levelIdentity = null;
@@ -109,7 +90,6 @@ public final class ScanCache {
             return;
         }
         if (this.levelIdentity != level || this.schematicIdentity != schematic) {
-            this.sections.clear();
             this.sessions.clear();
             this.scanMetrics.clear();
             DirtyRegionTracker.INSTANCE.clear();
@@ -126,9 +106,6 @@ public final class ScanCache {
             this.scanBudgetTickTime = tickTime;
             this.globalScanBudgetUsedNanos = 0L;
         }
-        if (tickTime % 20L == 0L) {
-            this.prune();
-        }
     }
 
     public ScanMetrics metricsFor(String ownerKey) {
@@ -143,7 +120,6 @@ public final class ScanCache {
         int sectionX = sectionCoord(pos.getX());
         int sectionY = sectionCoord(pos.getY());
         int sectionZ = sectionCoord(pos.getZ());
-        this.sections.remove(sectionKey(sectionX, sectionY, sectionZ));
         for (SectionScanSession session : this.sessions.values()) {
             session.invalidate(pos);
         }
@@ -424,16 +400,6 @@ public final class ScanCache {
         return false;
     }
 
-    private SectionEntry sectionEntry(int sectionX, int sectionY, int sectionZ) {
-        long sectionKey = sectionKey(sectionX, sectionY, sectionZ);
-        SectionEntry entry = this.sections.get(sectionKey);
-        if (entry == null) {
-            entry = new SectionEntry(sectionX, sectionY, sectionZ);
-            this.sections.put(sectionKey, entry);
-        }
-        return entry;
-    }
-
     private boolean isScanBudgetExceeded(long ownerBudgetStartNanos) {
         long elapsed = Math.max(0L, System.nanoTime() - ownerBudgetStartNanos);
         long globalBudgetNanos = this.globalScanBudgetNanos();
@@ -466,8 +432,11 @@ public final class ScanCache {
     }
 
     private static int exhaustedRescanDelayTicks() {
-        int lazyEnterTicks = Configs.Core.LAZY_ENTER_TICKS.getIntegerValue();
-        return lazyEnterTicks > 0 ? lazyEnterTicks + 1 : 1;
+        // A completed pass may restart on the next client tick.  Lazy admission is owned by
+        // Module and must count real empty passes; coupling this delay to LAZY_ENTER_TICKS made
+        // the session stay unavailable for the entire admission window.  The module then
+        // entered LAZY without checking the world again, producing periodic scan/lazy bursts.
+        return 1;
     }
 
     private long globalScanBudgetNanos() {
@@ -482,22 +451,6 @@ public final class ScanCache {
         return scanGuardLimit > 0 ? scanGuardLimit : Integer.MAX_VALUE;
     }
 
-    private void prune() {
-        if (this.sections.isEmpty()) {
-            return;
-        }
-        this.sections.long2ObjectEntrySet().removeIf(entry -> entry.getValue().isExpired(this.tickTime));
-        if (this.sections.size() <= MAX_SECTION_CACHE_ENTRIES) {
-            return;
-        }
-        int removeCount = this.sections.size() - MAX_SECTION_CACHE_ENTRIES;
-        LongIterator iterator = this.sections.keySet().iterator();
-        while (iterator.hasNext() && removeCount-- > 0) {
-            iterator.nextLong();
-            iterator.remove();
-        }
-    }
-
     private static long sectionKey(int sectionX, int sectionY, int sectionZ) {
         return ((long) sectionX & 0x3FFFFFL) << 42
                 | ((long) sectionZ & 0x3FFFFFL) << 20
@@ -508,45 +461,11 @@ public final class ScanCache {
         return blockCoord >> 4;
     }
 
-    private static int localIndex(int x, int y, int z) {
-        return (y & 15) << 8 | (z & 15) << 4 | (x & 15);
-    }
-
     private static long distanceSqr(BlockPos pos, int centerX, int centerY, int centerZ) {
         long dx = pos.getX() - (long) centerX;
         long dy = pos.getY() - (long) centerY;
         long dz = pos.getZ() - (long) centerZ;
         return dx * dx + dy * dy + dz * dz;
-    }
-
-    private static BlockPos blockPos(int sectionX, int sectionY, int sectionZ, int localIndex) {
-        int x = (sectionX << 4) + (localIndex & 15);
-        int z = (sectionZ << 4) + (localIndex >> 4 & 15);
-        int y = (sectionY << 4) + (localIndex >> 8 & 15);
-        return new BlockPos(x, y, z);
-    }
-
-    private static int[][] buildLocalAxisOrder() {
-        int[][] order = new int[SECTION_SIZE][SECTION_SIZE];
-        for (int anchor = 0; anchor < SECTION_SIZE; anchor++) {
-            int index = 0;
-            order[anchor][index++] = anchor;
-            for (int distance = 1; index < SECTION_SIZE; distance++) {
-                int negative = anchor - distance;
-                int positive = anchor + distance;
-                if (negative >= 0) {
-                    order[anchor][index++] = negative;
-                }
-                if (positive < SECTION_SIZE && index < SECTION_SIZE) {
-                    order[anchor][index++] = positive;
-                }
-            }
-        }
-        return order;
-    }
-
-    private static int clampLocal(int value) {
-        return Math.max(0, Math.min(15, value));
     }
 
     private record Candidate(BlockPos pos, byte flags) {
@@ -671,31 +590,11 @@ public final class ScanCache {
         private final MutableScanMetrics metrics;
         private SectionRegion region;
         private List<PrinterBox> sourceBoxes;
-        private SectionCursor cursor = new SectionCursor();
         private PlayerDistanceCursor distanceCursor;
         private long exhaustedUntilTick = Long.MIN_VALUE;
-        private SectionEntry currentSection;
-        private short[] currentCandidates = ShortArrayBuilder.EMPTY;
-        private final ArrayDeque<SectionProgress> deferredSections = new ArrayDeque<>();
-        private final ArrayDeque<LiveSectionProgress> deferredLiveSections = new ArrayDeque<>();
-        private final ArrayDeque<SectionPos> dirtySections = new ArrayDeque<>();
-        private final LongSet dirtySectionKeys = new LongOpenHashSet();
         private final PriorityQueue<DirtyPosition> dirtyPositions = new PriorityQueue<>();
         private final LongSet dirtyPositionKeys = new LongOpenHashSet();
-        private int candidateIndex;
-        private int phase;
-        private int sectionBurstRemaining;
-        private boolean currentSectionPrepared;
         private boolean paused;
-        private int liveSectionX;
-        private int liveSectionY;
-        private int liveSectionZ;
-        private int liveLocalIndex;
-        private int liveAnchorX;
-        private int liveAnchorY;
-        private int liveAnchorZ;
-        private int liveSectionScannedThisSlice;
-        private boolean liveSectionActive;
         private final BlockPos.MutableBlockPos liveMutable = new BlockPos.MutableBlockPos();
         private final BlockPos.MutableBlockPos liveNeighbor = new BlockPos.MutableBlockPos();
         private int lastChunkX = Integer.MIN_VALUE;
@@ -716,20 +615,23 @@ public final class ScanCache {
         }
 
         boolean canReuse(SectionRegion region, List<PrinterBox> sourceBoxes) {
-            return this.region.sameSectionWindow(region) && this.sourceBoxes.equals(sourceBoxes);
+            // Keep the in-flight distance cursor while the scanned section window is stable.
+            // The interaction/selection intersection normally moves by one block with the
+            // player; rebuilding the cursor for every such movement repeatedly rescanned the
+            // nearest blocks and could starve targets near the edge of a large work range.
+            return this.region.sameSectionWindow(region);
         }
 
         void updateRegion(SectionRegion region, List<PrinterBox> sourceBoxes) {
-            boolean boundsChanged = !this.region.sameBlockBounds(region);
-            boolean centerChanged = !this.region.sameCenterBlock(region);
             boolean boxesChanged = !this.sourceBoxes.equals(sourceBoxes);
             this.region = region;
             if (boxesChanged) {
                 this.sourceBoxes = List.copyOf(sourceBoxes);
             }
-            if (boundsChanged || centerChanged || boxesChanged) {
-                this.resetProgress();
-            }
+            // Do not reset progress here. The current cursor may still contain positions from
+            // the previous block-precise window; contains()/preFilter discard positions that
+            // are no longer valid. Once the pass completes, resetProgress() starts the next
+            // pass from the latest region and includes newly exposed positions.
         }
 
         boolean canScan(long tickTime) {
@@ -744,24 +646,10 @@ public final class ScanCache {
         }
 
         private void resetProgress() {
-            this.cursor = new SectionCursor();
             this.distanceCursor = new PlayerDistanceCursor(this.sourceBoxes, this.region);
             this.exhaustedUntilTick = Long.MIN_VALUE;
-            this.currentSection = null;
-            this.currentCandidates = ShortArrayBuilder.EMPTY;
-            this.deferredSections.clear();
-            this.deferredLiveSections.clear();
-            this.dirtySections.clear();
-            this.dirtySectionKeys.clear();
             this.dirtyPositions.clear();
             this.dirtyPositionKeys.clear();
-            this.candidateIndex = 0;
-            this.phase = 0;
-            this.sectionBurstRemaining = 0;
-            this.currentSectionPrepared = false;
-            this.liveSectionActive = false;
-            this.liveLocalIndex = 0;
-            this.liveSectionScannedThisSlice = 0;
             this.lastChunkX = Integer.MIN_VALUE;
             this.lastChunkZ = Integer.MIN_VALUE;
             this.lastChunkLoaded = false;
@@ -770,13 +658,7 @@ public final class ScanCache {
         boolean hasPendingSource(long tickTime) {
             return this.canScan(tickTime)
                     && (!this.dirtyPositions.isEmpty()
-                    || !this.distanceCursor.complete
-                    || this.currentSection != null
-                    || this.liveSectionActive
-                    || !this.dirtySections.isEmpty()
-                    || !this.deferredSections.isEmpty()
-                    || !this.deferredLiveSections.isEmpty()
-                    || !this.cursor.complete);
+                    || !this.distanceCursor.complete);
         }
 
         boolean wasPaused() {
@@ -913,194 +795,6 @@ public final class ScanCache {
             return null;
         }
 
-        /*
-         * 保留旧 section 缓存路径，供后续针对静态快照做专门优化；主扫描不再从这里调度，
-         * 避免 section 成为放置顺序并造成 16x16x16 的成片推进。
-         */
-        private Candidate nextBySectionCache(
-                ClientLevel level,
-                WorldSchematic schematic,
-                long tickTime,
-                BooleanSupplier shouldPause,
-                boolean unbounded
-        ) {
-            int advancedSections = 0;
-            while (true) {
-                if (this.currentSectionPrepared) {
-                    Candidate candidate = this.nextFromCurrentSection();
-                    if (candidate != null) {
-                        return candidate;
-                    }
-                    this.currentSection = null;
-                    this.currentCandidates = ShortArrayBuilder.EMPTY;
-                    this.candidateIndex = 0;
-                    this.currentSectionPrepared = false;
-                }
-
-                if (this.currentSection == null) {
-                    if ((!unbounded && advancedSections >= MAX_SECTION_ADVANCES_PER_STEP) || shouldPause.getAsBoolean()) {
-                        if (!this.deferredSections.isEmpty()) {
-                            this.restoreDeferredSection(this.deferredSections.removeFirst());
-                            continue;
-                        }
-                        this.paused = true;
-                        return null;
-                    }
-                    SectionPos sectionPos = this.pollDirtySection();
-                    if (sectionPos == null && this.shouldResumeDeferredSection()) {
-                        this.restoreDeferredSection(this.deferredSections.removeFirst());
-                        continue;
-                    }
-                    if (sectionPos == null) {
-                        sectionPos = this.cursor.next(this.region);
-                    }
-                    if (sectionPos == null) {
-                        if (!this.deferredSections.isEmpty()) {
-                            this.restoreDeferredSection(this.deferredSections.removeFirst());
-                            continue;
-                        }
-                        this.markExhausted(tickTime);
-                        return null;
-                    }
-                    advancedSections++;
-                    if (this.usesWorld() && level != null && !level.hasChunk(sectionPos.x(), sectionPos.z())) {
-                        continue;
-                    }
-                    this.currentSection = sectionEntry(sectionPos.x(), sectionPos.y(), sectionPos.z());
-                    this.metrics.recordScannedSection(sectionKey(
-                            this.currentSection.sectionX,
-                            this.currentSection.sectionY,
-                            this.currentSection.sectionZ
-                    ));
-                }
-
-                if (!this.currentSection.ensure(this.intent, level, schematic, tickTime, shouldPause)) {
-                    this.paused = true;
-                    return null;
-                }
-
-                this.phase = 0;
-                this.currentCandidates = this.currentSection.candidates(this.intent, this.phase);
-                this.candidateIndex = 0;
-                this.sectionBurstRemaining = SECTION_CANDIDATE_BURST;
-                this.currentSectionPrepared = true;
-            }
-        }
-
-        private boolean usesWorld() {
-            return this.intent == ScanIntent.MINE
-                    || this.intent == ScanIntent.FLUID
-                    || this.intent == ScanIntent.FILL
-                    || this.intent == ScanIntent.PRINT && Configs.Print.BREAK_EXTRA_BLOCK.getBooleanValue()
-                    || this.intent == ScanIntent.CUSTOM;
-        }
-
-        /**
-         * 世界 intent 的活体逐方块时间片扫描:复用 SectionCursor 的「玩家中心由近及远」section 顺序,
-         * 每个 section 内部从最靠近玩家的位置开始扫,直接逐方块 getBlockState 当场判定,不建 short[]、不缓存 SectionEntry。
-         * 时间预算由 shouldPause 切断,跨 tick 续扫靠 liveSectionXYZ 与 liveLocalIndex 记录进度。
-         * 这是为了消除大交互距离(box 远大于缓存)下反复 new 数组导致的 GC 卡顿。
-         */
-        private Candidate nextLive(ClientLevel level, WorldSchematic schematic, long tickTime, BooleanSupplier shouldPause, boolean unbounded) {
-            if (level == null) {
-                this.markExhausted(tickTime);
-                return null;
-            }
-            int advancedSections = 0;
-            while (true) {
-                if (this.liveSectionActive) {
-                    Candidate candidate = this.nextFromLiveSection(level, schematic, shouldPause, unbounded);
-                    if (candidate != null) {
-                        return candidate;
-                    }
-                    if (this.paused) {
-                        return null;
-                    }
-                    this.liveSectionActive = false;
-                }
-
-                if ((!unbounded && advancedSections >= MAX_SECTION_ADVANCES_PER_STEP) || shouldPause.getAsBoolean()) {
-                    this.paused = true;
-                    return null;
-                }
-
-                SectionPos sectionPos = this.pollDirtySection();
-                if (sectionPos == null && this.shouldResumeDeferredLiveSection()) {
-                    this.restoreDeferredLiveSection(this.deferredLiveSections.removeFirst());
-                    advancedSections++;
-                    continue;
-                }
-                if (sectionPos == null) {
-                    sectionPos = this.cursor.next(this.region);
-                }
-                if (sectionPos == null) {
-                    if (!this.deferredLiveSections.isEmpty()) {
-                        this.restoreDeferredLiveSection(this.deferredLiveSections.removeFirst());
-                        advancedSections++;
-                        continue;
-                    }
-                    this.markExhausted(tickTime);
-                    return null;
-                }
-                advancedSections++;
-                if (!level.hasChunk(sectionPos.x(), sectionPos.z())) {
-                    continue;
-                }
-                this.metrics.recordScannedSection(sectionKey(
-                        sectionPos.x(),
-                        sectionPos.y(),
-                        sectionPos.z()
-                ));
-                this.liveSectionX = sectionPos.x();
-                this.liveSectionY = sectionPos.y();
-                this.liveSectionZ = sectionPos.z();
-                this.liveLocalIndex = 0;
-                this.liveAnchorX = clampLocal(this.region.centerX() - (sectionPos.x() << 4));
-                this.liveAnchorY = clampLocal(this.region.centerY() - (sectionPos.y() << 4));
-                this.liveAnchorZ = clampLocal(this.region.centerZ() - (sectionPos.z() << 4));
-                this.liveSectionScannedThisSlice = 0;
-                this.liveSectionActive = true;
-            }
-        }
-
-        private Candidate nextFromLiveSection(ClientLevel level, WorldSchematic schematic, BooleanSupplier shouldPause, boolean unbounded) {
-            int baseX = this.liveSectionX << 4;
-            int baseY = this.liveSectionY << 4;
-            int baseZ = this.liveSectionZ << 4;
-            while (this.liveLocalIndex < SECTION_VOLUME) {
-                if (this.liveSectionScannedThisSlice >= LIVE_SECTION_SCAN_SLICE_BLOCKS) {
-                    this.deferLiveSection();
-                    return null;
-                }
-                if (!unbounded
-                        && this.liveLocalIndex > 0
-                        && this.liveLocalIndex % SECTION_SCAN_BUDGET_CHECK_INTERVAL == 0
-                        && shouldPause.getAsBoolean()) {
-                    this.paused = true;
-                    return null;
-                }
-                int orderIndex = this.liveLocalIndex++;
-                this.liveSectionScannedThisSlice++;
-                int x = baseX + LOCAL_AXIS_ORDER[this.liveAnchorX][orderIndex & 15];
-                int z = baseZ + LOCAL_AXIS_ORDER[this.liveAnchorZ][orderIndex >> 4 & 15];
-                int y = baseY + LOCAL_AXIS_ORDER[this.liveAnchorY][orderIndex >> 8 & 15];
-                if (!this.region.containsBlock(x, y, z)) {
-                    continue;
-                }
-                this.liveMutable.set(x, y, z);
-                BlockState state = level.getBlockState(this.liveMutable);
-                this.metrics.scannedBlocks++;
-                if (this.intent == ScanIntent.CUSTOM) {
-                    return new Candidate(new BlockPos(x, y, z), (byte) 0);
-                }
-                byte flags = this.liveFlags(level, schematic, x, y, z, state);
-                if (flags != 0) {
-                    return new Candidate(new BlockPos(x, y, z), flags);
-                }
-            }
-            return null;
-        }
-
         private void markExhausted(long tickTime) {
             this.exhaustedUntilTick = tickTime + exhaustedRescanDelayTicks();
             this.metrics.completedPasses++;
@@ -1175,268 +869,6 @@ public final class ScanCache {
             return false;
         }
 
-        private Candidate nextFromCurrentSection() {
-            while (this.currentSection != null) {
-                while (this.candidateIndex < this.currentCandidates.length) {
-                    int localIndex = this.currentCandidates[this.candidateIndex++] & 0xFFFF;
-                    byte flags = this.currentSection.flagsFor(this.intent, this.phase);
-                    Candidate candidate = new Candidate(blockPos(this.currentSection.sectionX, this.currentSection.sectionY, this.currentSection.sectionZ, localIndex), flags);
-                    if (--this.sectionBurstRemaining <= 0 && this.candidateIndex < this.currentCandidates.length) {
-                        this.deferCurrentSection();
-                    }
-                    return candidate;
-                }
-                this.clearCurrentSection();
-                return null;
-            }
-            return null;
-        }
-
-        private boolean shouldResumeDeferredSection() {
-            return !this.deferredSections.isEmpty()
-                    && (this.cursor.complete || this.deferredSections.size() >= MAX_INTERLEAVED_SECTIONS);
-        }
-
-        private boolean shouldResumeDeferredLiveSection() {
-            return !this.deferredLiveSections.isEmpty()
-                    && (this.cursor.complete || this.deferredLiveSections.size() >= MAX_INTERLEAVED_SECTIONS);
-        }
-
-        private boolean isCurrentSection(int sectionX, int sectionY, int sectionZ) {
-            return this.currentSection != null
-                    && this.currentSection.sectionX == sectionX
-                    && this.currentSection.sectionY == sectionY
-                    && this.currentSection.sectionZ == sectionZ;
-        }
-
-        private void removeDeferredSection(int sectionX, int sectionY, int sectionZ) {
-            Iterator<SectionProgress> iterator = this.deferredSections.iterator();
-            while (iterator.hasNext()) {
-                SectionProgress progress = iterator.next();
-                SectionEntry section = progress.section();
-                if (section.sectionX == sectionX && section.sectionY == sectionY && section.sectionZ == sectionZ) {
-                    iterator.remove();
-                }
-            }
-        }
-
-        private void removeDeferredLiveSection(int sectionX, int sectionY, int sectionZ) {
-            Iterator<LiveSectionProgress> iterator = this.deferredLiveSections.iterator();
-            while (iterator.hasNext()) {
-                LiveSectionProgress progress = iterator.next();
-                if (progress.sectionX() == sectionX && progress.sectionY() == sectionY && progress.sectionZ() == sectionZ) {
-                    iterator.remove();
-                }
-            }
-        }
-
-        private void addDirtySection(int sectionX, int sectionY, int sectionZ) {
-            long key = sectionKey(sectionX, sectionY, sectionZ);
-            if (this.dirtySectionKeys.add(key)) {
-                this.dirtySections.addLast(new SectionPos(sectionX, sectionY, sectionZ));
-            }
-        }
-
-        private void addPrioritySection(int sectionX, int sectionY, int sectionZ) {
-            if (!this.region.containsSection(sectionX, sectionY, sectionZ)) {
-                return;
-            }
-            this.removeDeferredSection(sectionX, sectionY, sectionZ);
-            this.removeDeferredLiveSection(sectionX, sectionY, sectionZ);
-            long key = sectionKey(sectionX, sectionY, sectionZ);
-            if (!this.dirtySectionKeys.add(key)) {
-                this.removeDirtySection(sectionX, sectionY, sectionZ);
-                this.dirtySectionKeys.add(key);
-            }
-            this.dirtySections.addFirst(new SectionPos(sectionX, sectionY, sectionZ));
-        }
-
-        private void prioritizeCenterSections(SectionRegion region) {
-            int sectionX = region.centerSectionX();
-            int sectionY = region.centerSectionY();
-            int sectionZ = region.centerSectionZ();
-            this.addPrioritySection(sectionX, sectionY - 1, sectionZ);
-            this.addPrioritySection(sectionX, sectionY + 1, sectionZ);
-            this.addPrioritySection(sectionX, sectionY, sectionZ - 1);
-            this.addPrioritySection(sectionX, sectionY, sectionZ + 1);
-            this.addPrioritySection(sectionX - 1, sectionY, sectionZ);
-            this.addPrioritySection(sectionX + 1, sectionY, sectionZ);
-            this.addPrioritySection(sectionX, sectionY, sectionZ);
-        }
-
-        private void removeDirtySection(int sectionX, int sectionY, int sectionZ) {
-            Iterator<SectionPos> iterator = this.dirtySections.iterator();
-            while (iterator.hasNext()) {
-                SectionPos sectionPos = iterator.next();
-                if (sectionPos.x() == sectionX && sectionPos.y() == sectionY && sectionPos.z() == sectionZ) {
-                    iterator.remove();
-                    return;
-                }
-            }
-        }
-
-        private SectionPos pollDirtySection() {
-            while (!this.dirtySections.isEmpty()) {
-                SectionPos sectionPos = this.dirtySections.removeFirst();
-                this.dirtySectionKeys.remove(sectionKey(sectionPos.x(), sectionPos.y(), sectionPos.z()));
-                if (this.region.containsSection(sectionPos.x(), sectionPos.y(), sectionPos.z())) {
-                    return sectionPos;
-                }
-            }
-            return null;
-        }
-
-        private void deferCurrentSection() {
-            this.deferredSections.addLast(new SectionProgress(
-                    this.currentSection,
-                    this.currentCandidates,
-                    this.candidateIndex,
-                    this.phase
-            ));
-            this.clearCurrentSection();
-        }
-
-        private void deferLiveSection() {
-            if (!this.liveSectionActive || this.liveLocalIndex >= SECTION_VOLUME) {
-                this.liveSectionActive = false;
-                this.liveSectionScannedThisSlice = 0;
-                return;
-            }
-            this.deferredLiveSections.addLast(new LiveSectionProgress(
-                    this.liveSectionX,
-                    this.liveSectionY,
-                    this.liveSectionZ,
-                    this.liveLocalIndex,
-                    this.liveAnchorX,
-                    this.liveAnchorY,
-                    this.liveAnchorZ
-            ));
-            this.liveSectionActive = false;
-            this.liveSectionScannedThisSlice = 0;
-        }
-
-        private void restoreDeferredSection(SectionProgress progress) {
-            this.currentSection = progress.section();
-            this.currentCandidates = progress.candidates();
-            this.candidateIndex = progress.candidateIndex();
-            this.phase = progress.phase();
-            this.sectionBurstRemaining = SECTION_CANDIDATE_BURST;
-            this.currentSectionPrepared = true;
-        }
-
-        private void restoreDeferredLiveSection(LiveSectionProgress progress) {
-            this.liveSectionX = progress.sectionX();
-            this.liveSectionY = progress.sectionY();
-            this.liveSectionZ = progress.sectionZ();
-            this.liveLocalIndex = progress.localIndex();
-            this.liveAnchorX = progress.anchorX();
-            this.liveAnchorY = progress.anchorY();
-            this.liveAnchorZ = progress.anchorZ();
-            this.liveSectionScannedThisSlice = 0;
-            this.liveSectionActive = true;
-        }
-
-        private void clearCurrentSection() {
-            this.currentSection = null;
-            this.currentCandidates = ShortArrayBuilder.EMPTY;
-            this.candidateIndex = 0;
-            this.phase = 0;
-            this.sectionBurstRemaining = 0;
-            this.currentSectionPrepared = false;
-        }
-
-        private record SectionProgress(SectionEntry section, short[] candidates, int candidateIndex, int phase) {
-        }
-
-        private record LiveSectionProgress(
-                int sectionX,
-                int sectionY,
-                int sectionZ,
-                int localIndex,
-                int anchorX,
-                int anchorY,
-                int anchorZ
-        ) {
-        }
-    }
-
-    private record SectionPos(int x, int y, int z) {
-    }
-
-    private static final class SectionCursor {
-        private boolean complete;
-        private PriorityQueue<SectionNode> queue;
-        private final LongSet queuedSections = new LongOpenHashSet();
-
-        SectionPos next(SectionRegion region) {
-            if (this.complete) {
-                return null;
-            }
-            if (this.queue == null) {
-                this.init(region);
-            }
-
-            while (!this.queue.isEmpty()) {
-                SectionNode node = this.queue.poll();
-                this.enqueueNeighbors(region, node);
-                return new SectionPos(node.x(), node.y(), node.z());
-            }
-            this.complete = true;
-            return null;
-        }
-
-        private void init(SectionRegion region) {
-            this.queue = new PriorityQueue<>();
-            this.queuedSections.clear();
-            int startX = clamp(region.centerSectionX(), region.minSectionX(), region.maxSectionX());
-            int startY = clamp(region.centerSectionY(), region.minSectionY(), region.maxSectionY());
-            int startZ = clamp(region.centerSectionZ(), region.minSectionZ(), region.maxSectionZ());
-            this.enqueue(region, startX, startY, startZ);
-        }
-
-        private void enqueueNeighbors(SectionRegion region, SectionNode node) {
-            this.enqueue(region, node.x() - 1, node.y(), node.z());
-            this.enqueue(region, node.x() + 1, node.y(), node.z());
-            this.enqueue(region, node.x(), node.y() - 1, node.z());
-            this.enqueue(region, node.x(), node.y() + 1, node.z());
-            this.enqueue(region, node.x(), node.y(), node.z() - 1);
-            this.enqueue(region, node.x(), node.y(), node.z() + 1);
-        }
-
-        private void enqueue(SectionRegion region, int sectionX, int sectionY, int sectionZ) {
-            if (!region.containsSection(sectionX, sectionY, sectionZ)) {
-                return;
-            }
-            long key = sectionKey(sectionX, sectionY, sectionZ);
-            if (!this.queuedSections.add(key)) {
-                return;
-            }
-            this.queue.add(new SectionNode(sectionX, sectionY, sectionZ,
-                    sectionDistanceSqr(region, sectionX, sectionY, sectionZ)));
-        }
-
-        private static int clamp(int value, int min, int max) {
-            return Math.max(min, Math.min(max, value));
-        }
-
-        private static long sectionDistanceSqr(SectionRegion region, int sectionX, int sectionY, int sectionZ) {
-            long dx = axisDistance(region.centerX(), sectionX);
-            long dy = axisDistance(region.centerY(), sectionY);
-            long dz = axisDistance(region.centerZ(), sectionZ);
-            return dx * dx + dy * dy + dz * dz;
-        }
-
-        private static long axisDistance(int blockCoord, int sectionCoord) {
-            int min = sectionCoord << 4;
-            int max = min + 15;
-            if (blockCoord < min) {
-                return min - (long) blockCoord;
-            }
-            if (blockCoord > max) {
-                return blockCoord - (long) max;
-            }
-            return 0L;
-        }
     }
 
     private static final class PlayerDistanceCursor {
@@ -1788,353 +1220,6 @@ public final class ScanCache {
         }
     }
 
-    private record SectionNode(int x, int y, int z, long distanceSqr) implements Comparable<SectionNode> {
-        @Override
-        public int compareTo(SectionNode other) {
-            int result = Long.compare(this.distanceSqr, other.distanceSqr);
-            if (result != 0) {
-                return result;
-            }
-            result = Integer.compare(Math.abs(this.x), Math.abs(other.x));
-            if (result != 0) {
-                return result;
-            }
-            result = Integer.compare(Math.abs(this.z), Math.abs(other.z));
-            if (result != 0) {
-                return result;
-            }
-            result = Integer.compare(Math.abs(this.y), Math.abs(other.y));
-            if (result != 0) {
-                return result;
-            }
-            result = Integer.compare(this.x, other.x);
-            if (result != 0) {
-                return result;
-            }
-            result = Integer.compare(this.z, other.z);
-            if (result != 0) {
-                return result;
-            }
-            return Integer.compare(this.y, other.y);
-        }
-    }
-
-    private static final class SectionEntry {
-        private final int sectionX;
-        private final int sectionY;
-        private final int sectionZ;
-        private long worldScanTick = Long.MIN_VALUE;
-        private long schematicScanTick = Long.MIN_VALUE;
-        private short[] worldNonAir = ShortArrayBuilder.EMPTY;
-        private short[] worldSolid = ShortArrayBuilder.EMPTY;
-        private short[] worldFluid = ShortArrayBuilder.EMPTY;
-        private short[] worldFillBase = ShortArrayBuilder.EMPTY;
-        private short[] schematicNonAir = ShortArrayBuilder.EMPTY;
-        private short[] allPositions = ShortArrayBuilder.EMPTY;
-        private boolean worldScanIncludesFill;
-        private WorldScanWork worldScanWork;
-
-        private SectionEntry(int sectionX, int sectionY, int sectionZ) {
-            this.sectionX = sectionX;
-            this.sectionY = sectionY;
-            this.sectionZ = sectionZ;
-        }
-
-        boolean ensure(
-                ScanIntent intent,
-                ClientLevel level,
-                WorldSchematic schematic,
-                long tickTime,
-                BooleanSupplier shouldPause
-        ) {
-            if (intent == ScanIntent.PRINT) {
-                this.ensureSchematic(schematic, tickTime);
-                return true;
-            }
-            if (intent == ScanIntent.CUSTOM) {
-                this.ensureAllPositions();
-                return true;
-            }
-            return this.ensureWorld(intent, level, tickTime, shouldPause);
-        }
-
-        short[] candidates(ScanIntent intent, int phase) {
-            return switch (intent) {
-                case PRINT -> this.schematicNonAir;
-                case MINE -> this.worldSolid;
-                case FLUID -> this.worldFluid;
-                case FILL -> this.worldFillBase;
-                case CUSTOM -> this.allPositions;
-            };
-        }
-
-        byte flagsFor(ScanIntent intent, int phase) {
-            return switch (intent) {
-                case PRINT -> (byte) (ScanFlags.SCHEMATIC_SAMPLED | ScanFlags.SCHEMATIC_NON_AIR);
-                case MINE, CUSTOM -> ScanFlags.WORLD_NON_AIR;
-                case FLUID -> (byte) (ScanFlags.WORLD_NON_AIR | ScanFlags.WORLD_FLUID);
-                case FILL -> ScanFlags.BASE_FILL_TARGET;
-            };
-        }
-
-        boolean isExpired(long tickTime) {
-            if (this.worldScanWork != null) {
-                return false;
-            }
-            boolean worldExpired = this.worldScanTick == Long.MIN_VALUE
-                    || tickTime - this.worldScanTick > WORLD_SECTION_TTL_TICKS * 4L;
-            boolean schematicExpired = this.schematicScanTick == Long.MIN_VALUE
-                    || tickTime - this.schematicScanTick > SCHEMATIC_SECTION_TTL_TICKS * 2L;
-            return worldExpired && schematicExpired && this.allPositions.length == 0;
-        }
-
-        private boolean ensureWorld(
-                ScanIntent intent,
-                ClientLevel level,
-                long tickTime,
-                BooleanSupplier shouldPause
-        ) {
-            boolean needsFillIndex = intent == ScanIntent.FILL;
-            if (level == null) {
-                this.worldNonAir = ShortArrayBuilder.EMPTY;
-                this.worldSolid = ShortArrayBuilder.EMPTY;
-                this.worldFluid = ShortArrayBuilder.EMPTY;
-                this.worldFillBase = ShortArrayBuilder.EMPTY;
-                this.worldScanIncludesFill = false;
-                this.worldScanWork = null;
-                this.worldScanTick = tickTime;
-                return true;
-            }
-            if (this.worldScanWork == null
-                    && this.worldScanTick != Long.MIN_VALUE
-                    && tickTime - this.worldScanTick <= WORLD_SECTION_TTL_TICKS
-                    && (!needsFillIndex || this.worldScanIncludesFill)) {
-                return true;
-            }
-
-            if (this.worldScanWork == null) {
-                this.worldScanWork = new WorldScanWork(this.sectionX, this.sectionY, this.sectionZ, needsFillIndex);
-            }
-
-            if (!this.worldScanWork.sample(level, shouldPause)) {
-                return false;
-            }
-            WorldScanWork work = this.worldScanWork;
-            this.worldScanWork = null;
-            this.publishWorldScan(WorldSectionResult.analyze(work), tickTime);
-            return true;
-        }
-
-        private void publishWorldScan(WorldSectionResult result, long tickTime) {
-            this.worldNonAir = result.nonAir();
-            this.worldSolid = result.solid();
-            this.worldFluid = result.fluid();
-            this.worldFillBase = result.fillBase();
-            this.worldScanIncludesFill = result.includesFill();
-            this.worldScanTick = tickTime;
-        }
-
-        private static boolean hasSampleFlag(byte sample, byte flag) {
-            return (sample & flag) != 0;
-        }
-
-        private static boolean isFillPotential(byte sample) {
-            return hasSampleFlag(sample, SAMPLE_AIR)
-                    || hasSampleFlag(sample, SAMPLE_LIQUID_BLOCK)
-                    || hasSampleFlag(sample, SAMPLE_REPLACEABLE);
-        }
-
-        private static boolean isFillSupport(byte sample) {
-            return !hasSampleFlag(sample, SAMPLE_AIR)
-                    && !hasSampleFlag(sample, SAMPLE_LIQUID_BLOCK)
-                    && !hasSampleFlag(sample, SAMPLE_REPLACEABLE);
-        }
-
-        private record WorldSectionResult(
-                short[] nonAir,
-                short[] solid,
-                short[] fluid,
-                short[] fillBase,
-                boolean includesFill
-        ) {
-            private static WorldSectionResult analyze(WorldScanWork work) {
-                ShortArrayBuilder nonAir = new ShortArrayBuilder();
-                ShortArrayBuilder solid = new ShortArrayBuilder();
-                ShortArrayBuilder fluid = new ShortArrayBuilder();
-                ShortArrayBuilder fillBase = work.includesFill ? new ShortArrayBuilder() : null;
-
-                for (int localIndex = 0; localIndex < SECTION_VOLUME; localIndex++) {
-                    int localX = localIndex & 15;
-                    int localZ = localIndex >> 4 & 15;
-                    int localY = localIndex >> 8 & 15;
-                    byte sample = work.centerSample(localX, localY, localZ);
-                    boolean hasFluid = hasSampleFlag(sample, SAMPLE_FLUID);
-                    boolean liquidBlock = hasSampleFlag(sample, SAMPLE_LIQUID_BLOCK);
-                    if (!hasSampleFlag(sample, SAMPLE_AIR)) {
-                        nonAir.add(localIndex);
-                        if (!liquidBlock) {
-                            solid.add(localIndex);
-                        }
-                    }
-                    if (hasFluid) {
-                        fluid.add(localIndex);
-                    }
-                    if (work.includesFill
-                            && isFillPotential(sample)
-                            && work.hasFillSupportNeighbor(localX, localY, localZ)) {
-                        fillBase.add(localIndex);
-                    }
-                }
-
-                return new WorldSectionResult(
-                        nonAir.toArray(),
-                        solid.toArray(),
-                        fluid.toArray(),
-                        fillBase == null ? ShortArrayBuilder.EMPTY : fillBase.toArray(),
-                        work.includesFill
-                );
-            }
-        }
-
-        private static final class WorldScanWork {
-            private static final int FILL_SAMPLE_SIZE = SECTION_SIZE + 2;
-
-            private final int baseX;
-            private final int baseY;
-            private final int baseZ;
-            private final boolean includesFill;
-            private final int sampleSize;
-            private final int sampleVolume;
-            private final byte[] samples;
-            private final BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
-            private int sampleIndex;
-            private boolean sampled;
-
-            private WorldScanWork(int sectionX, int sectionY, int sectionZ, boolean includesFill) {
-                this.baseX = sectionX << 4;
-                this.baseY = sectionY << 4;
-                this.baseZ = sectionZ << 4;
-                this.includesFill = includesFill;
-                this.sampleSize = includesFill ? FILL_SAMPLE_SIZE : SECTION_SIZE;
-                this.sampleVolume = this.sampleSize * this.sampleSize * this.sampleSize;
-                this.samples = new byte[this.sampleVolume];
-            }
-
-            private boolean sample(ClientLevel level, BooleanSupplier shouldPause) {
-                if (this.sampled) {
-                    return true;
-                }
-                while (this.sampleIndex < this.sampleVolume) {
-                    if (this.sampleIndex > 0
-                            && this.sampleIndex % SECTION_SCAN_BUDGET_CHECK_INTERVAL == 0
-                            && shouldPause.getAsBoolean()) {
-                        return false;
-                    }
-                    int index = this.sampleIndex++;
-                    int localX = index % this.sampleSize;
-                    int localZ = index / this.sampleSize % this.sampleSize;
-                    int localY = index / (this.sampleSize * this.sampleSize);
-                    if (this.includesFill) {
-                        localX--;
-                        localY--;
-                        localZ--;
-                    }
-                    this.mutable.set(this.baseX + localX, this.baseY + localY, this.baseZ + localZ);
-                    this.samples[index] = sample(level.getBlockState(this.mutable));
-                }
-                this.sampled = true;
-                return true;
-            }
-
-            private byte centerSample(int localX, int localY, int localZ) {
-                return this.samples[this.sampleIndex(localX, localY, localZ)];
-            }
-
-            private boolean hasFillSupportNeighbor(int localX, int localY, int localZ) {
-                for (Direction direction : DIRECTIONS) {
-                    if (isFillSupport(this.samples[this.sampleIndex(
-                            localX + direction.getStepX(),
-                            localY + direction.getStepY(),
-                            localZ + direction.getStepZ()
-                    )])) {
-                        return true;
-                    }
-                }
-                return false;
-            }
-
-            private int sampleIndex(int localX, int localY, int localZ) {
-                int x = this.includesFill ? localX + 1 : localX;
-                int y = this.includesFill ? localY + 1 : localY;
-                int z = this.includesFill ? localZ + 1 : localZ;
-                return y * this.sampleSize * this.sampleSize + z * this.sampleSize + x;
-            }
-
-            private static byte sample(net.minecraft.world.level.block.state.BlockState state) {
-                byte sample = 0;
-                boolean liquidBlock = state.getBlock() instanceof LiquidBlock;
-                if (state.isAir()) {
-                    sample |= SAMPLE_AIR;
-                }
-                if (liquidBlock) {
-                    sample |= SAMPLE_LIQUID_BLOCK;
-                }
-                if (!state.getFluidState().isEmpty()) {
-                    sample |= SAMPLE_FLUID;
-                }
-                if (BlockUtils.isReplaceable(state)) {
-                    sample |= SAMPLE_REPLACEABLE;
-                }
-                return sample;
-            }
-        }
-
-        private void ensureSchematic(WorldSchematic schematic, long tickTime) {
-            if (schematic == null) {
-                this.schematicNonAir = ShortArrayBuilder.EMPTY;
-                this.schematicScanTick = tickTime;
-                return;
-            }
-            if (this.schematicScanTick != Long.MIN_VALUE && tickTime - this.schematicScanTick <= SCHEMATIC_SECTION_TTL_TICKS) {
-                return;
-            }
-
-            ShortArrayBuilder nonAir = new ShortArrayBuilder();
-            BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
-            int baseX = this.sectionX << 4;
-            int baseY = this.sectionY << 4;
-            int baseZ = this.sectionZ << 4;
-
-            for (int localY = 0; localY < SECTION_SIZE; localY++) {
-                int y = baseY + localY;
-                for (int localZ = 0; localZ < SECTION_SIZE; localZ++) {
-                    int z = baseZ + localZ;
-                    for (int localX = 0; localX < SECTION_SIZE; localX++) {
-                        int x = baseX + localX;
-                        mutable.set(x, y, z);
-                        if (!schematic.getBlockState(mutable).isAir()) {
-                            nonAir.add(localIndex(x, y, z));
-                        }
-                    }
-                }
-            }
-
-            this.schematicNonAir = nonAir.toArray();
-            this.schematicScanTick = tickTime;
-        }
-
-        private void ensureAllPositions() {
-            if (this.allPositions.length == SECTION_VOLUME) {
-                return;
-            }
-            ShortArrayBuilder all = new ShortArrayBuilder(SECTION_VOLUME);
-            for (int index = 0; index < SECTION_VOLUME; index++) {
-                all.add(index);
-            }
-            this.allPositions = all.toArray();
-        }
-    }
-
     private static final class MutableScanMetrics {
         private long scanNanos;
         private int scannedBlocks;
@@ -2175,36 +1260,4 @@ public final class ScanCache {
         }
     }
 
-    private static final class ShortArrayBuilder {
-        private static final short[] EMPTY = new short[0];
-
-        private short[] values;
-        private int size;
-
-        private ShortArrayBuilder() {
-            this(32);
-        }
-
-        private ShortArrayBuilder(int capacity) {
-            this.values = new short[Math.max(1, capacity)];
-        }
-
-        void add(int value) {
-            if (this.size >= this.values.length) {
-                short[] expanded = new short[this.values.length << 1];
-                System.arraycopy(this.values, 0, expanded, 0, this.values.length);
-                this.values = expanded;
-            }
-            this.values[this.size++] = (short) value;
-        }
-
-        short[] toArray() {
-            if (this.size == 0) {
-                return EMPTY;
-            }
-            short[] result = new short[this.size];
-            System.arraycopy(this.values, 0, result, 0, this.size);
-            return result;
-        }
-    }
 }

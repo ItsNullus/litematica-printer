@@ -10,6 +10,10 @@ public record PrintPlacementResult(
         return new PrintPlacementResult(consumedEffectiveExecution, skipIteration, TaskEvent.FAILURE, -1);
     }
 
+    public static PrintPlacementResult deferred(boolean skipIteration) {
+        return new PrintPlacementResult(false, skipIteration, TaskEvent.DEFERRED, -1);
+    }
+
     public static PrintPlacementResult cancelled(boolean skipIteration) {
         return new PrintPlacementResult(false, skipIteration, TaskEvent.CANCELLED, -1);
     }
@@ -17,6 +21,7 @@ public record PrintPlacementResult(
     public enum TaskEvent {
         SUCCESS,
         QUEUED,
+        DEFERRED,
         CANCELLED,
         FAILURE
     }

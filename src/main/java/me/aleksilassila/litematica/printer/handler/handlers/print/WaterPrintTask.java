@@ -7,7 +7,6 @@ import me.aleksilassila.litematica.printer.mixin_extension.BlockBreakResult;
 import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
 import me.aleksilassila.litematica.printer.printer.action.Action;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
-import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.BlockStateUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -78,12 +77,12 @@ public class WaterPrintTask implements PrintTask {
             }
             return isWaterloggedTarget(requiredState);
         }
-        if (currentState.getBlock() instanceof IceBlock) {
-            this.icePlacementSent = false;
-            return !this.isStateStalled(level, currentState);
-        }
         if (this.iceBreakSent || InteractionUtils.INSTANCE.isPendingDelayedDestroy(this.pos)) {
             this.refreshState(currentState);
+            return !this.isStateStalled(level, currentState);
+        }
+        if (currentState.getBlock() instanceof IceBlock) {
+            this.icePlacementSent = false;
             return !this.isStateStalled(level, currentState);
         }
         if (this.icePlacementSent) {
@@ -98,6 +97,25 @@ public class WaterPrintTask implements PrintTask {
     }
 
     @Override
+    public boolean isWaitingForWorldUpdate(ClientLevel level, WorldSchematic schematic) {
+        if (this.complete || this.aborted) {
+            return false;
+        }
+        BlockState requiredState = schematic.getBlockState(this.pos);
+        BlockState currentState = level.getBlockState(this.pos);
+        if (isWorkflowComplete(requiredState, currentState)
+                || BlockStateUtils.isCorrectWaterLevel(requiredState, currentState)) {
+            return false;
+        }
+        if (currentState.getBlock() instanceof IceBlock) {
+            return this.iceBreakSent || InteractionUtils.INSTANCE.isPendingDelayedDestroy(this.pos);
+        }
+        return this.icePlacementSent
+                || this.iceBreakSent
+                || InteractionUtils.INSTANCE.isPendingDelayedDestroy(this.pos);
+    }
+
+    @Override
     public PrintTaskBuildResult buildAction(SchematicBlockContext context) {
         if (this.complete || this.aborted) {
             return PrintTaskBuildResult.PASS;
@@ -105,17 +123,6 @@ public class WaterPrintTask implements PrintTask {
         if (isWorkflowComplete(context.requiredState, context.currentState)) {
             this.complete = true;
             return PrintTaskBuildResult.SKIP;
-        }
-        if (context.currentState.getBlock() instanceof IceBlock) {
-            this.icePlacementSent = false;
-            return this.breakBlockForWorkflow(context, true);
-        }
-        if (isDryWaterloggedBlock(context.requiredState, context.currentState)) {
-            if (!canStartIceWaterWorkflow(context.level, context.blockPos)) {
-                this.complete = true;
-                return PrintTaskBuildResult.SKIP;
-            }
-            return this.breakBlockForWorkflow(context, false);
         }
         if (BlockStateUtils.isCorrectWaterLevel(context.requiredState, context.currentState)) {
             this.icePlacementSent = false;
@@ -135,6 +142,17 @@ public class WaterPrintTask implements PrintTask {
             }
             this.refreshState(context.currentState);
             return PrintTaskBuildResult.SKIP;
+        }
+        if (context.currentState.getBlock() instanceof IceBlock) {
+            this.icePlacementSent = false;
+            return this.breakBlockForWorkflow(context, true);
+        }
+        if (isDryWaterloggedBlock(context.requiredState, context.currentState)) {
+            if (!canStartIceWaterWorkflow(context.level, context.blockPos)) {
+                this.complete = true;
+                return PrintTaskBuildResult.SKIP;
+            }
+            return this.breakBlockForWorkflow(context, false);
         }
         if (this.icePlacementSent) {
             if (this.isStateStalled(context.level, context.currentState)) {
@@ -265,12 +283,9 @@ public class WaterPrintTask implements PrintTask {
     }
 
     private static boolean canStartIceWaterWorkflow(ClientLevel level, BlockPos pos) {
-        return hasIceForWaterWorkflow() && canIceBecomeWaterSource(level, pos);
-    }
-
-    private static boolean hasIceForWaterWorkflow() {
-        Minecraft client = Minecraft.getInstance();
-        return client.player != null && InventoryUtils.playerHasAccessToItem(client.player, Items.ICE);
+        // 材料是否可用由 PrintPlacementExecutor 统一处理，这样背包换槽、
+        // 快捷潜影盒和 Take It Out 都能走同一条可恢复的取货链路。
+        return canIceBecomeWaterSource(level, pos);
     }
 
     private static boolean canIceBecomeWaterSource(ClientLevel level, BlockPos pos) {

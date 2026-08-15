@@ -152,7 +152,7 @@ public class MineHandler extends Module {
 
     @Override
     protected boolean iterationPositionsPrefilterCooldown() {
-        return true;
+        return false;
     }
 
     @Override
@@ -222,8 +222,7 @@ public class MineHandler extends Module {
             return false;
         }
 
-        if (this.isBlockPosOnCooldown(pos)
-                || InteractionUtils.INSTANCE.isRecentlyBroken(pos)
+        if (InteractionUtils.INSTANCE.isRecentlyBroken(pos)
                 || InteractionUtils.INSTANCE.isPendingDelayedDestroy(pos)) {
             return false;
         }

@@ -10,7 +10,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -31,14 +30,12 @@ public class MixinInventoryUtils {
         }
     }
 
-    /**
-     * @author BlinkWhite
-     * @reason 去除优先选择目前已选择的槽位
-     */
-    @Overwrite
-    private static int getPickBlockTargetSlot(Player player) {
+    /** 去除优先选择目前已选择的槽位，同时保留上游方法本体以降低版本冲突。 */
+    @Inject(method = "getPickBlockTargetSlot", at = @At("HEAD"), cancellable = true)
+    private static void litematica_printer$getPickBlockTargetSlot(Player player, org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable<Integer> cir) {
         if (InventoryUtilsAccessor.getPICK_BLOCKABLE_SLOTS().isEmpty()) {
-            return -1;
+            cir.setReturnValue(-1);
+            return;
         }
         int slotNum;
         if (InventoryUtilsAccessor.getNextPickSlotIndex() >= InventoryUtilsAccessor.getPICK_BLOCKABLE_SLOTS().size()) {
@@ -53,9 +50,10 @@ public class MixinInventoryUtils {
                 InventoryUtilsAccessor.setNextPickSlotIndex(0);
             }
             if (InventoryUtilsAccessor.canPickToSlot(player.getInventory(), slotNum)) {
-                return slotNum;
+                cir.setReturnValue(slotNum);
+                return;
             }
         }
-        return -1;
+        cir.setReturnValue(-1);
     }
 }

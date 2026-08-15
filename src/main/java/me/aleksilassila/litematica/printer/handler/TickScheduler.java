@@ -19,7 +19,6 @@ final class TickScheduler {
 
     private final ImmutableList<Module> modules;
     private int packetTick;
-    private int packetEpoch;
     private String lastPauseReason;
     private boolean runtimeActive;
     private int executionScopeHash = Integer.MIN_VALUE;
@@ -30,6 +29,7 @@ final class TickScheduler {
     }
 
     void tick() {
+        InventoryAvailabilityTracker.INSTANCE.tick(MC.player);
         HudStatsManager.INSTANCE.tick();
         MissingMaterialTracker.INSTANCE.tick(
                 MC.player,
@@ -94,18 +94,12 @@ final class TickScheduler {
         this.packetTick = packetTick;
     }
 
-    int getPacketEpoch() {
-        return this.packetEpoch;
-    }
-
     void recordInboundPacket() {
         this.packetTick = 0;
-        this.packetEpoch++;
     }
 
     void resetRuntime() {
         this.packetTick = 0;
-        this.packetEpoch++;
         this.lastPauseReason = null;
         this.runtimeActive = false;
         this.executionScopeHash = Integer.MIN_VALUE;
@@ -137,7 +131,7 @@ final class TickScheduler {
         boolean inventorySwitchPending = InventorySwitchGuard.isWaiting();
         boolean openHandler = isOpenHandler;
         if (pendingSwitch || switchingItem || takeItOutPending || inventorySwitchPending) {
-            ActionManager.INSTANCE.clearQueue();
+            ActionManager.INSTANCE.cancelQueue();
             this.pause(reasonPrefix + " openHandler=" + openHandler + " pendingSwitch=" + pendingSwitch + " switchingItem=" + switchingItem + " takeItOutPending=" + takeItOutPending + " inventorySwitchPending=" + inventorySwitchPending);
             return true;
         }

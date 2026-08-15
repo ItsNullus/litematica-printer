@@ -90,6 +90,8 @@ dependencies {
     mappings(loom.officialMojangMappings())
     modImplementation("net.fabricmc:fabric-loader:$fabricLoaderVersion")
     modImplementation("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
     modImplementation("com.belerweb:pinyin4j:${prop("pinyin_version")}")?.let { include(it) }
 
     modImplementation(modMenuDependency)
@@ -126,6 +128,10 @@ dependencies {
             exclude(group = "maven.modrinth", module = "modmenu")
         }
     }
+}
+
+tasks.withType<Test>().configureEach {
+    useJUnitPlatform()
 }
 
 loom {
