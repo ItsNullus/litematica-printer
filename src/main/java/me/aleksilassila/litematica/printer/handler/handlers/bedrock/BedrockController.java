@@ -42,14 +42,11 @@ public final class BedrockController {
     private static final Set<BlockPos> CLEANUP_QUEUE = new LinkedHashSet<>();
     private static final Set<BlockPos> CONSERVATIVE_CLEANUP = new LinkedHashSet<>();
     private static final Set<BlockPos> BLOCKED_CLEANUP_POSITIONS = new LinkedHashSet<>();
-    private static final Map<BlockPos, Integer> EXPOSURE_DEFERRALS = new HashMap<>();
-    private static final Map<BlockPos, Integer> EXPOSURE_BYPASS_USES = new HashMap<>();
+    private static final BedrockExposureGate<BlockPos> EXPOSURE_GATE =
+            new BedrockExposureGate<>(MAX_VERTICAL_EXPOSURE_DEFERS);
     private static final Map<BlockPos, SubmissionPlan> SUBMISSION_PLANS = new HashMap<>();
+    private static final BedrockThroughputScheduler THROUGHPUT_SCHEDULER = new BedrockThroughputScheduler();
     private static long nextAcceptTick = 0L;
-    private static int executeCredits = 0;
-    private static int executeCreditThroughput = -1;
-    private static int executeCreditInterval = -1;
-    private static boolean preferFastLaneExtra = true;
     private static long lastProcessedTick = Long.MIN_VALUE;
     private static int acceptedThisTick = 0;
     private static int rejectedThisTick = 0;
@@ -68,16 +65,12 @@ public final class BedrockController {
         CLEANUP_QUEUE.clear();
         CONSERVATIVE_CLEANUP.clear();
         BLOCKED_CLEANUP_POSITIONS.clear();
-        EXPOSURE_DEFERRALS.clear();
-        EXPOSURE_BYPASS_USES.clear();
+        EXPOSURE_GATE.clear();
         SUBMISSION_PLANS.clear();
         BedrockPlacer.clearHorizontalLookState();
         BedrockCriticalExecutor.reset();
+        THROUGHPUT_SCHEDULER.reset();
         nextAcceptTick = 0L;
-        executeCredits = 0;
-        executeCreditThroughput = -1;
-        executeCreditInterval = -1;
-        preferFastLaneExtra = true;
         lastProcessedTick = Long.MIN_VALUE;
         acceptedThisTick = 0;
         rejectedThisTick = 0;
@@ -116,31 +109,20 @@ public final class BedrockController {
         purgeTargetsOutsideSelection();
         cleanupPressureThisTick = sampleCleanupPressure(level);
 
-        int executeBudget = getExecuteBudget();
-        int initialExecuteBudget = executeBudget;
+        BedrockThroughputScheduler.Allocation allocation = THROUGHPUT_SCHEDULER.allocate(
+                getConfiguredThroughput(),
+                getConfiguredInterval()
+        );
         Set<BedrockTarget> processedTargets = new LinkedHashSet<>();
         BedrockTarget sideLookTarget = findSideLookTarget();
-        // Share one unchanged total budget between time-sensitive execution and machine
-        // preparation. Alternating the odd credit prevents either stage from forming a batch;
-        // unused credits immediately spill into the other lane below.
-        int fastLaneBudget = executeBudget / 2;
-        if ((executeBudget & 1) != 0 && preferFastLaneExtra) {
-            fastLaneBudget++;
-        }
-        int preparationBudget = executeBudget - fastLaneBudget;
-        if ((executeBudget & 1) != 0) {
-            preferFastLaneExtra = !preferFastLaneExtra;
-        }
-
-        int unusedFastLaneBudget = processTargets(level, fastLaneBudget, true, processedTargets, sideLookTarget);
+        int unusedFastLaneBudget = processTargets(level, allocation.critical(), true, processedTargets, sideLookTarget);
+        int preparationBudget = allocation.preparation();
         preparationBudget += unusedFastLaneBudget;
         int unusedBudget = processTargets(level, preparationBudget, false, processedTargets, sideLookTarget);
         if (unusedBudget > 0) {
             unusedBudget = processTargets(level, unusedBudget, true, processedTargets, sideLookTarget);
         }
-        executeBudget = unusedBudget;
-
-        consumeExecuteCredits(initialExecuteBudget - executeBudget);
+        THROUGHPUT_SCHEDULER.consume(allocation, unusedBudget);
         // Active target reservations already protect every live machine position. Keeping the
         // whole cleanup queue paused while another target waits for its critical window causes
         // cleanup pressure and target admission to oscillate in large batches.
@@ -342,31 +324,6 @@ public final class BedrockController {
         }
     }
 
-    private static int getExecuteBudget() {
-        int throughput = getConfiguredThroughput();
-        int interval = getConfiguredInterval();
-        // Keep the configured throughput / interval rate, but spread it across ticks instead of
-        // releasing every target as one synchronized burst. The extra interval - 1 preserves the
-        // fractional remainder without allowing an idle controller to build up a large burst.
-        int capacity = throughput + interval - 1;
-
-        if (throughput != executeCreditThroughput || interval != executeCreditInterval) {
-            executeCreditThroughput = throughput;
-            executeCreditInterval = interval;
-            executeCredits = capacity;
-        } else {
-            executeCredits = Math.min(capacity, executeCredits + throughput);
-        }
-        return executeCredits / interval;
-    }
-
-    private static void consumeExecuteCredits(int consumedActions) {
-        if (consumedActions <= 0) {
-            return;
-        }
-        executeCredits = Math.max(0, executeCredits - consumedActions * getConfiguredInterval());
-    }
-
     private static BedrockTarget findConflictTarget(BedrockTarget candidate) {
         for (BedrockTarget existing : TARGETS) {
             if (hasStructuralConflict(candidate, existing) || hasPowerConflict(candidate, existing)) {
@@ -491,10 +448,8 @@ public final class BedrockController {
             }
             BlockPos outOfRangePos = BedrockEnvironment.findFirstOutOfRangePosition(target.getStaticMachinePositions());
             if (outOfRangePos != null) {
-                BedrockTarget.Status status = target.refreshStatusOnly();
-                if (shouldRetireOutOfRange(status)) {
-                    cleanupTarget(iterator, target, "out_of_range");
-                }
+                target.refreshStatusOnly();
+                cleanupTarget(iterator, target, "out_of_range");
                 processedTargets.add(target);
                 continue;
             }
@@ -624,7 +579,7 @@ public final class BedrockController {
     }
 
     private static int getVerticalActiveTargetCap() {
-        return Math.max(1, getConfiguredThroughput());
+        return BedrockSchedulingPolicy.verticalActiveCap(getConfiguredThroughput());
     }
 
     private static int getSideTargetCap() {
@@ -640,34 +595,15 @@ public final class BedrockController {
     }
 
     private static int getSubmitCap() {
-        int throughput = getConfiguredThroughput();
-        int baseSubmitCap = Math.max(1, throughput);
-        int pressureSteps = cleanupPressureThisTick / getLowCleanupPressureThreshold();
-        return Math.max(1, baseSubmitCap - pressureSteps);
+        return BedrockSchedulingPolicy.submitCap(getConfiguredThroughput(), cleanupPressureThisTick);
     }
 
     private static boolean countsTowardsActiveCap(BedrockTarget.Status status) {
-        return status == BedrockTarget.Status.UNINITIALIZED
-                || status == BedrockTarget.Status.UNEXTENDED_WITH_POWER_SOURCE
-                || status == BedrockTarget.Status.UNEXTENDED_WITHOUT_POWER_SOURCE
-                || status == BedrockTarget.Status.EXTENDED;
+        return BedrockSchedulingPolicy.countsTowardsActiveCap(status);
     }
 
     private static boolean isFastLaneStatus(BedrockTarget.Status status) {
-        return status == BedrockTarget.Status.EXTENDED
-                || status == BedrockTarget.Status.UNEXTENDED_WITHOUT_POWER_SOURCE;
-    }
-
-    private static boolean shouldRetireOutOfRange(BedrockTarget.Status status) {
-        return status == BedrockTarget.Status.UNINITIALIZED
-                || status == BedrockTarget.Status.RETRACTED
-                || status == BedrockTarget.Status.FAILED
-                || status == BedrockTarget.Status.STUCK
-                || status == BedrockTarget.Status.EXTENDED
-                || status == BedrockTarget.Status.RETRACTING
-                || status == BedrockTarget.Status.NEEDS_WAITING
-                || status == BedrockTarget.Status.UNEXTENDED_WITH_POWER_SOURCE
-                || status == BedrockTarget.Status.UNEXTENDED_WITHOUT_POWER_SOURCE;
+        return BedrockSchedulingPolicy.isFastLane(status);
     }
 
     private static boolean isStartupSerialPhase() {
@@ -687,15 +623,15 @@ public final class BedrockController {
     }
 
     private static int getLowCleanupPressureThreshold() {
-        return Math.max(8, getConfiguredThroughput());
+        return BedrockSchedulingPolicy.lowCleanupPressureThreshold(getConfiguredThroughput());
     }
 
     private static int getMediumCleanupPressureThreshold() {
-        return Math.max(14, getConfiguredThroughput() + 6);
+        return BedrockSchedulingPolicy.mediumCleanupPressureThreshold(getConfiguredThroughput());
     }
 
     private static int getHighCleanupPressureThreshold() {
-        return Math.max(20, getConfiguredThroughput() * 2);
+        return BedrockSchedulingPolicy.highCleanupPressureThreshold(getConfiguredThroughput());
     }
 
     private static boolean shouldCountConfirmedSuccess(BedrockTarget target, String reason) {
@@ -706,8 +642,12 @@ public final class BedrockController {
     }
 
     private static int getCleanupLimitPerTick() {
-        int base = Math.max(BASE_CLEANUP_LIMIT_PER_TICK, getConfiguredThroughput() * 5);
-        return base + Math.min(BLOCKED_CLEANUP_BONUS_LIMIT, blockedCleanupDemandThisTick);
+        return BedrockSchedulingPolicy.cleanupLimit(
+                getConfiguredThroughput(),
+                blockedCleanupDemandThisTick,
+                BASE_CLEANUP_LIMIT_PER_TICK,
+                BLOCKED_CLEANUP_BONUS_LIMIT
+        );
     }
 
     private static void cleanupBlockOrQueue(BlockPos pos, boolean predictRemoval) {
@@ -1038,29 +978,11 @@ public final class BedrockController {
         if (!BedrockEnvironment.canInteract(stablePos)) {
             return AcceptProbe.reject("out_of_range_bedrock");
         }
-        if (hasExposureBypass(stablePos)) {
-            if (mutateExposureState) {
-                consumeExposureBypass(stablePos);
-            }
-            return AcceptProbe.accept();
-        }
-        if (CLIENT.level != null && BedrockMachineLayout.shouldDeferUntilExposed(CLIENT.level, stablePos)) {
-            int defers = EXPOSURE_DEFERRALS.getOrDefault(stablePos, 0) + 1;
-            if (defers <= MAX_VERTICAL_EXPOSURE_DEFERS) {
-                if (mutateExposureState) {
-                    EXPOSURE_DEFERRALS.put(stablePos, defers);
-                }
-                return AcceptProbe.reject("await_target_exposure");
-            }
-            if (mutateExposureState) {
-                EXPOSURE_DEFERRALS.remove(stablePos);
-                EXPOSURE_BYPASS_USES.put(stablePos, 1);
-            }
-        } else {
-            if (mutateExposureState) {
-                EXPOSURE_DEFERRALS.remove(stablePos);
-                EXPOSURE_BYPASS_USES.remove(stablePos);
-            }
+        boolean shouldDeferUntilExposed = CLIENT.level != null
+                && BedrockMachineLayout.shouldDeferUntilExposed(CLIENT.level, stablePos);
+        if (EXPOSURE_GATE.evaluate(stablePos, shouldDeferUntilExposed, mutateExposureState)
+                == BedrockExposureGate.Decision.DEFER) {
+            return AcceptProbe.reject("await_target_exposure");
         }
 
         for (BedrockTarget target : TARGETS) {
@@ -1105,22 +1027,6 @@ public final class BedrockController {
                 slimePos,
                 ClientPlayerTickManager.getCurrentHandlerTime()
         ));
-    }
-
-    private static boolean hasExposureBypass(BlockPos pos) {
-        return pos != null && EXPOSURE_BYPASS_USES.getOrDefault(pos, 0) > 0;
-    }
-
-    private static void consumeExposureBypass(BlockPos pos) {
-        if (pos == null) {
-            return;
-        }
-        int uses = EXPOSURE_BYPASS_USES.getOrDefault(pos, 0);
-        if (uses <= 1) {
-            EXPOSURE_BYPASS_USES.remove(pos);
-            return;
-        }
-        EXPOSURE_BYPASS_USES.put(pos, uses - 1);
     }
 
     private static boolean isWithinActiveSelection(BlockPos pos) {

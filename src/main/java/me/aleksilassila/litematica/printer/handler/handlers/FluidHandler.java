@@ -39,6 +39,15 @@ public class FluidHandler extends Module {
             Direction.UP
     };
 
+    /**
+     * How long to cool a cell after a rejected placement attempt. A rejection is usually caused
+     * by a falling fill-block entity in the column, which settles within a few ticks. Shorter
+     * than the normal placement cooldown so the cell is retried promptly once it becomes
+     * placeable again, but long enough that a momentarily-occupied column is not hot-rejected
+     * every single tick.
+     */
+    private static final int REJECT_RETRY_COOLDOWN_TICKS = 4;
+
     private List<String> fillBlocks = new ArrayList<>();
     private List<Item> fillItems = new ArrayList<>();
     private Item[] fillItemArray = new Item[0];
@@ -123,7 +132,19 @@ public class FluidHandler extends Module {
         }
         Predicate<BlockPos> selectionPredicate = this.createSelectionRangePredicate();
         Predicate<BlockPos> reachPredicate = this.createScanReachPredicate();
-        
+
+        // Always run full passes (RESTART), mirroring FillHandler. A full pass that yields nothing
+        // still counts as a completed pass (SectionScanSession.finishPass increments
+        // completedPasses), which Module's idle policy needs to admit lazy scanning once the water
+        // is fully filled. The previous INVALIDATIONS_ONLY state machine stopped scheduling passes
+        // after the first completed pass, so empty passes never accumulated and the module could
+        // never settle into lazy scanning.
+        //
+        // Iterate the scan session directly (Beta2.6 behaviour). The session cursor resumes from
+        // where the previous tick left off and yields distance-ordered targets for as long as the
+        // per-tick scan budget allows. No intermediate FIFO queue: a queue serialised work to one
+        // target per tick and let already-placed ("zombie") entries accumulate to ~15k, which read
+        // as a slow ring-by-ring expansion even though the scan itself finished in 3 ticks.
         return ScanCache.INSTANCE.iterable(
                 NAME,
                 scanSourceBoxes,
@@ -132,8 +153,9 @@ public class FluidHandler extends Module {
                 this.player,
                 this.getScanGuardLimit(),
                 ScanIntent.FLUID,
-                this::isTargetFluid,
-                pos -> reachPredicate.test(pos) && selectionPredicate.test(pos)
+                this::isReadyFluidTarget,
+                pos -> reachPredicate.test(pos) && selectionPredicate.test(pos),
+                ScanCache.PassPolicy.RESTART
         );
     }
 
@@ -150,23 +172,16 @@ public class FluidHandler extends Module {
             return;
         }
         if (!InventoryUtils.switchToItems(player, fillItemArray)) {
-            boolean retrievalPending =
-                    me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.shouldPauseForSwitchRequest()
-                            || me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils.isAwaitingStack();
-            if (retrievalPending) {
-                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "等待取货");
-                MissingMaterialTracker.INSTANCE.resolve(fillItemArray, null);
-            } else {
-                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "缺少流体填充方块");
-                MissingMaterialTracker.INSTANCE.recordMissing(
-                        fillItemArray,
-                        null,
-                        null,
-                        level.getGameTime()
-                );
-            }
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "缺少流体填充方块");
+            MissingMaterialTracker.INSTANCE.recordMissing(
+                    fillItemArray,
+                    null,
+                    null,
+                    level.getGameTime()
+            );
             setIterationConsumedEffectiveExecution(false);
-            if (retrievalPending) {
+            if (me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.shouldPauseForSwitchRequest()
+                    || me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils.isAwaitingStack()) {
                 skipIteration.set(true);
             }
             return;
@@ -178,6 +193,9 @@ public class FluidHandler extends Module {
             Direction placementSide = this.findPlacementSide(blockPos);
             if (placementSide == null) {
                 HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "无有效放置面");
+                // This was ready when scanned but its support disappeared before execution.
+                // A server block update (or the next full pass after the queue drains) will
+                // rediscover it; keeping it hot here would create an endless retry loop.
                 setIterationConsumedEffectiveExecution(false);
                 return;
             }
@@ -207,8 +225,15 @@ public class FluidHandler extends Module {
         }
         if (!sendResult.isSent()) {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "放置动作未发送");
+            // A rejected interaction means this cell is momentarily unplaceable. The common cause
+            // is a falling fill-block entity (sand) currently occupying the cell: every placement
+            // of sand into water spawns a FallingBlockEntity (blocksBuilding=true) that blocks
+            // further placement in its column until it lands. Do NOT abort the whole pass: that
+            // serialised work to one rejected attempt per tick and read as the slow ring-by-ring
+            // expansion. Cool the cell briefly (the falling entity settles within a few ticks)
+            // and let the iteration loop move on to other candidates.
             setIterationConsumedEffectiveExecution(false);
-            skipIteration.set(true);
+            this.setBlockPosCooldown(blockPos, REJECT_RETRY_COOLDOWN_TICKS);
             return;
         }
         HudStatsManager.INSTANCE.trackExpectedBlockChange(HudStatsManager.Mode.FLUID, blockPos, previousState);
@@ -232,6 +257,23 @@ public class FluidHandler extends Module {
         return this.level != null && this.isTargetFluid(this.level.getBlockState(blockPos).getFluidState());
     }
 
+    private boolean isReadyFluidTarget(BlockPos blockPos) {
+        if (this.level == null) {
+            return false;
+        }
+        // Only target cells the fill block can actually replace. Waterlogged non-replaceable
+        // blocks (kelp, seagrass, plants) still report a source fluid state, but a solid block
+        // cannot be placed into them: BlockPlaceContext.canPlace() fails on replaceClicked, so
+        // every scan would emit them and every attempt would be INTERACTION_REJECTED. Excluding
+        // them both avoids wasted rejected traffic and lets the scan actually complete so the
+        // module can settle into lazy scanning once all real water is filled.
+        if (!BlockUtils.isReplaceable(this.level.getBlockState(blockPos))) {
+            return false;
+        }
+        return this.isTargetFluid(blockPos)
+                && (Configs.Print.PLACE_IN_AIR.getBooleanValue() || this.findPlacementSide(blockPos) != null);
+    }
+
     private boolean isTargetFluid(FluidState fluidState) {
         return fluids.contains(fluidState.getType())
                 && (Configs.Fluid.FILL_FLOWING_FLUID.getBooleanValue() || fluidState.isSource());
@@ -241,6 +283,7 @@ public class FluidHandler extends Module {
         int result = this.fillBlocks.hashCode();
         result = 31 * result + this.fluidBlocks.hashCode();
         result = 31 * result + Boolean.hashCode(Configs.Fluid.FILL_FLOWING_FLUID.getBooleanValue());
+        result = 31 * result + Boolean.hashCode(Configs.Print.PLACE_IN_AIR.getBooleanValue());
         return result;
     }
 }

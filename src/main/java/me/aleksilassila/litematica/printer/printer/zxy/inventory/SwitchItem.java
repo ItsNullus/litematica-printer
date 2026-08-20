@@ -28,12 +28,7 @@ public class SwitchItem {
     private static final int IDLE_RESTORE_DELAY_TICKS = 100;
     private static final Minecraft client = Minecraft.getInstance();
     private static final List<ItemStatistics> trackedItems = new ArrayList<>();
-
-    private static ItemStatistics pendingRestore;
-    private static boolean waitingForRestoreContainer;
-    private static int restoreTimeout;
-    private static boolean pressureRecoveryActive;
-    private static long lastPrinterActionTick = Long.MIN_VALUE;
+    private static final RestoreSession<ItemStatistics> RESTORE_SESSION = new RestoreSession<>();
 
     public static void newItem(
             ItemStack itemStack,
@@ -74,7 +69,7 @@ public class SwitchItem {
         }
         if (newPlayerSlot < 0 || newPlayerSlot >= 36) {
             trackedItems.remove(moved);
-            if (pendingRestore == moved) {
+            if (RESTORE_SESSION.pending() == moved) {
                 clearPendingRestore();
             }
             return;
@@ -90,7 +85,7 @@ public class SwitchItem {
             return;
         }
         long currentTick = currentGameTick();
-        lastPrinterActionTick = currentTick;
+        RESTORE_SESSION.markActivity(currentTick);
         int selectedSlot = me.aleksilassila.litematica.printer.utils.InventoryUtils
                 .getSelectedSlot(player.getInventory());
         ItemStack mainHandStack = player.getMainHandItem();
@@ -122,10 +117,10 @@ public class SwitchItem {
                 || client.screen != null
                 //#endif
                 || !player.containerMenu.equals(player.inventoryMenu)) {
-            return pendingRestore != null;
+            return RESTORE_SESSION.hasPending();
         }
-        if (pendingRestore != null) {
-            if (!waitingForRestoreContainer) {
+        if (RESTORE_SESSION.hasPending()) {
+            if (!RESTORE_SESSION.isWaitingForContainer()) {
                 openPendingShulker();
             }
             return true;
@@ -133,8 +128,8 @@ public class SwitchItem {
 
         reconcileTrackedSlots(player);
         if (trackedItems.isEmpty()) {
-            pressureRecoveryActive = false;
-            lastPrinterActionTick = Long.MIN_VALUE;
+            RESTORE_SESSION.clearPressureRecovery();
+            RESTORE_SESSION.clearActivity();
             return false;
         }
 
@@ -142,7 +137,7 @@ public class SwitchItem {
         normalizeActivityTicks(currentTick);
         int freeSlots = countEmptyInventorySlots(player);
         updatePressureRecovery(freeSlots);
-        if (pressureRecoveryActive) {
+        if (RESTORE_SESSION.isPressureRecoveryActive()) {
             boolean emergency = freeSlots <= EMERGENCY_FREE_SLOTS;
             return scheduleRestore(player, currentTick, emergency, false);
         }
@@ -151,7 +146,7 @@ public class SwitchItem {
             return false;
         }
 
-        if (currentTick - lastPrinterActionTick < IDLE_RESTORE_DELAY_TICKS) {
+        if (currentTick - RESTORE_SESSION.lastActivityTick() < IDLE_RESTORE_DELAY_TICKS) {
             return false;
         }
 
@@ -166,23 +161,23 @@ public class SwitchItem {
         }
         reconcileTrackedSlots(player);
         if (trackedItems.isEmpty()) {
-            pressureRecoveryActive = false;
+            RESTORE_SESSION.clearPressureRecovery();
             return false;
         }
         long currentTick = client.level.getGameTime();
         normalizeActivityTicks(currentTick);
         int freeSlots = countEmptyInventorySlots(player);
         updatePressureRecovery(freeSlots);
-        return pressureRecoveryActive
+        return RESTORE_SESSION.isPressureRecoveryActive()
                 && scheduleRestore(player, currentTick, freeSlots <= EMERGENCY_FREE_SLOTS, false);
     }
 
     public static boolean hasPendingRestore() {
-        return pendingRestore != null;
+        return RESTORE_SESSION.hasPending();
     }
 
     public static boolean isWaitingForRestoreContainer() {
-        return waitingForRestoreContainer && pendingRestore != null;
+        return RESTORE_SESSION.isWaitingForContainer();
     }
 
     /**
@@ -198,9 +193,8 @@ public class SwitchItem {
             return;
         }
 
-        ItemStatistics statistics = pendingRestore;
-        waitingForRestoreContainer = false;
-        restoreTimeout = 0;
+        ItemStatistics statistics = RESTORE_SESSION.pending();
+        RESTORE_SESSION.stopContainerWait();
         int playerMenuSlot = findPlayerInventoryMenuSlot(menu, statistics);
         if (playerMenuSlot < 0) {
             finishPendingRestore(false);
@@ -249,7 +243,7 @@ public class SwitchItem {
     }
 
     public static void tick() {
-        if (!waitingForRestoreContainer || restoreTimeout <= 0 || --restoreTimeout > 0) {
+        if (!RESTORE_SESSION.tickContainerTimeout()) {
             return;
         }
         LocalPlayer player = client.player;
@@ -261,9 +255,7 @@ public class SwitchItem {
 
     public static void reSet() {
         trackedItems.clear();
-        clearPendingRestore();
-        pressureRecoveryActive = false;
-        lastPrinterActionTick = Long.MIN_VALUE;
+        RESTORE_SESSION.reset();
     }
 
     private static int countEmptyInventorySlots(LocalPlayer player) {
@@ -282,13 +274,11 @@ public class SwitchItem {
     }
 
     private static void markPrinterActivity() {
-        lastPrinterActionTick = currentGameTick();
+        RESTORE_SESSION.markActivity(currentGameTick());
     }
 
     private static void normalizeActivityTicks(long currentTick) {
-        if (lastPrinterActionTick == Long.MIN_VALUE || currentTick < lastPrinterActionTick) {
-            lastPrinterActionTick = currentTick;
-        }
+        RESTORE_SESSION.normalizeActivity(currentTick);
         for (ItemStatistics statistics : trackedItems) {
             if (currentTick < statistics.lastUseTick) {
                 statistics.lastUseTick = currentTick;
@@ -297,11 +287,11 @@ public class SwitchItem {
     }
 
     private static void updatePressureRecovery(int freeSlots) {
-        if (freeSlots <= PRESSURE_TRIGGER_FREE_SLOTS) {
-            pressureRecoveryActive = true;
-        } else if (freeSlots >= PRESSURE_TARGET_FREE_SLOTS) {
-            pressureRecoveryActive = false;
-        }
+        RESTORE_SESSION.updatePressureRecovery(
+                freeSlots,
+                PRESSURE_TRIGGER_FREE_SLOTS,
+                PRESSURE_TARGET_FREE_SLOTS
+        );
     }
 
     private static boolean scheduleRestore(
@@ -310,8 +300,8 @@ public class SwitchItem {
             boolean allowRecentlyUsed,
             boolean allowCurrentMainHand
     ) {
-        if (pendingRestore != null) {
-            if (!waitingForRestoreContainer) {
+        if (RESTORE_SESSION.hasPending()) {
+            if (!RESTORE_SESSION.isWaitingForContainer()) {
                 openPendingShulker();
             }
             return true;
@@ -325,9 +315,9 @@ public class SwitchItem {
         if (selected == null) {
             return false;
         }
-        pendingRestore = selected;
+        RESTORE_SESSION.schedule(selected);
         openPendingShulker();
-        return pendingRestore != null;
+        return RESTORE_SESSION.hasPending();
     }
 
     private static ItemStatistics selectRestoreCandidate(
@@ -376,14 +366,15 @@ public class SwitchItem {
     private static void clearPressureRecoveryIfSatisfied() {
         LocalPlayer player = client.player;
         if (player != null && countEmptyInventorySlots(player) >= PRESSURE_TARGET_FREE_SLOTS) {
-            pressureRecoveryActive = false;
+            RESTORE_SESSION.clearPressureRecovery();
         }
     }
 
     private static void openPendingShulker() {
         LocalPlayer player = client.player;
+        ItemStatistics pendingRestore = RESTORE_SESSION.pending();
         if (player == null || client.gameMode == null || pendingRestore == null
-                || waitingForRestoreContainer
+                || RESTORE_SESSION.isWaitingForContainer()
                 || ModLoadUtils.closeScreen > 0
                 || !player.containerMenu.equals(player.inventoryMenu)) {
             return;
@@ -406,8 +397,7 @@ public class SwitchItem {
             return;
         }
         ModLoadUtils.closeScreen++;
-        waitingForRestoreContainer = true;
-        restoreTimeout = RESTORE_TIMEOUT_TICKS;
+        RESTORE_SESSION.beginContainerWait(RESTORE_TIMEOUT_TICKS);
     }
 
     private static void reconcileTrackedSlots(LocalPlayer player) {
@@ -471,25 +461,13 @@ public class SwitchItem {
             boolean snapshotMatches = storedShulkerMatchesSnapshot(storedItems, statistics);
             boolean originalSlotFits = storedOriginalSlotFits(storedItems, statistics, returningStack);
             boolean hasCapacity = storedShulkerHasCapacity(storedItems, returningStack);
-            int score;
-            if (recordedSlot && snapshotMatches && originalSlotFits) score = 0;
-            else if (snapshotMatches && originalSlotFits) score = 1;
-            else if (recordedSlot && snapshotMatches && hasCapacity) score = 2;
-            else if (snapshotMatches && hasCapacity) score = 3;
-            else if (recordedSlot && snapshotMatches) score = 4;
-            else if (snapshotMatches) score = 5;
-            else if (recordedSlot && sameShulkerType && originalSlotFits) score = 6;
-            else if (sameShulkerType && originalSlotFits) score = 7;
-            else if (recordedSlot && originalSlotFits) score = 8;
-            else if (originalSlotFits) score = 9;
-            else if (recordedSlot && sameShulkerType && hasCapacity) score = 10;
-            else if (sameShulkerType && hasCapacity) score = 11;
-            else if (recordedSlot && hasCapacity) score = 12;
-            else if (hasCapacity) score = 13;
-            else if (recordedSlot && sameShulkerType) score = 14;
-            else if (sameShulkerType) score = 15;
-            else if (recordedSlot) score = 16;
-            else score = 17;
+            int score = ShulkerSelectionPolicy.score(
+                    recordedSlot,
+                    sameShulkerType,
+                    snapshotMatches,
+                    originalSlotFits,
+                    hasCapacity
+            );
             if (score < bestScore) {
                 bestScore = score;
                 bestSlot = menuSlot;
@@ -697,7 +675,7 @@ public class SwitchItem {
     }
 
     private static void finishPendingRestore(boolean success) {
-        ItemStatistics completed = pendingRestore;
+        ItemStatistics completed = RESTORE_SESSION.pending();
         clearPendingRestore();
         if (completed != null) {
             trackedItems.remove(completed);
@@ -711,17 +689,15 @@ public class SwitchItem {
     }
 
     private static void retryPendingRestore() {
+        ItemStatistics pendingRestore = RESTORE_SESSION.pending();
         if (pendingRestore != null && pendingRestore.shulkerInventoryMenuSlot >= 0) {
             pendingRestore.attemptedShulkerMenuSlots.add(pendingRestore.shulkerInventoryMenuSlot);
         }
-        waitingForRestoreContainer = false;
-        restoreTimeout = 0;
+        RESTORE_SESSION.stopContainerWait();
     }
 
     private static void clearPendingRestore() {
-        pendingRestore = null;
-        waitingForRestoreContainer = false;
-        restoreTimeout = 0;
+        RESTORE_SESSION.clearPending();
     }
 
     private static class ItemStatistics {

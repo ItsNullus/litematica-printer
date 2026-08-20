@@ -7,11 +7,12 @@ import fi.dy.masa.malilib.config.options.ConfigOptionList;
 import lombok.Getter;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.enums.*;
+import me.aleksilassila.litematica.printer.handler.scan.BoxRegionDiff;
 import me.aleksilassila.litematica.printer.handler.scan.DirtyRegionTracker;
 import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
+import me.aleksilassila.litematica.printer.handler.scan.ScanIdlePolicy;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
 import me.aleksilassila.litematica.printer.printer.*;
-import me.aleksilassila.litematica.printer.printer.ActionManager;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import me.aleksilassila.litematica.printer.utils.mods.LitematicaUtils;
@@ -44,6 +45,7 @@ public abstract class Module extends ConfigUtils {
     private final AtomicReference<PrinterBox> externalScanBoxRef;
     private final InteractionBoxTracker interactionBoxTracker;
     private final GuiBlockInfoBuffer guiBlockInfoBuffer = new GuiBlockInfoBuffer();
+    private final ScanIdlePolicy scanIdlePolicy = new ScanIdlePolicy();
     @Getter
     private final String id;
     @Getter
@@ -61,10 +63,11 @@ public abstract class Module extends ConfigUtils {
     private ScanState scanState = ScanState.FULL;
     @Getter
     private int pendingDirtyRegionCount;
-    private int idleScanTicks;
     @Nullable
     private PrinterBox lastScanSourceBox;
     private List<PrinterBox> lastScanSourceBoxes = List.of();
+    @Nullable
+    private BlockPos lastScanCenter;
     private long lastDirtyVersion;
     private final ArrayDeque<PrinterBox> dirtyScanQueue = new ArrayDeque<>();
     @Nullable
@@ -72,8 +75,6 @@ public abstract class Module extends ConfigUtils {
     private boolean currentIterationDidWork;
     private boolean currentIterationFoundCandidate;
     private boolean currentIterationCompletedPass;
-    private boolean fullPassCompletedSinceActivity;
-    private int lazyProbeTicks;
     private boolean inventoryRevisionInitialized;
     private long lastInventoryGainRevision;
     private boolean schematicIdentityInitialized;
@@ -126,8 +127,7 @@ public abstract class Module extends ConfigUtils {
         this.currentIterationDidWork = false;
         this.currentIterationFoundCandidate = false;
         this.currentIterationCompletedPass = false;
-        this.fullPassCompletedSinceActivity = false;
-        this.lazyProbeTicks = 0;
+        this.scanIdlePolicy.reset();
         this.inventoryRevisionInitialized = false;
         this.lastInventoryGainRevision = 0L;
         this.schematicIdentityInitialized = false;
@@ -256,6 +256,7 @@ public abstract class Module extends ConfigUtils {
             this.updateExternalScanBox(null);
             return false;
         }
+        this.wakeForScanCenterChange();
         List<PrinterBox> scanSourceBoxes = this.getScanSourceBoxes(playerInteractionBox);
         PrinterBox scanSourceBox = enclosingBox(scanSourceBoxes);
         if (scanSourceBox == null) {
@@ -268,7 +269,7 @@ public abstract class Module extends ConfigUtils {
         this.updateScanSource(scanSourceBox, scanSourceBoxes);
         if (!this.isLazyScanEnabled()) {
             this.scanState = ScanState.FULL;
-            this.fullPassCompletedSinceActivity = false;
+            this.scanIdlePolicy.clearCompletedPassEvidence();
             this.clearDirtyScanQueue();
             return this.runFullIteration(playerInteractionBox);
         }
@@ -295,8 +296,7 @@ public abstract class Module extends ConfigUtils {
                     this.queueNewlyExposedScanRegions(previousScanSourceBox, scanSourceBox);
                 } else {
                     this.scanState = ScanState.FULL;
-                    this.idleScanTicks = 0;
-                    this.fullPassCompletedSinceActivity = false;
+                    this.scanIdlePolicy.recordActivity();
                     this.clearDirtyScanQueue();
                 }
             }
@@ -304,8 +304,7 @@ public abstract class Module extends ConfigUtils {
         }
         this.lastScanSourceBox = scanSourceBox;
         this.scanState = ScanState.FULL;
-        this.idleScanTicks = 0;
-        this.fullPassCompletedSinceActivity = false;
+        this.scanIdlePolicy.recordActivity();
         this.lastDirtyVersion = DirtyRegionTracker.INSTANCE.currentVersion();
         this.clearDirtyScanQueue();
     }
@@ -322,10 +321,9 @@ public abstract class Module extends ConfigUtils {
         }
         if (this.scanState == ScanState.LAZY) {
             int fallbackProbeInterval = Math.max(40, Configs.Core.LAZY_ENTER_TICKS.getIntegerValue() * 10);
-            if (++this.lazyProbeTicks < fallbackProbeInterval) {
+            if (!this.scanIdlePolicy.shouldRunLazyProbe(fallbackProbeInterval)) {
                 return false;
             }
-            this.lazyProbeTicks = 0;
             return this.runLazyProbeIteration(playerInteractionBox);
         }
         if (this.scanState == ScanState.FULL) {
@@ -343,11 +341,8 @@ public abstract class Module extends ConfigUtils {
     private boolean runLazyProbeIteration(PrinterBox playerInteractionBox) {
         this.pendingDirtyRegionCount = 0;
         boolean interrupt = this.runIterationLoop(playerInteractionBox);
-        if (this.currentIterationDidWork || this.currentIterationFoundCandidate) {
+        if (this.scanIdlePolicy.recordLazyProbe(this.currentIterationDidWork, this.currentIterationFoundCandidate)) {
             this.scanState = ScanState.FULL;
-            this.idleScanTicks = 0;
-            this.lazyProbeTicks = 0;
-            this.fullPassCompletedSinceActivity = false;
             return interrupt;
         }
         this.scanState = ScanState.LAZY;
@@ -414,29 +409,14 @@ public abstract class Module extends ConfigUtils {
     }
 
     private void updateFullScanIdleState() {
-        if (this.currentIterationDidWork || this.currentIterationFoundCandidate) {
-            this.idleScanTicks = 0;
-            this.fullPassCompletedSinceActivity = false;
-            return;
-        }
-        if (this.currentIterationCompletedPass) {
-            this.fullPassCompletedSinceActivity = true;
-        }
         int lazyThreshold = Configs.Core.LAZY_ENTER_TICKS.getIntegerValue();
-        if (lazyThreshold <= 0) {
-            return;
-        }
-        // A large empty range normally needs several budget-limited ticks to finish one pass.
-        // Count those genuinely idle ticks, but enter LAZY only after at least one complete pass
-        // proved that no target was hidden in the unscanned tail.
-        if (this.idleScanTicks < lazyThreshold) {
-            this.idleScanTicks++;
-        }
-        if (this.fullPassCompletedSinceActivity && this.idleScanTicks >= lazyThreshold) {
+        if (this.scanIdlePolicy.recordFullIteration(
+                this.currentIterationDidWork,
+                this.currentIterationFoundCandidate,
+                this.currentIterationCompletedPass,
+                lazyThreshold
+        )) {
             this.scanState = ScanState.LAZY;
-            this.idleScanTicks = 0;
-            this.lazyProbeTicks = 0;
-            this.fullPassCompletedSinceActivity = false;
             this.clearDirtyScanQueue();
         }
     }
@@ -448,8 +428,7 @@ public abstract class Module extends ConfigUtils {
         }
         if (!this.hasPendingPartialScan()) {
             this.scanState = ScanState.LAZY;
-            this.idleScanTicks = 0;
-            this.lazyProbeTicks = 0;
+            this.scanIdlePolicy.resetIdleAndProbe();
             this.pendingDirtyRegionCount = 0;
         }
     }
@@ -469,32 +448,14 @@ public abstract class Module extends ConfigUtils {
     }
 
     private void queueNewlyExposedScanRegions(PrinterBox previous, PrinterBox current) {
-        int overlapMinX = Math.max(previous.minX, current.minX);
-        int overlapMinY = Math.max(previous.minY, current.minY);
-        int overlapMinZ = Math.max(previous.minZ, current.minZ);
-        int overlapMaxX = Math.min(previous.maxX, current.maxX);
-        int overlapMaxY = Math.min(previous.maxY, current.maxY);
-        int overlapMaxZ = Math.min(previous.maxZ, current.maxZ);
-        if (overlapMinX > overlapMaxX || overlapMinY > overlapMaxY || overlapMinZ > overlapMaxZ) {
+        BoxRegionDiff.Result diff = BoxRegionDiff.newlyExposed(previous, current);
+        if (diff.requiresFullScan()) {
             this.scanState = ScanState.FULL;
-            this.idleScanTicks = 0;
-            this.fullPassCompletedSinceActivity = false;
+            this.scanIdlePolicy.recordActivity();
             this.clearDirtyScanQueue();
             return;
         }
-
-        this.addDirtyScanBox(current.minX, current.minY, current.minZ,
-                overlapMinX - 1, current.maxY, current.maxZ);
-        this.addDirtyScanBox(overlapMaxX + 1, current.minY, current.minZ,
-                current.maxX, current.maxY, current.maxZ);
-        this.addDirtyScanBox(overlapMinX, current.minY, current.minZ,
-                overlapMaxX, overlapMinY - 1, current.maxZ);
-        this.addDirtyScanBox(overlapMinX, overlapMaxY + 1, current.minZ,
-                overlapMaxX, current.maxY, current.maxZ);
-        this.addDirtyScanBox(overlapMinX, overlapMinY, current.minZ,
-                overlapMaxX, overlapMaxY, overlapMinZ - 1);
-        this.addDirtyScanBox(overlapMinX, overlapMinY, overlapMaxZ + 1,
-                overlapMaxX, overlapMaxY, current.maxZ);
+        this.dirtyScanQueue.addAll(diff.boxes());
 
         if (!this.dirtyScanQueue.isEmpty()) {
             List<PrinterBox> sorted = new ArrayList<>(this.dirtyScanQueue);
@@ -503,22 +464,40 @@ public abstract class Module extends ConfigUtils {
             this.dirtyScanQueue.addAll(sorted);
             this.pendingDirtyRegionCount = this.dirtyScanQueue.size();
             this.scanState = ScanState.PARTIAL;
-            this.idleScanTicks = 0;
-        }
-    }
-
-    private void addDirtyScanBox(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
-        if (minX <= maxX && minY <= maxY && minZ <= maxZ) {
-            this.dirtyScanQueue.addLast(new PrinterBox(minX, minY, minZ, maxX, maxY, maxZ));
+            this.scanIdlePolicy.resetIdle();
         }
     }
 
     protected final void requestFullScan() {
         this.scanState = ScanState.FULL;
-        this.idleScanTicks = 0;
-        this.lazyProbeTicks = 0;
-        this.fullPassCompletedSinceActivity = false;
+        this.scanIdlePolicy.reset();
         this.clearDirtyScanQueue();
+    }
+
+    private void wakeForScanCenterChange() {
+        // Compare at section (16-block) granularity, matching the scan session reuse window.
+        // Rebuilding the cursor for every single block of player movement repeatedly rescanned
+        // the whole reach shape from scratch; within a section the in-flight cursor is reused
+        // and the spherical/octahedral reach shape shifts by at most a few blocks, which the
+        // per-tick dirty tracking picks up anyway.
+        int sectionX = (int) Math.floor(this.player.getX()) >> 4;
+        int sectionY = (int) Math.floor(this.player.getEyeY()) >> 4;
+        int sectionZ = (int) Math.floor(this.player.getZ()) >> 4;
+        if (this.lastScanCenter == null) {
+            this.lastScanCenter = new BlockPos(sectionX, sectionY, sectionZ);
+            return;
+        }
+        if (this.lastScanCenter.getX() == sectionX
+                && this.lastScanCenter.getY() == sectionY
+                && this.lastScanCenter.getZ() == sectionZ) {
+            return;
+        }
+        this.lastScanCenter = new BlockPos(sectionX, sectionY, sectionZ);
+        if (this.scanState != ScanState.FULL) {
+            // The source AABB can remain unchanged while the spherical/octahedral reach shape
+            // moves inside it. Wake positions that have just entered the actual reach shape.
+            this.requestFullScan();
+        }
     }
 
     private void clearScanSourceCache() {
@@ -528,12 +507,11 @@ public abstract class Module extends ConfigUtils {
 
     private void resetScanRuntime() {
         this.scanState = ScanState.FULL;
-        this.idleScanTicks = 0;
-        this.lazyProbeTicks = 0;
+        this.scanIdlePolicy.reset();
         this.currentIterationCompletedPass = false;
-        this.fullPassCompletedSinceActivity = false;
         this.lastScanSourceBox = null;
         this.lastScanSourceBoxes = List.of();
+        this.lastScanCenter = null;
         this.updateExternalScanBox(null);
         this.lastDirtyVersion = DirtyRegionTracker.INSTANCE.currentVersion();
         this.clearDirtyScanQueue();
@@ -581,7 +559,15 @@ public abstract class Module extends ConfigUtils {
 
         int completedPassesBefore = ScanCache.INSTANCE.metricsFor(this.id).completedPasses();
         Iterable<BlockPos> iterationPositions = this.getIterationPositions(playerInteractionBox);
+        if (this.iterationPositionsArePrefetched()) {
+            // Prefetching is already constrained by ScanCache's per-tick budget. Do not charge
+            // that same time again to the consumer loop or high action limits collapse to the
+            // first budget-check interval.
+            iterationStartNanos = System.nanoTime();
+        }
+        int iterationCount = 0;
         for (BlockPos pos : iterationPositions) {
+            iterationCount++;
             if (++iterationBudgetChecks % ITERATION_BUDGET_CHECK_INTERVAL == 0
                     && System.nanoTime() - iterationStartNanos - actionExecutionNanos >= iterationBudgetNanos) {
                 interrupt = true;
@@ -763,6 +749,10 @@ public abstract class Module extends ConfigUtils {
     }
 
     protected boolean iterationPositionsAreExactCandidates() {
+        return false;
+    }
+
+    protected boolean iterationPositionsArePrefetched() {
         return false;
     }
 

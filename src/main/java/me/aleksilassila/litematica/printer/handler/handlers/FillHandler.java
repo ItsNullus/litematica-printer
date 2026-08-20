@@ -49,6 +49,15 @@ public class FillHandler extends Module {
             Direction.UP
     };
 
+    /**
+     * How long to cool a cell after a rejected placement attempt. A rejection is usually caused
+     * by a falling fill-block entity in the column (sand/gravel into air), which settles within a
+     * few ticks. Shorter than the normal placement cooldown so the cell is retried promptly once
+     * it becomes placeable again, but long enough that a momentarily-occupied column is not
+     * hot-rejected every single tick.
+     */
+    private static final int REJECT_RETRY_COOLDOWN_TICKS = 4;
+
     private List<String> fillCacheBlocklist = new ArrayList<>();
     private List<String> replaceableListCache = List.of();
     private String[] replaceableFilters = new String[0];
@@ -360,8 +369,13 @@ public class FillHandler extends Module {
         }
         if (!sendResult.isSent()) {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "放置动作未发送");
+            // A rejected interaction means this cell is momentarily unplaceable (a falling fill
+            // block entity occupies the column, or the server rejected the placement). Do NOT
+            // abort the whole pass: that serialised work to one rejected attempt per tick and
+            // read as the slow ring-by-ring expansion. Cool the cell briefly and let the
+            // iteration loop move on to the next candidate.
             setIterationConsumedEffectiveExecution(false);
-            skipIteration.set(true);
+            this.setBlockPosCooldown(blockPos, REJECT_RETRY_COOLDOWN_TICKS);
             return;
         }
         HudStatsManager.INSTANCE.trackExpectedBlockChange(HudStatsManager.Mode.FILL, blockPos, currentState);
