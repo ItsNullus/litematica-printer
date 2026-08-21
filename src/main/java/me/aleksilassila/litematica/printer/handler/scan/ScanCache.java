@@ -19,7 +19,6 @@ import java.util.function.Predicate;
 
 public final class ScanCache {
     private static final int BUDGET_CHECK_INTERVAL = 8;
-    private static final int OWNER_SCAN_BUDGET_PERCENT = 75;
 
     /** Controls what a completed cursor may do on a later tick. */
     public enum PassPolicy {
@@ -32,6 +31,7 @@ public final class ScanCache {
     private final AsyncPositionCursorScheduler asyncScheduler = new AsyncPositionCursorScheduler();
     private final ScanSessionStore sessions = new ScanSessionStore(this.asyncScheduler);
     private final DirtyRegionTracker dirtyRegions;
+    private final ScanBudget budget = new ScanBudget();
 
     private Object levelIdentity;
     private Object schematicIdentity;
@@ -39,8 +39,6 @@ public final class ScanCache {
     private long snapshotRevision;
     private long generationSequence;
     private long tickTime = Long.MIN_VALUE;
-    private long scanBudgetTickTime = Long.MIN_VALUE;
-    private long globalScanBudgetUsedNanos;
 
     public ScanCache() {
         this(new DirtyRegionTracker());
@@ -57,8 +55,7 @@ public final class ScanCache {
         this.schematicIdentity = null;
         this.snapshotRevision = 0L;
         this.tickTime = Long.MIN_VALUE;
-        this.scanBudgetTickTime = Long.MIN_VALUE;
-        this.globalScanBudgetUsedNanos = 0L;
+        this.budget.reset();
         this.dirtyRegions.clear();
     }
 
@@ -116,10 +113,7 @@ public final class ScanCache {
             this.sessions.resetMetrics();
         }
         this.tickTime = tickTime;
-        if (this.scanBudgetTickTime != tickTime) {
-            this.scanBudgetTickTime = tickTime;
-            this.globalScanBudgetUsedNanos = 0L;
-        }
+        this.budget.beginTick(tickTime);
     }
 
     public ScanMetrics metricsFor(String ownerKey) {
@@ -322,13 +316,14 @@ public final class ScanCache {
                 try {
                     boolean restartCompletedPass = passPolicy == PassPolicy.RESTART;
                     while (this.considered < scanLimit && session.canScan(tickTime, restartCompletedPass)) {
-                        if (!unbounded && ++this.budgetChecks % BUDGET_CHECK_INTERVAL == 0 && isScanBudgetExceeded(budgetStart)) {
+                        if (!unbounded && ++this.budgetChecks % BUDGET_CHECK_INTERVAL == 0
+                                && ScanCache.this.budget.isExceeded(budgetStart)) {
                             budgetHit = true;
                             break;
                         }
 
                         Candidate candidate = session.next(this.observation, tickTime,
-                                () -> !unbounded && isScanBudgetExceeded(budgetStart),
+                                () -> !unbounded && ScanCache.this.budget.isExceeded(budgetStart),
                                 preFilter,
                                 unbounded,
                                 restartCompletedPass);
@@ -363,7 +358,7 @@ public final class ScanCache {
                     }
                 } finally {
                     if (!unbounded) {
-                        recordScanBudget(metrics, budgetStart);
+                        ScanCache.this.budget.record(metrics, budgetStart);
                     }
                 }
 
@@ -460,20 +455,6 @@ public final class ScanCache {
         return false;
     }
 
-    private boolean isScanBudgetExceeded(long ownerBudgetStartNanos) {
-        long elapsed = Math.max(0L, System.nanoTime() - ownerBudgetStartNanos);
-        long globalBudgetNanos = this.globalScanBudgetNanos();
-        long ownerBudgetNanos = this.ownerScanBudgetNanos(globalBudgetNanos);
-        return elapsed >= ownerBudgetNanos
-                || this.globalScanBudgetUsedNanos + elapsed >= globalBudgetNanos;
-    }
-
-    private void recordScanBudget(MutableMetrics metrics, long ownerBudgetStartNanos) {
-        long elapsed = Math.max(0L, System.nanoTime() - ownerBudgetStartNanos);
-        this.globalScanBudgetUsedNanos += elapsed;
-        metrics.scanNanos += elapsed;
-    }
-
     private MutableMetrics metrics(String ownerKey) {
         return this.sessions.metrics(ownerKey);
     }
@@ -489,14 +470,6 @@ public final class ScanCache {
             separator = Math.min(separator, colon);
         }
         return ownerKey.substring(0, separator);
-    }
-
-    private long globalScanBudgetNanos() {
-        return Math.max(1L, Configs.Core.SCAN_TIME_BUDGET_MS.getIntegerValue()) * 1_000_000L;
-    }
-
-    private long ownerScanBudgetNanos(long globalBudgetNanos) {
-        return Math.max(500_000L, globalBudgetNanos * OWNER_SCAN_BUDGET_PERCENT / 100L);
     }
 
     private int getScanLimit(int scanGuardLimit) {
