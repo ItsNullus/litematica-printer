@@ -13,7 +13,7 @@ import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
 import me.aleksilassila.litematica.printer.printer.action.Action;
 import me.aleksilassila.litematica.printer.printer.action.ClickAction;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
-import me.aleksilassila.litematica.printer.utils.CooldownUtils;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
 import me.aleksilassila.litematica.printer.utils.minecraft.DirectionUtils;
@@ -153,7 +153,7 @@ public final class PrintPlacementExecutor {
             if (sendResult.isSent()) {
                 this.recordPlacementSent(context);
                 if (cooldownTicks > 0) {
-                    CooldownUtils.INSTANCE.setCooldown(
+                    PrinterRuntime.get().cooldownUtils().setCooldown(
                             context.level,
                             PrintHandler.NAME,
                             blockPos,

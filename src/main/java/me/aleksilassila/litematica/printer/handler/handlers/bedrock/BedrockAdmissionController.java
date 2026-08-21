@@ -2,7 +2,7 @@ package me.aleksilassila.litematica.printer.handler.handlers.bedrock;
 
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
-import me.aleksilassila.litematica.printer.utils.CooldownUtils;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import me.aleksilassila.litematica.printer.utils.mods.LitematicaUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -162,7 +162,7 @@ final class BedrockAdmissionController {
     boolean isPositionOnRetryCooldown(BlockPos pos) {
         BlockPos stablePos = stablePos(pos);
         return this.client.level != null
-                && CooldownUtils.INSTANCE.isOnCooldown(this.client.level, RETRY_COOLDOWN_KEY, stablePos);
+                && PrinterRuntime.get().cooldownUtils().isOnCooldown(this.client.level, RETRY_COOLDOWN_KEY, stablePos);
     }
 
     int schedulingPenalty(BlockPos pos) {
@@ -184,7 +184,7 @@ final class BedrockAdmissionController {
 
     void setRetryCooldown(BlockPos pos, int ticks) {
         if (this.client.level != null && pos != null && ticks > 0) {
-            CooldownUtils.INSTANCE.setCooldown(this.client.level, RETRY_COOLDOWN_KEY, pos, ticks);
+            PrinterRuntime.get().cooldownUtils().setCooldown(this.client.level, RETRY_COOLDOWN_KEY, pos, ticks);
             this.scanActivity.recordRetry(ClientPlayerTickManager.getCurrentHandlerTime(), ticks);
         }
     }

@@ -40,6 +40,7 @@ public final class PrinterRuntime {
     private final ActionBroker actionBroker;
     private final ScanEngine scanEngine;
     private final InventoryAvailabilityTracker inventoryAvailability;
+    private final CooldownUtils cooldownUtils;
 
     private PrinterRuntime() {
         Minecraft client = Minecraft.getInstance();
@@ -53,6 +54,8 @@ public final class PrinterRuntime {
         this.scope.register(this.scanEngine);
         this.inventoryAvailability = new InventoryAvailabilityTracker();
         this.scope.register(this.inventoryAvailability);
+        this.cooldownUtils = new CooldownUtils();
+        this.scope.register(this.cooldownUtils);
         this.modules = new FeatureModuleSet(this);
     }
 
@@ -88,6 +91,10 @@ public final class PrinterRuntime {
         return this.inventoryAvailability;
     }
 
+    public CooldownUtils cooldownUtils() {
+        return this.cooldownUtils;
+    }
+
     public Minecraft client() {
         return Minecraft.getInstance();
     }
@@ -117,7 +124,7 @@ public final class PrinterRuntime {
             this.reset("client_scope_changed");
         }
 
-        CooldownUtils.INSTANCE.tick();
+        this.cooldownUtils.tick();
         QuickShulkerBridge.onTick();
         if (this.materialRequests != null) {
             this.materialRequests.tick();

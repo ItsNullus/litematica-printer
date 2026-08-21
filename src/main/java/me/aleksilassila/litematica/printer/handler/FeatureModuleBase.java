@@ -45,6 +45,7 @@ public abstract class FeatureModuleBase extends ConfigUtils implements RuntimeCo
     private final String id;
     protected final ScanEngine scanEngine;
     protected final ActionBroker actionBroker;
+    protected final CooldownUtils cooldownUtils;
     final InventoryAvailabilityTracker inventoryAvailability;
     @Nullable
     final PrintModeType printMode;
@@ -85,6 +86,7 @@ public abstract class FeatureModuleBase extends ConfigUtils implements RuntimeCo
     ) {
         this.scanEngine = runtime.scanEngine();
         this.actionBroker = runtime.actionBroker();
+        this.cooldownUtils = runtime.cooldownUtils();
         this.inventoryAvailability = runtime.inventoryAvailability();
         this.id = id;
         this.printMode = printMode;
@@ -348,22 +350,22 @@ public abstract class FeatureModuleBase extends ConfigUtils implements RuntimeCo
 
     public boolean isBlockPosOnCooldown(@Nullable BlockPos pos) {
         if (this.level == null || pos == null) return true;
-        return CooldownUtils.INSTANCE.isOnCooldown(this.level, this.getId(), pos);
+        return this.cooldownUtils.isOnCooldown(this.level, this.getId(), pos);
     }
 
     public boolean isBlockPosOnCooldown(String name, @Nullable BlockPos pos) {
         if (this.level == null || pos == null) return true;
-        return CooldownUtils.INSTANCE.isOnCooldown(this.level, this.getId() + "_" + name, pos);
+        return this.cooldownUtils.isOnCooldown(this.level, this.getId() + "_" + name, pos);
     }
 
     public void setBlockPosCooldown(@Nullable BlockPos pos, int cooldownTicks) {
         if (this.level == null || pos == null || cooldownTicks < 1) return;
-        CooldownUtils.INSTANCE.setCooldown(this.level, this.getId(), pos, cooldownTicks);
+        this.cooldownUtils.setCooldown(this.level, this.getId(), pos, cooldownTicks);
     }
 
     public void setBlockPosCooldown(String name, @Nullable BlockPos pos, int cooldownTicks) {
         if (this.level == null || pos == null || cooldownTicks < 1) return;
-        CooldownUtils.INSTANCE.setCooldown(this.level, this.getId() + "_" + name, pos, cooldownTicks);
+        this.cooldownUtils.setCooldown(this.level, this.getId() + "_" + name, pos, cooldownTicks);
     }
 
     protected Direction[] getPlayerOrderedByNearest() {

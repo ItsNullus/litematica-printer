@@ -13,12 +13,9 @@ import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
 import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 
 public final class CooldownUtils implements RuntimeComponent {
-    public static final CooldownUtils INSTANCE = new CooldownUtils();
-
     private final Map<Info, Integer> cooldownMap = new HashMap<>();
 
-    private CooldownUtils() {
-        PrinterRuntime.get().register(this);
+    public CooldownUtils() {
     }
 
     /**

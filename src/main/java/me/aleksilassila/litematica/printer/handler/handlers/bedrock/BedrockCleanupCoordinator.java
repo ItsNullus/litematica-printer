@@ -1,6 +1,6 @@
 package me.aleksilassila.litematica.printer.handler.handlers.bedrock;
 
-import me.aleksilassila.litematica.printer.utils.CooldownUtils;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
@@ -95,10 +95,10 @@ final class BedrockCleanupCoordinator {
                 continue;
             }
             int retryDelay = retryDelay(state);
-            if (!CooldownUtils.INSTANCE.isOnCooldown(level, RETRY_COOLDOWN_KEY, pos)) {
+            if (!PrinterRuntime.get().cooldownUtils().isOnCooldown(level, RETRY_COOLDOWN_KEY, pos)) {
                 boolean predictRemoval = !this.conservative.contains(pos);
                 if (BedrockBreaker.breakBlock(pos, predictRemoval)) {
-                    CooldownUtils.INSTANCE.setCooldown(level, RETRY_COOLDOWN_KEY, pos, retryDelay);
+                    PrinterRuntime.get().cooldownUtils().setCooldown(level, RETRY_COOLDOWN_KEY, pos, retryDelay);
                     count++;
                 }
             }
@@ -116,7 +116,7 @@ final class BedrockCleanupCoordinator {
         }
         BlockState state = level.getBlockState(pos);
         if (BedrockTargetBlocks.isCleanupResidue(state) && BedrockBreaker.breakBlock(pos, predictRemoval)) {
-            CooldownUtils.INSTANCE.setCooldown(level, RETRY_COOLDOWN_KEY, pos, retryDelay(state));
+            PrinterRuntime.get().cooldownUtils().setCooldown(level, RETRY_COOLDOWN_KEY, pos, retryDelay(state));
         }
     }
 
@@ -128,12 +128,12 @@ final class BedrockCleanupCoordinator {
         if (!BedrockTargetBlocks.isCleanupResidue(state) || reserved.test(pos)) {
             return;
         }
-        if (CooldownUtils.INSTANCE.isOnCooldown(level, RETRY_COOLDOWN_KEY, pos)) {
+        if (PrinterRuntime.get().cooldownUtils().isOnCooldown(level, RETRY_COOLDOWN_KEY, pos)) {
             return;
         }
         int retryDelay = retryDelay(state);
         if (BedrockBreaker.breakBlock(pos, false)) {
-            CooldownUtils.INSTANCE.setCooldown(level, RETRY_COOLDOWN_KEY, pos, retryDelay);
+            PrinterRuntime.get().cooldownUtils().setCooldown(level, RETRY_COOLDOWN_KEY, pos, retryDelay);
         }
     }
 
