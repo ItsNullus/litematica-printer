@@ -1,7 +1,7 @@
 package me.aleksilassila.litematica.printer.mixin.printer.mc;
 
 import me.aleksilassila.litematica.printer.printer.PlayerLook;
-import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import me.aleksilassila.litematica.printer.utils.minecraft.NetworkUtils;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import org.spongepowered.asm.mixin.Mixin;
@@ -25,7 +25,7 @@ public class MixinServerboundMovePlayerPacket {
         if (scopedLook != null) {
             return scopedLook.yaw;
         }
-        PlayerLook playerLook = ActionBroker.INSTANCE.getLook();
+        PlayerLook playerLook = PrinterRuntime.get().actionBroker().getLook();
         if (playerLook != null) {
             return playerLook.yaw;
         }
@@ -45,7 +45,7 @@ public class MixinServerboundMovePlayerPacket {
         if (scopedLook != null) {
             return scopedLook.pitch;
         }
-        PlayerLook playerLook = ActionBroker.INSTANCE.getLook();
+        PlayerLook playerLook = PrinterRuntime.get().actionBroker().getLook();
         if (playerLook != null) {
             return playerLook.pitch;
         }

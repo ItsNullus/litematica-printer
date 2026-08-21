@@ -4,7 +4,6 @@ import me.aleksilassila.litematica.printer.integration.inventory.InventoryProvid
 import me.aleksilassila.litematica.printer.integration.inventory.MaterialRequest;
 import me.aleksilassila.litematica.printer.integration.inventory.MaterialReservation;
 import me.aleksilassila.litematica.printer.core.action.ResourceLease;
-import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
 import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
@@ -127,7 +126,7 @@ public final class QuickShulkerAdapter implements InventoryProvider, RuntimeComp
 
     private boolean acquireResources() {
         if (this.resourcesAcquired) return true;
-        this.resourcesAcquired = ActionBroker.INSTANCE.tryAcquire(
+        this.resourcesAcquired = PrinterRuntime.get().actionBroker().tryAcquire(
                 LEASE_OWNER,
                 java.util.EnumSet.of(ResourceLease.MAIN_HAND, ResourceLease.INVENTORY, ResourceLease.CONTAINER),
                 0L
@@ -137,7 +136,7 @@ public final class QuickShulkerAdapter implements InventoryProvider, RuntimeComp
 
     private void releaseResources() {
         if (this.resourcesAcquired) {
-            ActionBroker.INSTANCE.releaseOwner(LEASE_OWNER);
+            PrinterRuntime.get().actionBroker().releaseOwner(LEASE_OWNER);
             this.resourcesAcquired = false;
         }
     }

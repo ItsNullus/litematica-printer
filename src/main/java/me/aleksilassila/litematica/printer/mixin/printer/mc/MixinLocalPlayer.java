@@ -5,7 +5,7 @@ import fi.dy.masa.litematica.world.SchematicWorldHandler;
 import fi.dy.masa.litematica.world.WorldSchematic;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
-import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
@@ -72,7 +72,7 @@ public class MixinLocalPlayer extends AbstractClientPlayer {
             return;
         }
         getTargetSignEntity(sign)
-                .filter(signBlockEntity -> ActionBroker.INSTANCE.consumePrintSignEdit(sign.getBlockPos()))
+                .filter(signBlockEntity -> PrinterRuntime.get().actionBroker().consumePrintSignEdit(sign.getBlockPos()))
                 .ifPresent(signBlockEntity ->
         {
             //#if MC > 11904

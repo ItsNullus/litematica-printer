@@ -1,6 +1,6 @@
 package me.aleksilassila.litematica.printer.mixin;
 
-import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
 import me.aleksilassila.litematica.printer.utils.minecraft.NetworkUtils;
 import net.minecraft.client.Minecraft;
@@ -28,10 +28,10 @@ public abstract class MixinClientPacketListener {
     )
     private void suppressTaskAnvilScreen(ClientboundOpenScreenPacket packet, CallbackInfo ci) {
         if (packet.getType() != MenuType.ANVIL
-                || ActionBroker.INSTANCE.consumeManualAnvilScreenAllowance()) {
+                || PrinterRuntime.get().actionBroker().consumeManualAnvilScreenAllowance()) {
             return;
         }
-        if (ActionBroker.INSTANCE.consumeTaskAnvilScreenSuppression()) {
+        if (PrinterRuntime.get().actionBroker().consumeTaskAnvilScreenSuppression()) {
             NetworkUtils.sendPacket(new ServerboundContainerClosePacket(packet.getContainerId()));
             ci.cancel();
         }

@@ -3,7 +3,7 @@ package me.aleksilassila.litematica.printer.integration.inventory;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import me.aleksilassila.litematica.printer.core.action.ResourceLease;
-import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import net.minecraft.client.Minecraft;
 import java.util.EnumSet;
 
@@ -63,7 +63,7 @@ public final class TakeItOutAdapter implements InventoryProvider {
         if (this.resourcesAcquired) {
             return true;
         }
-        this.resourcesAcquired = ActionBroker.INSTANCE.tryAcquire(
+        this.resourcesAcquired = PrinterRuntime.get().actionBroker().tryAcquire(
                 LEASE_OWNER,
                 EnumSet.of(ResourceLease.MAIN_HAND, ResourceLease.INVENTORY, ResourceLease.CONTAINER),
                 0L
@@ -75,7 +75,7 @@ public final class TakeItOutAdapter implements InventoryProvider {
         if (!this.resourcesAcquired) {
             return;
         }
-        ActionBroker.INSTANCE.releaseOwner(LEASE_OWNER);
+        PrinterRuntime.get().actionBroker().releaseOwner(LEASE_OWNER);
         this.resourcesAcquired = false;
     }
 }
