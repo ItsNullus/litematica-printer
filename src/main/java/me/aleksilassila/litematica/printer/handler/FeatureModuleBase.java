@@ -91,7 +91,8 @@ public abstract class FeatureModuleBase extends ConfigUtils implements RuntimeCo
         this.interactionBoxTracker = new InteractionBoxTracker(useBox);
         this.playerInteractionBox = this.interactionBoxTracker.getBoxReference();
         this.externalScanBoxRef = this.playerInteractionBox == null ? null : new AtomicReference<>();
-        this.scanCoordinator = new ModuleScanCoordinator(new ModuleScanHost(this), this.externalScanBoxRef);
+        this.scanCoordinator = new ModuleScanCoordinator(
+                new ModuleScanHost(this), this.externalScanBoxRef, this.scanEngine);
         this.selectionScope = new ModuleSelectionScope(this, selectionType);
         this.runtimeLoop = new ModuleRuntimeLoop(this);
         this.updateVariables(TickContext.capture());

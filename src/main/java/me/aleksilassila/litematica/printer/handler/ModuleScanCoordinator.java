@@ -5,6 +5,7 @@ import me.aleksilassila.litematica.printer.enums.ScanState;
 import me.aleksilassila.litematica.printer.handler.scan.BoxRegionDiff;
 import me.aleksilassila.litematica.printer.handler.scan.DirtyRegionTracker;
 import me.aleksilassila.litematica.printer.handler.scan.ScanLifecycle;
+import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import net.minecraft.core.BlockPos;
 import org.jetbrains.annotations.Nullable;
@@ -36,6 +37,7 @@ final class ModuleScanCoordinator {
     }
 
     private final Host host;
+    private final ScanEngine scanEngine;
     @Nullable
     private final AtomicReference<PrinterBox> externalScanBoxRef;
     private final ScanLifecycle lifecycle = new ScanLifecycle();
@@ -47,9 +49,14 @@ final class ModuleScanCoordinator {
     private long lastDirtyVersion;
     private int pendingDirtyRegionCount;
 
-    ModuleScanCoordinator(Host host, @Nullable AtomicReference<PrinterBox> externalScanBoxRef) {
+    ModuleScanCoordinator(
+            Host host,
+            @Nullable AtomicReference<PrinterBox> externalScanBoxRef,
+            ScanEngine scanEngine
+    ) {
         this.host = host;
         this.externalScanBoxRef = externalScanBoxRef;
+        this.scanEngine = scanEngine;
     }
 
     ScanState state() {
@@ -67,7 +74,7 @@ final class ModuleScanCoordinator {
         this.lastSourceBoxes = List.of();
         this.lastCenterSection = null;
         this.updateExternalBox(null);
-        this.lastDirtyVersion = DirtyRegionTracker.INSTANCE.currentVersion();
+        this.lastDirtyVersion = this.scanEngine.dirtyVersion();
         this.clearDirtyQueue();
     }
 
@@ -125,7 +132,7 @@ final class ModuleScanCoordinator {
         this.lastSourceBox = sourceBox;
         this.lifecycle.setState(ScanState.FULL);
         this.lifecycle.idlePolicy().recordActivity();
-        this.lastDirtyVersion = DirtyRegionTracker.INSTANCE.currentVersion();
+        this.lastDirtyVersion = this.scanEngine.dirtyVersion();
         this.clearDirtyQueue();
     }
 
@@ -203,7 +210,7 @@ final class ModuleScanCoordinator {
 
     private void refreshDirtyQueue(PrinterBox interactionBox) {
         DirtyRegionTracker.DirtySnapshot snapshot =
-                DirtyRegionTracker.INSTANCE.snapshotAfter(this.lastDirtyVersion, interactionBox);
+                this.scanEngine.dirtySnapshotAfter(this.lastDirtyVersion, interactionBox);
         this.lastDirtyVersion = snapshot.version();
         this.dirtyQueue.clear();
         this.activeDirtyBox = null;

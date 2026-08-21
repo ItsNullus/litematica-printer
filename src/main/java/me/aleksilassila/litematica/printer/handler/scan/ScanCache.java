@@ -11,6 +11,7 @@ import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Iterator;
 import java.util.List;
@@ -30,6 +31,7 @@ public final class ScanCache {
 
     private final AsyncPositionCursorScheduler asyncScheduler = new AsyncPositionCursorScheduler();
     private final ScanSessionStore sessions = new ScanSessionStore(this.asyncScheduler);
+    private final DirtyRegionTracker dirtyRegions;
 
     private Object levelIdentity;
     private Object schematicIdentity;
@@ -41,6 +43,11 @@ public final class ScanCache {
     private long globalScanBudgetUsedNanos;
 
     public ScanCache() {
+        this(new DirtyRegionTracker());
+    }
+
+    public ScanCache(DirtyRegionTracker dirtyRegions) {
+        this.dirtyRegions = dirtyRegions;
     }
 
     public void clear() {
@@ -52,7 +59,7 @@ public final class ScanCache {
         this.tickTime = Long.MIN_VALUE;
         this.scanBudgetTickTime = Long.MIN_VALUE;
         this.globalScanBudgetUsedNanos = 0L;
-        DirtyRegionTracker.INSTANCE.clear();
+        this.dirtyRegions.clear();
     }
 
     public record ScanMetrics(
@@ -99,7 +106,7 @@ public final class ScanCache {
         if (!this.runtimeEpoch.equals(epoch) || this.levelIdentity != level || this.schematicIdentity != schematic) {
             this.sessions.close();
             this.sessions.clearMetrics();
-            DirtyRegionTracker.INSTANCE.clear();
+            this.dirtyRegions.clear();
             this.levelIdentity = level;
             this.schematicIdentity = schematic;
             this.runtimeEpoch = epoch;
@@ -124,7 +131,16 @@ public final class ScanCache {
             return;
         }
         this.snapshotRevision++;
+        this.dirtyRegions.markDirty(pos);
         this.sessions.invalidate(pos);
+    }
+
+    public long dirtyVersion() {
+        return this.dirtyRegions.currentVersion();
+    }
+
+    public DirtyRegionTracker.DirtySnapshot dirtySnapshotAfter(long lastSeenVersion, @Nullable PrinterBox bounds) {
+        return this.dirtyRegions.snapshotAfter(lastSeenVersion, bounds);
     }
 
     public void resetOwner(String ownerKey) {

@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DirtyRegionTrackerTest {
-    private final DirtyRegionTracker tracker = DirtyRegionTracker.INSTANCE;
+    private final DirtyRegionTracker tracker = new DirtyRegionTracker();
 
     @AfterEach
     void resetTracker() {

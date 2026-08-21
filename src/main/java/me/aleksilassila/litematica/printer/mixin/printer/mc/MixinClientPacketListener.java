@@ -3,7 +3,6 @@ package me.aleksilassila.litematica.printer.mixin.printer.mc;
 import me.aleksilassila.litematica.printer.I18n;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
-import me.aleksilassila.litematica.printer.handler.scan.DirtyRegionTracker;
 import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.MessageUtils;
@@ -37,7 +36,6 @@ public abstract class MixinClientPacketListener {
     @Inject(method = "handleBlockUpdate", at = @At("RETURN"))
     private void invalidateScanCacheBlock(ClientboundBlockUpdatePacket packet, CallbackInfo ci) {
         PrinterRuntime.get().scanEngine().invalidate(packet.getPos());
-        DirtyRegionTracker.INSTANCE.markDirty(packet.getPos());
         InteractionUtils.INSTANCE.confirmServerBlockUpdate(packet.getPos());
         HudStatsManager.INSTANCE.confirmBlockUpdate(packet.getPos());
     }
@@ -46,7 +44,6 @@ public abstract class MixinClientPacketListener {
     private void invalidateScanCacheSection(ClientboundSectionBlocksUpdatePacket packet, CallbackInfo ci) {
         packet.runUpdates((pos, state) -> {
             PrinterRuntime.get().scanEngine().invalidate(pos);
-            DirtyRegionTracker.INSTANCE.markDirty(pos);
             InteractionUtils.INSTANCE.confirmServerBlockUpdate(pos);
             HudStatsManager.INSTANCE.confirmBlockUpdate(pos);
         });

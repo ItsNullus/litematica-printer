@@ -52,6 +52,14 @@ public final class ScanEngine implements RuntimeComponent {
         this.cache.invalidate(pos);
     }
 
+    public long dirtyVersion() {
+        return this.cache.dirtyVersion();
+    }
+
+    public DirtyRegionTracker.DirtySnapshot dirtySnapshotAfter(long lastSeenVersion, PrinterBox bounds) {
+        return this.cache.dirtySnapshotAfter(lastSeenVersion, bounds);
+    }
+
     public void resetOwner(String ownerKey) {
         this.cache.resetOwner(ownerKey);
     }

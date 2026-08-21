@@ -11,8 +11,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class DirtyRegionTracker {
-    public static final DirtyRegionTracker INSTANCE = new DirtyRegionTracker();
-
     public static final int REGION_SIZE = 16;
     private static final int MAX_DIRTY_REGIONS = 8192;
     private static final int HISTORY_COMPACT_THRESHOLD = MAX_DIRTY_REGIONS * 2;
@@ -27,7 +25,7 @@ public final class DirtyRegionTracker {
     private long version;
     private long historyFloorVersion;
 
-    private DirtyRegionTracker() {
+    public DirtyRegionTracker() {
     }
 
     public synchronized void markDirty(@Nullable BlockPos pos) {
