@@ -6,8 +6,8 @@ import me.aleksilassila.litematica.printer.integration.inventory.MaterialReserva
 import me.aleksilassila.litematica.printer.core.action.ResourceLease;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
-import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import me.aleksilassila.litematica.printer.config.Configs;
+import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -15,10 +15,12 @@ import net.minecraft.client.player.LocalPlayer;
 /** Public adapter around the Quick Shulker request and ordered-restore controllers. */
 public final class QuickShulkerAdapter implements InventoryProvider, RuntimeComponent {
     private static final String LEASE_OWNER = "quick_shulker";
+    private final ActionBroker actionBroker;
     private boolean resourcesAcquired;
     private long attemptedToken;
 
-    public QuickShulkerAdapter() {
+    public QuickShulkerAdapter(ActionBroker actionBroker) {
+        this.actionBroker = actionBroker;
     }
 
     @Override
@@ -124,7 +126,7 @@ public final class QuickShulkerAdapter implements InventoryProvider, RuntimeComp
 
     private boolean acquireResources() {
         if (this.resourcesAcquired) return true;
-        this.resourcesAcquired = PrinterRuntime.get().actionBroker().tryAcquire(
+        this.resourcesAcquired = this.actionBroker.tryAcquire(
                 LEASE_OWNER,
                 java.util.EnumSet.of(ResourceLease.MAIN_HAND, ResourceLease.INVENTORY, ResourceLease.CONTAINER),
                 0L
@@ -134,7 +136,7 @@ public final class QuickShulkerAdapter implements InventoryProvider, RuntimeComp
 
     private void releaseResources() {
         if (this.resourcesAcquired) {
-            PrinterRuntime.get().actionBroker().releaseOwner(LEASE_OWNER);
+            this.actionBroker.releaseOwner(LEASE_OWNER);
             this.resourcesAcquired = false;
         }
     }

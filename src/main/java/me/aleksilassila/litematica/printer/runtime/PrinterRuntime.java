@@ -73,7 +73,7 @@ public final class PrinterRuntime {
         this.scope.register(this.missingMaterials);
         this.hudStats = new HudStatsManager();
         this.scope.register(this.hudStats);
-        this.quickShulkerAdapter = new QuickShulkerAdapter();
+        this.quickShulkerAdapter = new QuickShulkerAdapter(this.actionBroker);
         this.scope.register(this.quickShulkerAdapter);
         this.modules = new FeatureModuleSet(this);
     }
@@ -151,7 +151,7 @@ public final class PrinterRuntime {
             this.materialRequests = new MaterialRequestCoordinator(List.of(
                     new PlayerInventoryProvider(Minecraft.getInstance()),
                     this.quickShulkerAdapter,
-                    new TakeItOutAdapter()
+                    new TakeItOutAdapter(this.actionBroker)
             ));
             this.scope.register(this.materialRequests);
         }
