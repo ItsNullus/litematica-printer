@@ -1,39 +1,45 @@
 package me.aleksilassila.litematica.printer.utils;
 
-import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
-import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
+import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.Item;
 
-public final class InventorySwitchGuard {
-    private static final Minecraft client = Minecraft.getInstance();
-    private static final int MAX_SETTLE_TICKS = 20;
-    private static Item pendingItem;
-    private static long pendingStartedTick;
+import java.util.function.LongSupplier;
 
-    private InventorySwitchGuard() {
+public final class InventorySwitchGuard {
+    private static final int MAX_SETTLE_TICKS = 20;
+    private final Minecraft client;
+    private final ActionBroker actionBroker;
+    private final LongSupplier tickClock;
+    private Item pendingItem;
+    private long pendingStartedTick;
+
+    public InventorySwitchGuard(Minecraft client, ActionBroker actionBroker, LongSupplier tickClock) {
+        this.client = client;
+        this.actionBroker = actionBroker;
+        this.tickClock = tickClock;
     }
 
-    public static void reset() {
+    public void reset() {
         clear();
     }
 
-    public static boolean markSwitchIfNeeded(Item item) {
+    public boolean markSwitchIfNeeded(Item item) {
         if (item == null) {
             return false;
         }
         pendingItem = item;
-        pendingStartedTick = ClientPlayerTickManager.getCurrentHandlerTime();
-        PrinterRuntime.get().actionBroker().cancelQueue();
+        pendingStartedTick = this.tickClock.getAsLong();
+        this.actionBroker.cancelQueue();
         return true;
     }
 
-    public static boolean isWaiting() {
+    public boolean isWaiting() {
         if (pendingItem == null) {
             return false;
         }
-        PrinterRuntime.get().actionBroker().cancelQueue();
-        long age = ClientPlayerTickManager.getCurrentHandlerTime() - pendingStartedTick;
+        this.actionBroker.cancelQueue();
+        long age = this.tickClock.getAsLong() - pendingStartedTick;
         if (age <= 0) {
             return true;
         }
@@ -53,12 +59,12 @@ public final class InventorySwitchGuard {
         return true;
     }
 
-    private static void clear() {
+    private void clear() {
         pendingItem = null;
         pendingStartedTick = 0L;
     }
 
-    private static boolean isMainHandReady(Item item) {
+    private boolean isMainHandReady(Item item) {
         return client.player != null && client.player.getMainHandItem().is(item);
     }
 }

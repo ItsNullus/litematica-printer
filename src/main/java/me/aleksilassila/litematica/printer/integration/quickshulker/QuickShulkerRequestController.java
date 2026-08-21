@@ -9,7 +9,7 @@ import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.mixin.printer.litematica.InventoryUtilsAccessor;
 import me.aleksilassila.litematica.printer.integration.litematica.LitematicaPickSlotAdapter;
 import me.aleksilassila.litematica.printer.integration.quickshulker.QuickShulkerSupport;
-import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -191,7 +191,7 @@ public final class QuickShulkerRequestController {
                             );
                             me.aleksilassila.litematica.printer.utils.InventoryUtils.setSelectedSlot(player.getInventory(), c);
                             me.aleksilassila.litematica.printer.utils.InventoryUtils.syncSelectedHotbarSlot();
-                            me.aleksilassila.litematica.printer.utils.InventorySwitchGuard.markSwitchIfNeeded(item);
+                            PrinterRuntime.get().inventorySwitchGuard().markSwitchIfNeeded(item);
                             player.closeContainer();
                             clearSwitchRequest();
                             return;
@@ -255,7 +255,7 @@ public final class QuickShulkerRequestController {
         if (Configs.Placement.STORE_ORDERLY.getBooleanValue()
                 && Configs.Placement.QUICK_SHULKER.getBooleanValue()
                 && !isOpenHandler
-                && !InventorySwitchGuard.isWaiting()
+                && !PrinterRuntime.get().inventorySwitchGuard().isWaiting()
                 && !TakeItOutUtils.isAwaitingStack()) {
             OrderedStorageController.maintainOrderlyStorage();
         }

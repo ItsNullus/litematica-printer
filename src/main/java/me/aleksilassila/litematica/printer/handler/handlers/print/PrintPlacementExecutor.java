@@ -35,13 +35,19 @@ import net.minecraft.world.item.ItemStack;
 public final class PrintPlacementExecutor {
     private final ActionBroker actionBroker;
     private final CooldownUtils cooldownUtils;
+    private final InventorySwitchGuard inventorySwitchGuard;
     private static final Item[] EMPTY_HAND_ITEMS = {Items.AIR};
     private static final long RESERVE_NOTICE_COOLDOWN_TICKS = 100L;
     private static long lastReserveNoticeTick = Long.MIN_VALUE;
 
-    public PrintPlacementExecutor(ActionBroker actionBroker, CooldownUtils cooldownUtils) {
+    public PrintPlacementExecutor(
+            ActionBroker actionBroker,
+            CooldownUtils cooldownUtils,
+            InventorySwitchGuard inventorySwitchGuard
+    ) {
         this.actionBroker = actionBroker;
         this.cooldownUtils = cooldownUtils;
+        this.inventorySwitchGuard = inventorySwitchGuard;
     }
 
     public PrintPlacementResult execute(SchematicBlockContext context, Action action, @Nullable PrintTaskAction taskAction) {
@@ -86,7 +92,7 @@ public final class PrintPlacementExecutor {
         }
         if (!itemReady) {
             boolean retrievalPending =
-                    InventorySwitchGuard.isWaiting()
+                    this.inventorySwitchGuard.isWaiting()
                             || this.actionBroker.isResourceHeld(ResourceLease.INVENTORY);
             ItemStack reserveBlockedStack = reserveItems
                     ? InventoryUtils.findReserveBlockedStack(

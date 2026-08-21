@@ -15,6 +15,7 @@ import me.aleksilassila.litematica.printer.printer.MissingMaterialTracker;
 import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
+import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
 import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
 import me.aleksilassila.litematica.printer.integration.inventory.MaterialRequestCoordinator;
 import me.aleksilassila.litematica.printer.integration.inventory.PlayerInventoryProvider;
@@ -50,6 +51,7 @@ public final class PrinterRuntime {
     private final MissingMaterialTracker missingMaterials;
     private final HudStatsManager hudStats;
     private final QuickShulkerAdapter quickShulkerAdapter;
+    private final InventorySwitchGuard inventorySwitchGuard;
 
     private PrinterRuntime() {
         Minecraft client = Minecraft.getInstance();
@@ -57,10 +59,11 @@ public final class PrinterRuntime {
         this.scope.register(this.cooldownUtils);
         this.bedrockEngine = new BedrockEngine(client, this.cooldownUtils);
         this.scope.register(new MinecraftInteractionRuntime(client));
-        this.scope.register(new InventorySwitchRuntime());
         this.scope.register(this.bedrockEngine);
         this.actionBroker = new ActionBroker(this, new ActionManager());
         this.scope.register(this.actionBroker);
+        this.inventorySwitchGuard = new InventorySwitchGuard(client, this.actionBroker, this::currentTick);
+        this.scope.register(new InventorySwitchRuntime(this.inventorySwitchGuard));
         this.scanEngine = new ScanEngine(this);
         this.scope.register(this.scanEngine);
         this.inventoryAvailability = new InventoryAvailabilityTracker();
@@ -136,6 +139,10 @@ public final class PrinterRuntime {
 
     public QuickShulkerAdapter quickShulkerAdapter() {
         return this.quickShulkerAdapter;
+    }
+
+    public InventorySwitchGuard inventorySwitchGuard() {
+        return this.inventorySwitchGuard;
     }
 
     public Minecraft client() {

@@ -6,7 +6,6 @@ import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
 import me.aleksilassila.litematica.printer.handler.handlers.GuiHandler;
 import me.aleksilassila.litematica.printer.handler.handlers.MineDebugLog;
-import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
 import me.aleksilassila.litematica.printer.core.action.ResourceLease;
 import net.minecraft.client.Minecraft;
 import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
@@ -130,7 +129,7 @@ final class TickScheduler implements RuntimeComponent {
 
     private boolean pauseForInventoryState(String reasonPrefix) {
         boolean inventoryLease = this.runtime.actionBroker().isResourceHeld(ResourceLease.INVENTORY);
-        boolean inventorySwitchPending = InventorySwitchGuard.isWaiting();
+        boolean inventorySwitchPending = this.runtime.inventorySwitchGuard().isWaiting();
         if (inventoryLease || inventorySwitchPending) {
             this.pause(reasonPrefix + " inventoryLease=" + inventoryLease
                     + " inventorySwitchPending=" + inventorySwitchPending);

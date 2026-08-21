@@ -47,7 +47,8 @@ public class PrintHandler extends FeatureModuleBase {
     public PrintHandler(PrinterRuntime runtime) {
         super(runtime, NAME, PrintModeType.PRINTER, Configs.Core.PRINT, Configs.Print.PRINT_SELECTION_TYPE, true);
         this.sortedTargets = new SortedSchematicTargetQueue(this.scanEngine);
-        this.placementExecutor = new PrintPlacementExecutor(this.actionBroker, this.cooldownUtils);
+        this.placementExecutor = new PrintPlacementExecutor(
+                this.actionBroker, this.cooldownUtils, runtime.inventorySwitchGuard());
     }
 
     public SchematicBlockContext getContext() {

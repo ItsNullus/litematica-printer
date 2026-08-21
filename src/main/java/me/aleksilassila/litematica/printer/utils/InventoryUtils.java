@@ -7,6 +7,7 @@ import me.aleksilassila.litematica.printer.mixin.printer.litematica.EasyPlaceUti
 import me.aleksilassila.litematica.printer.mixin.printer.litematica.InventoryUtilsAccessor;
 import me.aleksilassila.litematica.printer.integration.inventory.MaterialRequest;
 import me.aleksilassila.litematica.printer.integration.litematica.LitematicaPickSlotAdapter;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import me.aleksilassila.litematica.printer.utils.minecraft.PlayerUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.ToolSelectionUtils;
 import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
@@ -375,7 +376,7 @@ public class InventoryUtils {
     }
 
     private static boolean switchToItems(LocalPlayer player, Item[] items, int reserveCount) {
-        if (InventorySwitchGuard.isWaiting()) {
+        if (PrinterRuntime.get().inventorySwitchGuard().isWaiting()) {
             return false;
         }
         if (items == null || items.length == 0) {
@@ -407,7 +408,8 @@ public class InventoryUtils {
                         && getConsumableSurplus(player, itemStack, null, reserveCount) > 0) {
                     boolean needsInventoryConfirmation = !Inventory.isHotbarSlot(i);
                     if (InventoryUtils.setPickedItemToHand(i, itemStack, client)) {
-                        return !needsInventoryConfirmation || !InventorySwitchGuard.markSwitchIfNeeded(item);
+                        return !needsInventoryConfirmation
+                                || !PrinterRuntime.get().inventorySwitchGuard().markSwitchIfNeeded(item);
                     }
                     return false;
                 }
@@ -480,7 +482,7 @@ public class InventoryUtils {
             ItemStack creativeFallback,
             int reserveCount
     ) {
-        if (player == null || predicate == null || InventorySwitchGuard.isWaiting()) {
+        if (player == null || predicate == null || PrinterRuntime.get().inventorySwitchGuard().isWaiting()) {
             return false;
         }
         ItemStack mainHandStack = player.getMainHandItem();
@@ -501,7 +503,7 @@ public class InventoryUtils {
             boolean needsInventoryConfirmation = !Inventory.isHotbarSlot(slot);
             if (setPickedItemToHand(slot, stack, client)) {
                 return !needsInventoryConfirmation
-                        || !InventorySwitchGuard.markSwitchIfNeeded(stack.getItem());
+                        || !PrinterRuntime.get().inventorySwitchGuard().markSwitchIfNeeded(stack.getItem());
             }
             return false;
         }
