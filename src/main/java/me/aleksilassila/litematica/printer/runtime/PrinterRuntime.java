@@ -45,7 +45,7 @@ public final class PrinterRuntime {
         this.scope.register(new MinecraftInteractionRuntime(client));
         this.scope.register(new InventorySwitchRuntime());
         this.scope.register(this.bedrockEngine);
-        this.actionBroker = new ActionBroker(ActionManager.INSTANCE);
+        this.actionBroker = new ActionBroker(new ActionManager());
         this.scope.register(this.actionBroker);
         this.scanEngine = new ScanEngine();
         this.scope.register(this.scanEngine);

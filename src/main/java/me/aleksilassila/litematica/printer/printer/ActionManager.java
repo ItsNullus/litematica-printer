@@ -37,7 +37,6 @@ import net.minecraft.world.entity.player.Input;
 
 @SuppressWarnings("SpellCheckingInspection")
 public class ActionManager {
-    public static final ActionManager INSTANCE = new ActionManager();
     private static final float LOOK_SETTLED_EPSILON_DEGREES = 1.0F;
     private static final double STALE_WAIT_MOVE_DISTANCE_SQR = 0.75D * 0.75D;
     private QueuedClick queuedClick;
@@ -82,7 +81,7 @@ public class ActionManager {
         }
     }
 
-    private ActionManager() {
+    public ActionManager() {
     }
 
     public boolean queueClick(@NotNull BlockPos target, @NotNull Direction side, @NotNull Vec3 hitModifier, boolean useShift) {
