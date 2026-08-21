@@ -141,6 +141,10 @@ abstract class ModPlugin : Plugin<Project> {
                                 if (relative.endsWith("/handler/FeatureModuleBase.java") && lineCount > 400) {
                                     violations += "$relative: orchestration base has $lineCount lines (maximum 400)"
                                 }
+                                if (relative.endsWith("/integration/quickshulker/OrderedStorageController.java")
+                                    && lineCount > 400) {
+                                    violations += "$relative: ordered-storage orchestrator has $lineCount lines (maximum 400)"
+                                }
 
                                 if (relative.contains("/printer/zxy/")
                                     || text.contains(".printer.zxy.")) {
