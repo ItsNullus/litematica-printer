@@ -20,11 +20,6 @@ import java.util.concurrent.atomic.AtomicReference;
 public class BedrockHandler extends FeatureModuleBase {
     private final BedrockCandidatePlanner candidatePlanner;
 
-    public BedrockHandler() {
-        super(PrinterRuntime.get(), "bedrock", PrintModeType.BEDROCK, Configs.Hotkeys.BEDROCK, null, true);
-        this.candidatePlanner = new BedrockCandidatePlanner(this.scanEngine);
-    }
-
     public BedrockHandler(PrinterRuntime runtime) {
         super(runtime, "bedrock", PrintModeType.BEDROCK, Configs.Hotkeys.BEDROCK, null, true);
         this.candidatePlanner = new BedrockCandidatePlanner(this.scanEngine);

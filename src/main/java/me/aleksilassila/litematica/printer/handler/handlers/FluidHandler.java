@@ -58,10 +58,6 @@ public class FluidHandler extends FeatureModuleBase {
     private Set<Fluid> fluids = Set.of();
     private int observedScanConfigHash = Integer.MIN_VALUE;
 
-    public FluidHandler() {
-        super(PrinterRuntime.get(), NAME, PrintModeType.FLUID, Configs.Core.FLUID, Configs.Fluid.FLUID_SELECTION_TYPE, true);
-    }
-
     public FluidHandler(PrinterRuntime runtime) {
         super(runtime, NAME, PrintModeType.FLUID, Configs.Core.FLUID, Configs.Fluid.FLUID_SELECTION_TYPE, true);
     }

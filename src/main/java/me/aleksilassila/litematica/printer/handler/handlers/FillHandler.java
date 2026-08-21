@@ -69,10 +69,6 @@ public class FillHandler extends FeatureModuleBase {
     private int fillScanConfigHash;
     private int observedFillScanConfigHash = Integer.MIN_VALUE;
 
-    public FillHandler() {
-        super(PrinterRuntime.get(), NAME, PrintModeType.FILL, Configs.Core.FILL, Configs.Fill.FILL_SELECTION_TYPE, true);
-    }
-
     public FillHandler(PrinterRuntime runtime) {
         super(runtime, NAME, PrintModeType.FILL, Configs.Core.FILL, Configs.Fill.FILL_SELECTION_TYPE, true);
     }

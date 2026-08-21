@@ -40,10 +40,6 @@ public class MineHandler extends FeatureModuleBase {
     @Nullable
     private BlockPos activeMinePos;
 
-    public MineHandler() {
-        super(PrinterRuntime.get(), NAME, PrintModeType.MINE, Configs.Core.MINE, Configs.Mine.MINE_SELECTION_TYPE, true);
-    }
-
     public MineHandler(PrinterRuntime runtime) {
         super(runtime, NAME, PrintModeType.MINE, Configs.Core.MINE, Configs.Mine.MINE_SELECTION_TYPE, true);
     }

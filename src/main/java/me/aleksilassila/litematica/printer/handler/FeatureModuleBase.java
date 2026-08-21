@@ -46,6 +46,7 @@ public abstract class FeatureModuleBase extends ConfigUtils implements RuntimeCo
     protected final ScanEngine scanEngine;
     protected final ActionBroker actionBroker;
     protected final CooldownUtils cooldownUtils;
+    protected final RttReplayController rttReplayController;
     final InventoryAvailabilityTracker inventoryAvailability;
     @Nullable
     final PrintModeType printMode;
@@ -87,6 +88,7 @@ public abstract class FeatureModuleBase extends ConfigUtils implements RuntimeCo
         this.scanEngine = runtime.scanEngine();
         this.actionBroker = runtime.actionBroker();
         this.cooldownUtils = runtime.cooldownUtils();
+        this.rttReplayController = runtime.rttReplayController();
         this.inventoryAvailability = runtime.inventoryAvailability();
         this.id = id;
         this.printMode = printMode;
