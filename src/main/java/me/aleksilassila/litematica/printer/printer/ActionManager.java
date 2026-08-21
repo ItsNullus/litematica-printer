@@ -1,6 +1,5 @@
 package me.aleksilassila.litematica.printer.printer;
 
-import lombok.Setter;
 //#if MC > 12100
 import fi.dy.masa.litematica.util.EasyPlaceUtils;
 //#endif
@@ -41,10 +40,9 @@ public class ActionManager {
     private static final double STALE_WAIT_MOVE_DISTANCE_SQR = 0.75D * 0.75D;
     private QueuedClick queuedClick;
     private final InteractionScreenSessions screenSessions = new InteractionScreenSessions();
-    @Setter
     @Nullable
-    public PlayerLook look;
-    public boolean needWaitModifyLook = false;
+    private PlayerLook look;
+    private boolean needWaitModifyLook = false;
     private boolean waitForHorizontalLook = true;
     private boolean actionRequiresWaitModifyLook = false;
     private long lastQueuedLookTick = Long.MIN_VALUE;
@@ -82,6 +80,19 @@ public class ActionManager {
     }
 
     public ActionManager() {
+    }
+
+    public boolean isWaitingForLook() {
+        return this.needWaitModifyLook;
+    }
+
+    @Nullable
+    public PlayerLook getLook() {
+        return this.look;
+    }
+
+    public void setLook(@Nullable PlayerLook look) {
+        this.look = look;
     }
 
     public boolean queueClick(@NotNull BlockPos target, @NotNull Direction side, @NotNull Vec3 hitModifier, boolean useShift) {

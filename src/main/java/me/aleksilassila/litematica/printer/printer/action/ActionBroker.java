@@ -149,12 +149,12 @@ public final class ActionBroker implements RuntimeComponent {
     }
 
     public boolean isWaitingForLook() {
-        return this.delegate.needWaitModifyLook;
+        return this.delegate.isWaitingForLook();
     }
 
     @Nullable
     public PlayerLook getLook() {
-        return this.delegate.look;
+        return this.delegate.getLook();
     }
 
     public void setLook(@Nullable PlayerLook look) {
