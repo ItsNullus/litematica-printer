@@ -40,6 +40,37 @@ public final class ActionBroker implements RuntimeComponent {
     private final ActionCoordinator coordinator = new ActionCoordinator();
     private ActionTransaction activeTransaction;
 
+    public enum ActionSource {
+        GENERIC,
+        PRINT,
+        FILL,
+        FLUID
+    }
+
+    public enum SendResult {
+        SENT,
+        WAITING_FOR_LOOK,
+        NO_QUEUED_ACTION,
+        NO_PLAYER,
+        STALE_POSITION,
+        HELD_ITEM_CHANGED,
+        RESERVE_LIMIT,
+        NO_GAME_MODE,
+        INTERACTION_REJECTED;
+
+        public boolean isSent() {
+            return this == SENT;
+        }
+
+        public boolean isWaiting() {
+            return this == WAITING_FOR_LOOK;
+        }
+
+        private static SendResult from(ActionManager.SendResult result) {
+            return valueOf(result.name());
+        }
+    }
+
     public ActionBroker(ActionManager delegate) {
         this.delegate = delegate;
     }
@@ -51,7 +82,7 @@ public final class ActionBroker implements RuntimeComponent {
             boolean useShift,
             int clickRepeatCount,
             @Nullable Item[] expectedItems,
-            @NotNull ActionManager.ActionSource source
+            @NotNull ActionSource source
     ) {
         if (this.activeTransaction != null) {
             return false;
@@ -70,7 +101,15 @@ public final class ActionBroker implements RuntimeComponent {
             return false;
         }
         ActionTransaction transaction = admitted.get();
-        if (!this.delegate.queueClick(target, side, hitModifier, useShift, clickRepeatCount, expectedItems, source)) {
+        if (!this.delegate.queueClick(
+                target,
+                side,
+                hitModifier,
+                useShift,
+                clickRepeatCount,
+                expectedItems,
+                ActionManager.ActionSource.valueOf(source.name())
+        )) {
             this.coordinator.release(transaction.ticket());
             return false;
         }
@@ -82,18 +121,21 @@ public final class ActionBroker implements RuntimeComponent {
         this.delegate.useProtocolHitModifier(hitModifier);
     }
 
-    public boolean setQueueCompletionListener(@Nullable Consumer<ActionManager.SendResult> completionListener) {
-        return this.delegate.setQueueCompletionListener(completionListener);
+    public boolean setQueueCompletionListener(@Nullable Consumer<SendResult> completionListener) {
+        return this.delegate.setQueueCompletionListener(
+                completionListener == null ? null : result -> completionListener.accept(SendResult.from(result))
+        );
     }
 
     public boolean setExpectedStackPredicate(@Nullable Predicate<ItemStack> expectedStackPredicate) {
         return this.delegate.setExpectedStackPredicate(expectedStackPredicate);
     }
 
-    public ActionManager.SendResult sendQueue(@Nullable LocalPlayer player) {
-        ActionManager.SendResult result = this.delegate.sendQueue(player);
+    public SendResult sendQueue(@Nullable LocalPlayer player) {
+        ActionManager.SendResult delegateResult = this.delegate.sendQueue(player);
+        SendResult result = SendResult.from(delegateResult);
         if (!result.isWaiting()) {
-            this.completeActiveTransaction(result);
+            this.completeActiveTransaction(delegateResult);
             this.releaseActiveTicket();
         }
         return result;

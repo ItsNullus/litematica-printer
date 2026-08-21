@@ -1,6 +1,5 @@
 package me.aleksilassila.litematica.printer.printer.action;
 
-import me.aleksilassila.litematica.printer.printer.ActionManager;
 import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -38,7 +37,7 @@ public class ClickAction extends Action {
                 false,
                 this.clickRepeatCount,
                 expectedItems,
-                ActionManager.ActionSource.PRINT
+                ActionBroker.ActionSource.PRINT
         );
     }
 

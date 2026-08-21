@@ -3,7 +3,6 @@ package me.aleksilassila.litematica.printer.printer.action;
 import lombok.Getter;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.interfaces.Implementation;
-import me.aleksilassila.litematica.printer.printer.ActionManager;
 import me.aleksilassila.litematica.printer.printer.PlayerLook;
 import me.aleksilassila.litematica.printer.printer.PrinterUtils;
 import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
@@ -265,7 +264,7 @@ public class Action {
                     useShift,
                     1,
                     expectedItems,
-                    ActionManager.ActionSource.PRINT
+                    ActionBroker.ActionSource.PRINT
             );
         } else {
             return actionBroker.queueClick(
@@ -275,7 +274,7 @@ public class Action {
                     useShift,
                     1,
                     expectedItems,
-                    ActionManager.ActionSource.PRINT
+                    ActionBroker.ActionSource.PRINT
             );
         }
     }

@@ -6,7 +6,6 @@ import me.aleksilassila.litematica.printer.core.action.ResourceLease;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.handler.handlers.PrintHandler;
 import me.aleksilassila.litematica.printer.interfaces.Implementation;
-import me.aleksilassila.litematica.printer.printer.ActionManager;
 import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import me.aleksilassila.litematica.printer.printer.MissingMaterialTracker;
 import me.aleksilassila.litematica.printer.printer.PlayerLook;
@@ -168,7 +167,7 @@ public final class PrintPlacementExecutor {
                 if (signPlacement) {
                     this.actionBroker.cancelPrintSignEdit(blockPos);
                 }
-                if (sendResult == ActionManager.SendResult.RESERVE_LIMIT) {
+                if (sendResult == ActionBroker.SendResult.RESERVE_LIMIT) {
                     showReserveNotice(context, context.client.player.getMainHandItem());
                 }
                 HudStatsManager.INSTANCE.recordDeferred(
@@ -181,7 +180,7 @@ public final class PrintPlacementExecutor {
             }
         });
 
-        ActionManager.SendResult sendResult = this.actionBroker.sendQueue(context.client.player);
+        ActionBroker.SendResult sendResult = this.actionBroker.sendQueue(context.client.player);
         if (sendResult.isWaiting()) {
             deferred.set(true);
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "等待转头");
@@ -196,7 +195,7 @@ public final class PrintPlacementExecutor {
             if (signPlacement) {
                 this.actionBroker.cancelPrintSignEdit(blockPos);
             }
-            if (sendResult == ActionManager.SendResult.RESERVE_LIMIT) {
+            if (sendResult == ActionBroker.SendResult.RESERVE_LIMIT) {
                 showReserveNotice(context, context.client.player.getMainHandItem());
             }
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, describeSendFailure(sendResult));
@@ -226,7 +225,7 @@ public final class PrintPlacementExecutor {
         HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.PRINT, "运行中");
     }
 
-    private static String describeSendFailure(ActionManager.SendResult result) {
+    private static String describeSendFailure(ActionBroker.SendResult result) {
         return switch (result) {
             case STALE_POSITION -> "移动后动作失效";
             case HELD_ITEM_CHANGED -> "手持物品已变化";
