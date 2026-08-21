@@ -7,16 +7,13 @@ import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEpoch;
 import me.aleksilassila.litematica.printer.handler.scan.SectionScanSession.Candidate;
 import me.aleksilassila.litematica.printer.handler.scan.SectionScanSession.MutableMetrics;
-import me.aleksilassila.litematica.printer.handler.scan.SectionScanSession.Region;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Predicate;
 
 public final class ScanCache {
@@ -33,9 +30,8 @@ public final class ScanCache {
         INVALIDATIONS_ONLY
     }
 
-    private final Map<String, SectionScanSession> sessions = new HashMap<>();
-    private final Map<String, MutableMetrics> scanMetrics = new HashMap<>();
     private final AsyncPositionCursorScheduler asyncScheduler = new AsyncPositionCursorScheduler();
+    private final ScanSessionStore sessions = new ScanSessionStore(this.asyncScheduler);
 
     private Object levelIdentity;
     private Object schematicIdentity;
@@ -50,8 +46,8 @@ public final class ScanCache {
     }
 
     public void clear() {
-        this.closeSessions();
-        this.scanMetrics.clear();
+        this.sessions.close();
+        this.sessions.clearMetrics();
         this.levelIdentity = null;
         this.schematicIdentity = null;
         this.snapshotRevision = 0L;
@@ -71,6 +67,10 @@ public final class ScanCache {
             int completedPasses
     ) {
         private static final ScanMetrics EMPTY = new ScanMetrics(0L, 0, 0, 0, 0, 0, 0);
+
+        static ScanMetrics empty() {
+            return EMPTY;
+        }
 
         public boolean hasActivity() {
             return this.scanNanos > 0L
@@ -99,8 +99,8 @@ public final class ScanCache {
             return;
         }
         if (!this.runtimeEpoch.equals(epoch) || this.levelIdentity != level || this.schematicIdentity != schematic) {
-            this.closeSessions();
-            this.scanMetrics.clear();
+            this.sessions.close();
+            this.sessions.clearMetrics();
             DirtyRegionTracker.INSTANCE.clear();
             this.levelIdentity = level;
             this.schematicIdentity = schematic;
@@ -108,9 +108,7 @@ public final class ScanCache {
             this.snapshotRevision++;
         }
         if (this.tickTime != tickTime) {
-            for (MutableMetrics metrics : this.scanMetrics.values()) {
-                metrics.reset();
-            }
+            this.sessions.resetMetrics();
         }
         this.tickTime = tickTime;
         if (this.scanBudgetTickTime != tickTime) {
@@ -120,8 +118,7 @@ public final class ScanCache {
     }
 
     public ScanMetrics metricsFor(String ownerKey) {
-        MutableMetrics metrics = this.scanMetrics.get(normalizeMetricsOwnerKey(ownerKey));
-        return metrics == null ? ScanMetrics.EMPTY : metrics.snapshot();
+        return this.sessions.metricsFor(normalizeMetricsOwnerKey(ownerKey));
     }
 
     public void invalidate(BlockPos pos) {
@@ -129,24 +126,14 @@ public final class ScanCache {
             return;
         }
         this.snapshotRevision++;
-        for (SectionScanSession session : this.sessions.values()) {
-            session.invalidate(pos);
-        }
+        this.sessions.invalidate(pos);
     }
 
     public void resetOwner(String ownerKey) {
         if (ownerKey == null || ownerKey.isBlank()) {
             return;
         }
-        String prefix = ownerKey + ":";
-        Iterator<Map.Entry<String, SectionScanSession>> iterator = this.sessions.entrySet().iterator();
-        while (iterator.hasNext()) {
-            Map.Entry<String, SectionScanSession> entry = iterator.next();
-            if (entry.getKey().startsWith(prefix)) {
-                entry.getValue().close();
-                iterator.remove();
-            }
-        }
+        this.sessions.resetOwner(ownerKey);
     }
 
     public Iterable<BlockPos> rawIterable(
@@ -413,37 +400,19 @@ public final class ScanCache {
             List<PrinterBox> sourceBoxes,
             LocalPlayer player
     ) {
-        Region region = Region.from(sourceBounds, player);
-        String key = ownerKey + ":" + intent.name();
-        SectionScanSession session = this.sessions.get(key);
         boolean asynchronous = Configs.Core.ASYNC_SCAN.getBooleanValue();
-        if (session == null || !session.canReuse(region) || session.usesAsyncTraversal() != asynchronous) {
-            if (session != null) {
-                session.close();
-            }
-            session = new SectionScanSession(
-                    region,
-                    sourceBoxes,
-                    intent,
-                    metrics,
-                    this.asyncScheduler,
-                    asynchronous,
-                    this.runtimeEpoch,
-                    () -> this.snapshotRevision,
-                    () -> ++this.generationSequence
-            );
-            this.sessions.put(key, session);
-        } else {
-            session.updateRegion(region, sourceBoxes);
-        }
-        return session;
-    }
-
-    private void closeSessions() {
-        for (SectionScanSession session : this.sessions.values()) {
-            session.close();
-        }
-        this.sessions.clear();
+        return this.sessions.getOrCreate(
+                ownerKey,
+                metrics,
+                intent,
+                sourceBounds,
+                sourceBoxes,
+                player,
+                asynchronous,
+                this.runtimeEpoch,
+                () -> this.snapshotRevision,
+                () -> ++this.generationSequence
+        );
     }
 
     private static PrinterBox enclosingBox(List<PrinterBox> boxes) {
@@ -492,7 +461,7 @@ public final class ScanCache {
     }
 
     private MutableMetrics metrics(String ownerKey) {
-        return this.scanMetrics.computeIfAbsent(ownerKey, key -> new MutableMetrics());
+        return this.sessions.metrics(ownerKey);
     }
 
     private static String normalizeMetricsOwnerKey(String ownerKey) {
