@@ -4,7 +4,6 @@ import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.enums.ScanState;
 import me.aleksilassila.litematica.printer.enums.WorkingModeType;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
-import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
 import me.aleksilassila.litematica.printer.handler.FeatureModuleBase;
 import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockController;
 import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockEngine;
@@ -114,7 +113,7 @@ public class Render2D {
 
         // 延迟过大警告
         if (Configs.Core.LAG_CHECK.getBooleanValue() &&
-                ClientPlayerTickManager.getPacketTick() > Configs.Core.LAG_CHECK_MAX.getIntegerValue()) {
+                PrinterRuntime.get().modules().packetTick() > Configs.Core.LAG_CHECK_MAX.getIntegerValue()) {
             Render2DUtils.drawString("延迟过大，已暂停运行", centerX, centerY - 22, Color.ORANGE, true, true);
         }
 
@@ -211,7 +210,7 @@ public class Render2D {
         int baseX = Configs.Core.RENDER_HUD_X.getIntegerValue();
         int baseY = Configs.Core.RENDER_HUD_Y.getIntegerValue();
         int scaleConfig = Configs.Core.RENDER_HUD_SCALE.getIntegerValue();
-        long tick = ClientPlayerTickManager.getCurrentHandlerTime();
+        long tick = PrinterRuntime.get().currentTick();
         if (!forceRefresh
                 && this.cachedHudLayouts != null
                 && this.cachedHudTick == tick
@@ -256,13 +255,13 @@ public class Render2D {
         String workMode = ((WorkingModeType) Configs.Core.WORK_MODE.getOptionListValue()).equals(WorkingModeType.SINGLE) ? "单模" : "多模";
         lines.add(new HudLine("工作: " + (enabled ? "运行中" : "已关闭") + " | 模式: " + workMode + " | 功能: " + getActiveModeSummary(), new Color(255, 255, 255, 255)));
 
-        String pauseReason = ClientPlayerTickManager.getLastPauseReason();
+        String pauseReason = PrinterRuntime.get().modules().lastPauseReason();
         if (!enabled) {
             lines.add(new HudLine("调度: 已关闭", new Color(255, 204, 102, 255)));
         } else if (pauseReason != null) {
             lines.add(new HudLine("调度: 暂停 | 原因: " + humanizeSchedulerReason(pauseReason), new Color(255, 180, 90, 255)));
         } else {
-            lines.add(new HudLine("调度: 运行中 | Tick: " + ClientPlayerTickManager.getCurrentHandlerTime(), new Color(180, 255, 180, 255)));
+            lines.add(new HudLine("调度: 运行中 | Tick: " + PrinterRuntime.get().currentTick(), new Color(180, 255, 180, 255)));
         }
         return lines;
     }
@@ -328,7 +327,7 @@ public class Render2D {
         lines.add(new HudLine("吞吐 " + bedrock.configuredThroughput()
                 + " | 提交 " + bedrock.acceptedThisTick() + "/" + bedrock.submitCap()
                 + " | 阻塞 " + bedrock.rejectedThisTick()
-                + " | 扫描 " + formatScanState(ClientPlayerTickManager.BEDROCK)
+                + " | 扫描 " + formatScanState(PrinterRuntime.get().modules().bedrock())
                 + " | 状态 " + status, new Color(255, 255, 255, 255)));
     }
 
@@ -445,11 +444,11 @@ public class Render2D {
 
     private FeatureModuleBase getModule(HudStatsManager.Mode mode) {
         return switch (mode) {
-            case PRINT -> ClientPlayerTickManager.PRINT;
-            case MINE -> ClientPlayerTickManager.MINE;
-            case FILL -> ClientPlayerTickManager.FILL;
-            case FLUID -> ClientPlayerTickManager.FLUID;
-            case BEDROCK -> ClientPlayerTickManager.BEDROCK;
+            case PRINT -> PrinterRuntime.get().modules().print();
+            case MINE -> PrinterRuntime.get().modules().mine();
+            case FILL -> PrinterRuntime.get().modules().fill();
+            case FLUID -> PrinterRuntime.get().modules().fluid();
+            case BEDROCK -> PrinterRuntime.get().modules().bedrock();
             case TOTAL -> null;
         };
     }
