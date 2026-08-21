@@ -91,11 +91,11 @@ public class FluidHandler extends FeatureModuleBase {
             fluids = fluidBlocks.isEmpty() ? Set.of() : RegistryFilterResolver.resolveFluids(this.fluidBlocks);
         }
         if (fillItems.isEmpty()) {
-            HudStatsManager.getRuntime().recordStatus(HudStatsManager.Mode.FLUID, "无流体填充方块");
+            this.hudStats.recordStatus(HudStatsManager.Mode.FLUID, "无流体填充方块");
         } else if (this.fluidBlocks.isEmpty()) {
-            HudStatsManager.getRuntime().recordStatus(HudStatsManager.Mode.FLUID, "无目标流体配置");
+            this.hudStats.recordStatus(HudStatsManager.Mode.FLUID, "无目标流体配置");
         } else {
-            HudStatsManager.getRuntime().recordStatus(HudStatsManager.Mode.FLUID, "运行中");
+            this.hudStats.recordStatus(HudStatsManager.Mode.FLUID, "运行中");
         }
         int scanConfigHash = this.getScanConfigHash();
         if (this.observedScanConfigHash != Integer.MIN_VALUE
@@ -174,8 +174,8 @@ public class FluidHandler extends FeatureModuleBase {
             return;
         }
         if (!InventoryUtils.switchToItems(player, fillItemArray)) {
-            HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.FLUID, "缺少流体填充方块");
-            MissingMaterialTracker.getRuntime().recordMissing(
+            this.hudStats.recordDeferred(HudStatsManager.Mode.FLUID, "缺少流体填充方块");
+            this.missingMaterials.recordMissing(
                     fillItemArray,
                     null,
                     null,
@@ -187,13 +187,13 @@ public class FluidHandler extends FeatureModuleBase {
             }
             return;
         }
-        MissingMaterialTracker.getRuntime().resolve(fillItemArray, null);
+        this.missingMaterials.resolve(fillItemArray, null);
         BlockPos clickTarget = blockPos;
         Direction clickSide = Direction.DOWN;
         if (!Configs.Print.PLACE_IN_AIR.getBooleanValue()) {
             Direction placementSide = this.findPlacementSide(blockPos);
             if (placementSide == null) {
-                HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.FLUID, "无有效放置面");
+                this.hudStats.recordDeferred(HudStatsManager.Mode.FLUID, "无有效放置面");
                 // This was ready when scanned but its support disappeared before execution.
                 // A server block update (or the next full pass after the queue drains) will
                 // rediscover it; keeping it hot here would create an endless retry loop.
@@ -212,7 +212,7 @@ public class FluidHandler extends FeatureModuleBase {
                 fillItemArray,
                 ActionPort.ActionSource.FLUID
         )) {
-            HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.FLUID, "动作队列占用");
+            this.hudStats.recordDeferred(HudStatsManager.Mode.FLUID, "动作队列占用");
             setIterationConsumedEffectiveExecution(false);
             skipIteration.set(true);
             return;
@@ -220,12 +220,12 @@ public class FluidHandler extends FeatureModuleBase {
         BlockState previousState = level.getBlockState(blockPos);
         ActionPort.SendResult sendResult = this.actionBroker.sendQueue(player);
         if (sendResult.isWaiting()) {
-            HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.FLUID, "等待转头");
+            this.hudStats.recordDeferred(HudStatsManager.Mode.FLUID, "等待转头");
             skipIteration.set(true);
             return;
         }
         if (!sendResult.isSent()) {
-            HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.FLUID, "放置动作未发送");
+            this.hudStats.recordDeferred(HudStatsManager.Mode.FLUID, "放置动作未发送");
             // A rejected interaction means this cell is momentarily unplaceable. The common cause
             // is a falling fill-block entity (sand) currently occupying the cell: every placement
             // of sand into water spawns a FallingBlockEntity (blocksBuilding=true) that blocks
@@ -237,9 +237,9 @@ public class FluidHandler extends FeatureModuleBase {
             this.setBlockPosCooldown(blockPos, REJECT_RETRY_COOLDOWN_TICKS);
             return;
         }
-        HudStatsManager.getRuntime().trackExpectedBlockChange(HudStatsManager.Mode.FLUID, blockPos, previousState);
-        HudStatsManager.getRuntime().recordRateUnit(HudStatsManager.Mode.FLUID, 1);
-        HudStatsManager.getRuntime().recordStatus(HudStatsManager.Mode.FLUID, "运行中");
+        this.hudStats.trackExpectedBlockChange(HudStatsManager.Mode.FLUID, blockPos, previousState);
+        this.hudStats.recordRateUnit(HudStatsManager.Mode.FLUID, 1);
+        this.hudStats.recordStatus(HudStatsManager.Mode.FLUID, "运行中");
         this.setBlockPosCooldown(blockPos, ConfigUtils.getPlaceCooldown());
     }
 

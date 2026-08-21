@@ -95,7 +95,7 @@ public class FillHandler extends FeatureModuleBase {
                     fillCacheBlocklist = new ArrayList<>(strings);
                     fillModeItemList = new Item[0];
                     if (strings.isEmpty()) {
-                        HudStatsManager.getRuntime().recordStatus(HudStatsManager.Mode.FILL, "填充列表为空");
+                        this.hudStats.recordStatus(HudStatsManager.Mode.FILL, "填充列表为空");
                         return;
                     }
                     List<Item> items = RegistryFilterResolver.resolveItems(fillCacheBlocklist);
@@ -107,16 +107,16 @@ public class FillHandler extends FeatureModuleBase {
                     ItemStack heldStack = player.getMainHandItem(); // 获取主手物品
                     if (!heldStack.isEmpty() && heldStack.getCount() > 0) {
                         fillModeItemList = new Item[]{player.getMainHandItem().getItem()};
-                        HudStatsManager.getRuntime().recordStatus(HudStatsManager.Mode.FILL, "运行中");
+                        this.hudStats.recordStatus(HudStatsManager.Mode.FILL, "运行中");
                     } else {
                         fillModeItemList = new Item[0];
-                        HudStatsManager.getRuntime().recordStatus(HudStatsManager.Mode.FILL, "主手无可填充方块");
+                        this.hudStats.recordStatus(HudStatsManager.Mode.FILL, "主手无可填充方块");
                     }
                 }
                 break;
         }
         if (fillModeItemList.length == 0 && fillMode == FillBlockModeType.BLOCKLIST && !fillCacheBlocklist.isEmpty()) {
-            HudStatsManager.getRuntime().recordStatus(HudStatsManager.Mode.FILL, "列表无匹配方块");
+            this.hudStats.recordStatus(HudStatsManager.Mode.FILL, "列表无匹配方块");
         }
         int scanConfigHash = this.getFillScanConfigHash();
         if (this.observedFillScanConfigHash != Integer.MIN_VALUE
@@ -300,7 +300,7 @@ public class FillHandler extends FeatureModuleBase {
                 item.getBlock() instanceof FallingBlock block &&
                 FallingBlock.isFree(level.getBlockState(blockPos.below()))
         ) {
-            HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.FILL, "下落方块无支撑");
+                        this.hudStats.recordDeferred(HudStatsManager.Mode.FILL, "下落方块无支撑");
             MessageUtils.setOverlayMessage(I18n.FALLING_BLOCK_NO_SUPPORT.getName(block.getName().getString()));
             return;
         }
@@ -314,11 +314,11 @@ public class FillHandler extends FeatureModuleBase {
             boolean retrievalPending =
                     this.actionBroker.isResourceHeld(ResourceLease.INVENTORY);
             if (retrievalPending) {
-                HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.FILL, "等待取货");
-                MissingMaterialTracker.getRuntime().resolve(this.fillModeItemList, null);
+                this.hudStats.recordDeferred(HudStatsManager.Mode.FILL, "等待取货");
+                this.missingMaterials.resolve(this.fillModeItemList, null);
             } else {
-                HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.FILL, "缺少填充材料");
-                MissingMaterialTracker.getRuntime().recordMissing(
+                this.hudStats.recordDeferred(HudStatsManager.Mode.FILL, "缺少填充材料");
+                this.missingMaterials.recordMissing(
                         this.fillModeItemList,
                         null,
                         null,
@@ -332,11 +332,11 @@ public class FillHandler extends FeatureModuleBase {
             return;
         }
         if (!handheld) {
-            MissingMaterialTracker.getRuntime().resolve(this.fillModeItemList, null);
+            this.missingMaterials.resolve(this.fillModeItemList, null);
         }
         Direction side = this.getFillPlacementSide(blockPos);
         if (side == null) {
-            HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.FILL, "无有效放置面");
+            this.hudStats.recordDeferred(HudStatsManager.Mode.FILL, "无有效放置面");
             setIterationConsumedEffectiveExecution(false);
             return;
         }
@@ -354,7 +354,7 @@ public class FillHandler extends FeatureModuleBase {
                 expectedItems,
                     ActionPort.ActionSource.FILL
         )) {
-            HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.FILL, "动作队列占用");
+            this.hudStats.recordDeferred(HudStatsManager.Mode.FILL, "动作队列占用");
             setIterationConsumedEffectiveExecution(false);
             skipIteration.set(true);
             return;
@@ -363,12 +363,12 @@ public class FillHandler extends FeatureModuleBase {
         this.actionBroker.setWaitForHorizontalLook(false);
         ActionPort.SendResult sendResult = this.actionBroker.sendQueue(player);
         if (sendResult.isWaiting()) {
-            HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.FILL, "等待转头");
+            this.hudStats.recordDeferred(HudStatsManager.Mode.FILL, "等待转头");
             skipIteration.set(true);
             return;
         }
         if (!sendResult.isSent()) {
-            HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.FILL, "放置动作未发送");
+            this.hudStats.recordDeferred(HudStatsManager.Mode.FILL, "放置动作未发送");
             // A rejected interaction means this cell is momentarily unplaceable (a falling fill
             // block entity occupies the column, or the server rejected the placement). Do NOT
             // abort the whole pass: that serialised work to one rejected attempt per tick and
@@ -378,9 +378,9 @@ public class FillHandler extends FeatureModuleBase {
             this.setBlockPosCooldown(blockPos, REJECT_RETRY_COOLDOWN_TICKS);
             return;
         }
-        HudStatsManager.getRuntime().trackExpectedBlockChange(HudStatsManager.Mode.FILL, blockPos, currentState);
-        HudStatsManager.getRuntime().recordRateUnit(HudStatsManager.Mode.FILL, 1);
-        HudStatsManager.getRuntime().recordStatus(HudStatsManager.Mode.FILL, "运行中");
+        this.hudStats.trackExpectedBlockChange(HudStatsManager.Mode.FILL, blockPos, currentState);
+        this.hudStats.recordRateUnit(HudStatsManager.Mode.FILL, 1);
+        this.hudStats.recordStatus(HudStatsManager.Mode.FILL, "运行中");
         this.setBlockPosCooldown(blockPos, ConfigUtils.getPlaceCooldown());
     }
 
