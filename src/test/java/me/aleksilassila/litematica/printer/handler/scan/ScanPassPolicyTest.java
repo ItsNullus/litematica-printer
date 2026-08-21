@@ -15,7 +15,7 @@ class ScanPassPolicyTest {
     void completedPassCanWaitForInvalidationWithoutRestarting() {
         SectionScanSession session = session();
 
-        assertNull(session.next(null, null, 10L, () -> false, pos -> true, false, true));
+        assertNull(session.next(null, 10L, () -> false, pos -> true, false, true));
         assertFalse(session.canScan(11L, false));
 
         session.invalidate(new BlockPos(0, 0, 0));
@@ -26,7 +26,7 @@ class ScanPassPolicyTest {
     void normalPolicyRestartsACompletedPassOnTheNextTick() {
         SectionScanSession session = session();
 
-        assertNull(session.next(null, null, 20L, () -> false, pos -> true, false, true));
+        assertNull(session.next(null, 20L, () -> false, pos -> true, false, true));
         assertFalse(session.canScan(20L, true));
         assertTrue(session.canScan(21L, true));
     }

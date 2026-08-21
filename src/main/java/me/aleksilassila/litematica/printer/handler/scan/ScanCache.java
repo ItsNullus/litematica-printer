@@ -300,6 +300,9 @@ public final class ScanCache {
         );
         return () -> new Iterator<>() {
             private final LongSet emitted = new LongOpenHashSet();
+            private final WorldObservationPort observation = level == null
+                    ? null
+                    : new LiveWorldObservation(level, schematic);
             private BlockPos next;
             private boolean prepared;
             private boolean scanLimitHit;
@@ -323,7 +326,7 @@ public final class ScanCache {
                             break;
                         }
 
-                        Candidate candidate = session.next(level, schematic, tickTime,
+                        Candidate candidate = session.next(this.observation, tickTime,
                                 () -> !unbounded && isScanBudgetExceeded(budgetStart),
                                 preFilter,
                                 unbounded,

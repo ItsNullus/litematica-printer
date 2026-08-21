@@ -1,6 +1,5 @@
 package me.aleksilassila.litematica.printer.handler.scan;
 
-import fi.dy.masa.litematica.world.WorldSchematic;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import me.aleksilassila.litematica.printer.config.Configs;
@@ -10,14 +9,10 @@ import me.aleksilassila.litematica.printer.core.scan.ScanHandle;
 import me.aleksilassila.litematica.printer.enums.RadiusShapeType;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
-import me.aleksilassila.litematica.printer.utils.minecraft.BlockUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.PlayerUtils;
-import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.world.level.block.BaseRailBlock;
-import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.List;
@@ -56,7 +51,6 @@ final class SectionScanSession {
     private boolean closed;
     private ScanHandle scanHandle;
     private final BlockPos.MutableBlockPos liveMutable = new BlockPos.MutableBlockPos();
-    private final BlockPos.MutableBlockPos liveNeighbor = new BlockPos.MutableBlockPos();
     private int lastChunkX = Integer.MIN_VALUE;
     private int lastChunkZ = Integer.MIN_VALUE;
     private boolean lastChunkLoaded;
@@ -225,8 +219,7 @@ final class SectionScanSession {
     }
 
     Candidate next(
-            ClientLevel level,
-            WorldSchematic schematic,
+            WorldObservationPort observation,
             long tickTime,
             BooleanSupplier shouldPause,
             Predicate<BlockPos> preFilter,
@@ -237,18 +230,17 @@ final class SectionScanSession {
         if (!this.canScan(tickTime, restartCompletedPass)) {
             return null;
         }
-        return this.nextByPlayerDistance(level, schematic, tickTime, shouldPause, preFilter, unbounded);
+        return this.nextByPlayerDistance(observation, tickTime, shouldPause, preFilter, unbounded);
     }
 
     private Candidate nextByPlayerDistance(
-            ClientLevel level,
-            WorldSchematic schematic,
+            WorldObservationPort observation,
             long tickTime,
             BooleanSupplier shouldPause,
             Predicate<BlockPos> preFilter,
             boolean unbounded
     ) {
-        if (level == null) {
+        if (observation == null) {
             this.cursorRevision = this.sourceRevision;
             this.finishPass(tickTime);
             return null;
@@ -306,7 +298,7 @@ final class SectionScanSession {
             if (chunkX != this.lastChunkX || chunkZ != this.lastChunkZ) {
                 this.lastChunkX = chunkX;
                 this.lastChunkZ = chunkZ;
-                this.lastChunkLoaded = level.hasChunk(chunkX, chunkZ);
+                this.lastChunkLoaded = observation.hasChunk(chunkX, chunkZ);
             }
             if (!this.lastChunkLoaded) {
                 continue;
@@ -314,12 +306,23 @@ final class SectionScanSession {
 
             this.metrics.recordScannedSection(sectionKey(chunkX, sectionCoord(y), chunkZ));
 
-            BlockState state = level.getBlockState(this.liveMutable);
+            BlockState state = observation.worldState(this.liveMutable);
             this.metrics.scannedBlocks++;
             if (this.intent == ScanIntent.CUSTOM) {
                 return new Candidate(new BlockPos(x, y, z), (byte) 0);
             }
-            byte flags = this.liveFlags(level, schematic, x, y, z, state);
+            BlockState schematicState = this.intent == ScanIntent.PRINT
+                    ? observation.schematicState(this.liveMutable)
+                    : null;
+            boolean hasFillSupport = this.intent == ScanIntent.FILL
+                    && observation.hasFillSupport(this.liveMutable);
+            byte flags = ScanClassifier.flags(
+                    this.intent,
+                    state,
+                    schematicState,
+                    hasFillSupport,
+                    Configs.Print.BREAK_EXTRA_BLOCK.getBooleanValue()
+            );
             if (flags != 0) {
                 return new Candidate(new BlockPos(x, y, z), flags);
             }
@@ -352,70 +355,6 @@ final class SectionScanSession {
         this.exhaustedUntilTick = tickTime + 1;
         this.metrics.completedPasses++;
         return true;
-    }
-
-    private byte liveFlags(ClientLevel level, WorldSchematic schematic, int x, int y, int z, BlockState state) {
-        switch (this.intent) {
-            case PRINT -> {
-                if (schematic == null) {
-                    return 0;
-                }
-                BlockState requiredState = schematic.getBlockState(this.liveMutable);
-                if (requiredState.equals(state) && !(requiredState.getBlock() instanceof BaseRailBlock)) {
-                    return 0;
-                }
-                if (!requiredState.isAir()) {
-                    return (byte) (ScanFlags.SCHEMATIC_SAMPLED | ScanFlags.SCHEMATIC_NON_AIR);
-                }
-                if (Configs.Print.BREAK_EXTRA_BLOCK.getBooleanValue()
-                        && !state.isAir()
-                        && !(state.getBlock() instanceof LiquidBlock)) {
-                    return (byte) (ScanFlags.SCHEMATIC_SAMPLED | ScanFlags.WORLD_NON_AIR);
-                }
-                return 0;
-            }
-            case MINE -> {
-                if (state.isAir() || state.getBlock() instanceof LiquidBlock) {
-                    return 0;
-                }
-                return ScanFlags.WORLD_NON_AIR;
-            }
-            case FLUID -> {
-                if (state.getFluidState().isEmpty()) {
-                    return 0;
-                }
-                return (byte) (ScanFlags.WORLD_NON_AIR | ScanFlags.WORLD_FLUID);
-            }
-            case FILL -> {
-                boolean potential = state.isAir()
-                        || state.getBlock() instanceof LiquidBlock
-                        || BlockUtils.isReplaceable(state);
-                if (!potential || !this.hasFillSupportNeighborLive(level, x, y, z)) {
-                    return 0;
-                }
-                return ScanFlags.BASE_FILL_TARGET;
-            }
-            default -> {
-                return 0;
-            }
-        }
-    }
-
-    private boolean hasFillSupportNeighborLive(ClientLevel level, int x, int y, int z) {
-        for (Direction direction : DIRECTIONS) {
-            this.liveNeighbor.set(
-                    x + direction.getStepX(),
-                    y + direction.getStepY(),
-                    z + direction.getStepZ()
-            );
-            BlockState neighbor = level.getBlockState(this.liveNeighbor);
-            if (!neighbor.isAir()
-                    && !(neighbor.getBlock() instanceof LiquidBlock)
-                    && !BlockUtils.isReplaceable(neighbor)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static boolean containsAny(List<PrinterBox> boxes, BlockPos pos) {
