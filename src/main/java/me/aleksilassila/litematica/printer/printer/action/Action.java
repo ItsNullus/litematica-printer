@@ -240,7 +240,7 @@ public class Action {
     }
 
     public boolean queueAction(
-            @NotNull ActionBroker actionBroker,
+            @NotNull ActionPort actionBroker,
             @NotNull BlockPos blockPos,
             @NotNull Direction side,
             boolean useShift,
@@ -255,7 +255,7 @@ public class Action {
                     useShift,
                     1,
                     expectedItems,
-                    ActionBroker.ActionSource.PRINT
+                    ActionPort.ActionSource.PRINT
             );
         } else {
             return actionBroker.queueClick(
@@ -265,7 +265,7 @@ public class Action {
                     useShift,
                     1,
                     expectedItems,
-                    ActionBroker.ActionSource.PRINT
+                    ActionPort.ActionSource.PRINT
             );
         }
     }

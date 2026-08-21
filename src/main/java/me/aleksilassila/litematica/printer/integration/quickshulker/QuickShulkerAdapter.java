@@ -7,7 +7,7 @@ import me.aleksilassila.litematica.printer.core.action.ResourceLease;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
 import me.aleksilassila.litematica.printer.config.Configs;
-import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
+import me.aleksilassila.litematica.printer.printer.action.ActionPort;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -15,11 +15,11 @@ import net.minecraft.client.player.LocalPlayer;
 /** Public adapter around the Quick Shulker request and ordered-restore controllers. */
 public final class QuickShulkerAdapter implements InventoryProvider, RuntimeComponent {
     private static final String LEASE_OWNER = "quick_shulker";
-    private final ActionBroker actionBroker;
+    private final ActionPort actionBroker;
     private boolean resourcesAcquired;
     private long attemptedToken;
 
-    public QuickShulkerAdapter(ActionBroker actionBroker) {
+    public QuickShulkerAdapter(ActionPort actionBroker) {
         this.actionBroker = actionBroker;
     }
 

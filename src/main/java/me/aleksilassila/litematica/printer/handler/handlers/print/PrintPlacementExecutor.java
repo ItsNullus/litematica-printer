@@ -6,7 +6,7 @@ import me.aleksilassila.litematica.printer.core.action.ResourceLease;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.handler.handlers.PrintHandler;
 import me.aleksilassila.litematica.printer.interfaces.Implementation;
-import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
+import me.aleksilassila.litematica.printer.printer.action.ActionPort;
 import me.aleksilassila.litematica.printer.printer.MissingMaterialTracker;
 import me.aleksilassila.litematica.printer.printer.PlayerLook;
 import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
@@ -33,7 +33,7 @@ import java.util.function.Predicate;
 import net.minecraft.world.item.ItemStack;
 
 public final class PrintPlacementExecutor {
-    private final ActionBroker actionBroker;
+    private final ActionPort actionBroker;
     private final CooldownUtils cooldownUtils;
     private final InventorySwitchGuard inventorySwitchGuard;
     private static final Item[] EMPTY_HAND_ITEMS = {Items.AIR};
@@ -41,7 +41,7 @@ public final class PrintPlacementExecutor {
     private long lastReserveNoticeTick = Long.MIN_VALUE;
 
     public PrintPlacementExecutor(
-            ActionBroker actionBroker,
+            ActionPort actionBroker,
             CooldownUtils cooldownUtils,
             InventorySwitchGuard inventorySwitchGuard
     ) {
@@ -175,7 +175,7 @@ public final class PrintPlacementExecutor {
                 if (signPlacement) {
                     this.actionBroker.cancelPrintSignEdit(blockPos);
                 }
-                if (sendResult == ActionBroker.SendResult.RESERVE_LIMIT) {
+                if (sendResult == ActionPort.SendResult.RESERVE_LIMIT) {
                     showReserveNotice(context, context.client.player.getMainHandItem());
                 }
                 HudStatsManager.getRuntime().recordDeferred(
@@ -188,7 +188,7 @@ public final class PrintPlacementExecutor {
             }
         });
 
-        ActionBroker.SendResult sendResult = this.actionBroker.sendQueue(context.client.player);
+        ActionPort.SendResult sendResult = this.actionBroker.sendQueue(context.client.player);
         if (sendResult.isWaiting()) {
             deferred.set(true);
             HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.PRINT, "等待转头");
@@ -203,7 +203,7 @@ public final class PrintPlacementExecutor {
             if (signPlacement) {
                 this.actionBroker.cancelPrintSignEdit(blockPos);
             }
-            if (sendResult == ActionBroker.SendResult.RESERVE_LIMIT) {
+            if (sendResult == ActionPort.SendResult.RESERVE_LIMIT) {
                 showReserveNotice(context, context.client.player.getMainHandItem());
             }
             HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.PRINT, describeSendFailure(sendResult));
@@ -233,7 +233,7 @@ public final class PrintPlacementExecutor {
         HudStatsManager.getRuntime().recordStatus(HudStatsManager.Mode.PRINT, "运行中");
     }
 
-    private static String describeSendFailure(ActionBroker.SendResult result) {
+    private static String describeSendFailure(ActionPort.SendResult result) {
         return switch (result) {
             case STALE_POSITION -> "移动后动作失效";
             case HELD_ITEM_CHANGED -> "手持物品已变化";

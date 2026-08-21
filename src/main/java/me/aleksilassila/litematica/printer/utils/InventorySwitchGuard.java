@@ -1,6 +1,6 @@
 package me.aleksilassila.litematica.printer.utils;
 
-import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
+import me.aleksilassila.litematica.printer.printer.action.ActionPort;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.Item;
 
@@ -9,12 +9,12 @@ import java.util.function.LongSupplier;
 public final class InventorySwitchGuard {
     private static final int MAX_SETTLE_TICKS = 20;
     private final Minecraft client;
-    private final ActionBroker actionBroker;
+    private final ActionPort actionBroker;
     private final LongSupplier tickClock;
     private Item pendingItem;
     private long pendingStartedTick;
 
-    public InventorySwitchGuard(Minecraft client, ActionBroker actionBroker, LongSupplier tickClock) {
+    public InventorySwitchGuard(Minecraft client, ActionPort actionBroker, LongSupplier tickClock) {
         this.client = client;
         this.actionBroker = actionBroker;
         this.tickClock = tickClock;

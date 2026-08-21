@@ -33,7 +33,7 @@ import java.util.Optional;
  * feature code no longer needs to know which queue implementation owns the
  * action or how it is reset.</p>
  */
-public final class ActionBroker implements RuntimeComponent {
+public final class ActionBroker implements RuntimeComponent, ActionPort {
     private static final long ACTION_LEASE_TIMEOUT_NANOS = 10_000_000_000L;
 
     private final PrinterRuntime runtime;
@@ -41,35 +41,8 @@ public final class ActionBroker implements RuntimeComponent {
     private final ActionCoordinator coordinator = new ActionCoordinator();
     private ActionTransaction activeTransaction;
 
-    public enum ActionSource {
-        GENERIC,
-        PRINT,
-        FILL,
-        FLUID
-    }
-
-    public enum SendResult {
-        SENT,
-        WAITING_FOR_LOOK,
-        NO_QUEUED_ACTION,
-        NO_PLAYER,
-        STALE_POSITION,
-        HELD_ITEM_CHANGED,
-        RESERVE_LIMIT,
-        NO_GAME_MODE,
-        INTERACTION_REJECTED;
-
-        public boolean isSent() {
-            return this == SENT;
-        }
-
-        public boolean isWaiting() {
-            return this == WAITING_FOR_LOOK;
-        }
-
-        private static SendResult from(ActionManager.SendResult result) {
-            return valueOf(result.name());
-        }
+    private static SendResult from(ActionManager.SendResult result) {
+        return SendResult.valueOf(result.name());
     }
 
     public ActionBroker(PrinterRuntime runtime, ActionManager delegate) {
@@ -84,7 +57,7 @@ public final class ActionBroker implements RuntimeComponent {
             boolean useShift,
             int clickRepeatCount,
             @Nullable Item[] expectedItems,
-            @NotNull ActionSource source
+            @NotNull ActionPort.ActionSource source
     ) {
         if (this.activeTransaction != null) {
             return false;
@@ -125,7 +98,7 @@ public final class ActionBroker implements RuntimeComponent {
 
     public boolean setQueueCompletionListener(@Nullable Consumer<SendResult> completionListener) {
         return this.delegate.setQueueCompletionListener(
-                completionListener == null ? null : result -> completionListener.accept(SendResult.from(result))
+                completionListener == null ? null : result -> completionListener.accept(from(result))
         );
     }
 
@@ -135,7 +108,7 @@ public final class ActionBroker implements RuntimeComponent {
 
     public SendResult sendQueue(@Nullable LocalPlayer player) {
         ActionManager.SendResult delegateResult = this.delegate.sendQueue(player);
-        SendResult result = SendResult.from(delegateResult);
+        SendResult result = from(delegateResult);
         if (!result.isWaiting()) {
             this.completeActiveTransaction(delegateResult);
             this.releaseActiveTicket();

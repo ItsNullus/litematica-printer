@@ -3,17 +3,17 @@ package me.aleksilassila.litematica.printer.integration.inventory;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import me.aleksilassila.litematica.printer.core.action.ResourceLease;
-import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
+import me.aleksilassila.litematica.printer.printer.action.ActionPort;
 import net.minecraft.client.Minecraft;
 import java.util.EnumSet;
 
 /** Reflection-backed Take It Out capability isolated from feature code. */
 public final class TakeItOutAdapter implements InventoryProvider {
     private static final String LEASE_OWNER = "take_it_out";
-    private final ActionBroker actionBroker;
+    private final ActionPort actionBroker;
     private boolean resourcesAcquired;
 
-    public TakeItOutAdapter(ActionBroker actionBroker) {
+    public TakeItOutAdapter(ActionPort actionBroker) {
         this.actionBroker = actionBroker;
     }
 

@@ -12,7 +12,7 @@ import org.jetbrains.annotations.Nullable;
 public class ClickAction extends Action {
     @Override
     public boolean queueAction(
-            @NotNull ActionBroker actionBroker,
+            @NotNull ActionPort actionBroker,
             @NotNull BlockPos blockPos,
             @NotNull Direction side,
             boolean useShift,
@@ -26,7 +26,7 @@ public class ClickAction extends Action {
                 false,
                 this.clickRepeatCount,
                 expectedItems,
-                ActionBroker.ActionSource.PRINT
+                ActionPort.ActionSource.PRINT
         );
     }
 

@@ -7,7 +7,7 @@ import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.handler.FeatureModuleBase;
 import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
-import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
+import me.aleksilassila.litematica.printer.printer.action.ActionPort;
 import me.aleksilassila.litematica.printer.printer.MissingMaterialTracker;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import me.aleksilassila.litematica.printer.printer.PrinterUtils;
@@ -210,7 +210,7 @@ public class FluidHandler extends FeatureModuleBase {
                 false,
                 1,
                 fillItemArray,
-                ActionBroker.ActionSource.FLUID
+                ActionPort.ActionSource.FLUID
         )) {
             HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.FLUID, "动作队列占用");
             setIterationConsumedEffectiveExecution(false);
@@ -218,7 +218,7 @@ public class FluidHandler extends FeatureModuleBase {
             return;
         }
         BlockState previousState = level.getBlockState(blockPos);
-        ActionBroker.SendResult sendResult = this.actionBroker.sendQueue(player);
+        ActionPort.SendResult sendResult = this.actionBroker.sendQueue(player);
         if (sendResult.isWaiting()) {
             HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.FLUID, "等待转头");
             skipIteration.set(true);
