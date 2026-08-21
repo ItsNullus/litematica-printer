@@ -43,6 +43,7 @@ public abstract class FeatureModuleBase extends ConfigUtils implements RuntimeCo
     private final ModuleSelectionScope selectionScope;
     private final ModuleRuntimeLoop runtimeLoop;
     private final String id;
+    protected final PrinterRuntime runtime;
     protected final ScanEngine scanEngine;
     protected final ActionBroker actionBroker;
     protected final CooldownUtils cooldownUtils;
@@ -85,6 +86,7 @@ public abstract class FeatureModuleBase extends ConfigUtils implements RuntimeCo
             @Nullable ConfigOptionList selectionType,
             boolean useBox
     ) {
+        this.runtime = runtime;
         this.scanEngine = runtime.scanEngine();
         this.actionBroker = runtime.actionBroker();
         this.cooldownUtils = runtime.cooldownUtils();

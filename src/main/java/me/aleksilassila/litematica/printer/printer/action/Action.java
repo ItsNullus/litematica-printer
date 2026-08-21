@@ -5,7 +5,6 @@ import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.interfaces.Implementation;
 import me.aleksilassila.litematica.printer.printer.PlayerLook;
 import me.aleksilassila.litematica.printer.printer.PrinterUtils;
-import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import me.aleksilassila.litematica.printer.utils.minecraft.BlockUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.DirectionUtils;
 import net.minecraft.client.Minecraft;
@@ -238,14 +237,6 @@ public class Action {
     public Action setClickRepeatCount(int clickRepeatCount) {
         this.clickRepeatCount = Math.max(1, clickRepeatCount);
         return this;
-    }
-
-    public boolean queueAction(@NotNull BlockPos blockPos, @NotNull Direction side, boolean useShift, @NotNull LocalPlayer player) {
-        return this.queueAction(blockPos, side, useShift, player, null);
-    }
-
-    public boolean queueAction(@NotNull BlockPos blockPos, @NotNull Direction side, boolean useShift, @NotNull LocalPlayer player, @Nullable Item[] expectedItems) {
-        return this.queueAction(PrinterRuntime.get().actionBroker(), blockPos, side, useShift, player, expectedItems);
     }
 
     public boolean queueAction(
