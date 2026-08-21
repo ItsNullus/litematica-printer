@@ -30,13 +30,7 @@ public class BedrockTarget implements BedrockTargetStatusResolver.Host, BedrockT
     private final BedrockTargetStatusResolver statusResolver;
     private final BedrockTargetMachine machine;
     private final BedrockTargetActionExecutor actionExecutor;
-    private int tickTimes;
-    private boolean hasTried;
-    private int stuckTicksCounter;
-    private int executeTick = -1;
-    private int initializeTick = -1;
-    private boolean throughputConsumedThisTick;
-    private Status status = Status.UNINITIALIZED;
+    private final BedrockTargetState state = new BedrockTargetState();
 
     public BedrockTarget(BlockPos bedrockPos, ClientLevel level) {
         this(bedrockPos, level, null, null, null);
@@ -56,7 +50,7 @@ public class BedrockTarget implements BedrockTargetStatusResolver.Host, BedrockT
                     this.footprint, precomputedPlacement, precomputedSlimePos);
             this.statusResolver = new BedrockTargetStatusResolver(this);
             this.actionExecutor = new BedrockTargetActionExecutor(this);
-            this.status = Status.FAILED;
+            this.state.setStatus(Status.FAILED);
             this.conservativeSync = BedrockTargetBlocks.requiresConservativeSync(level.getBlockState(bedrockPos));
             return;
         }
@@ -71,7 +65,7 @@ public class BedrockTarget implements BedrockTargetStatusResolver.Host, BedrockT
         this.actionExecutor = new BedrockTargetActionExecutor(this);
         this.conservativeSync = BedrockTargetBlocks.requiresConservativeSync(level.getBlockState(bedrockPos));
         if (!this.machine.isValid()) {
-            this.status = Status.FAILED;
+            this.state.setStatus(Status.FAILED);
         }
     }
 
@@ -105,7 +99,7 @@ public class BedrockTarget implements BedrockTargetStatusResolver.Host, BedrockT
     }
 
     public Status getStatus() {
-        return status;
+        return this.state.status();
     }
 
     public boolean isHorizontalLayout() {
@@ -121,32 +115,26 @@ public class BedrockTarget implements BedrockTargetStatusResolver.Host, BedrockT
     }
 
     public Status tick(boolean allowExecute, boolean allowInitialize) {
-        this.throughputConsumedThisTick = false;
-
-        if (this.status != Status.UNINITIALIZED && this.status != Status.EXTENDED) {
-            this.tickTimes++;
-        } else if (this.status == Status.EXTENDED && allowExecute) {
-            this.tickTimes++;
-        }
+        this.state.beginTick(allowExecute);
 
         updateStatus();
         this.actionExecutor.execute(allowExecute, allowInitialize);
-        return this.status;
+        return this.state.status();
     }
 
     public Status refreshStatusOnly() {
-        this.status = observeStatus();
-        return this.status;
+        this.state.setStatus(observeStatus());
+        return this.state.status();
     }
 
     public Status refreshStatusOnlyAndAdvance() {
-        this.tickTimes++;
+        this.state.advanceStatusOnly();
         updateStatus();
-        return this.status;
+        return this.state.status();
     }
 
     public boolean consumedThroughputThisTick() {
-        return this.throughputConsumedThisTick;
+        return this.state.consumedThroughput();
     }
 
     public Set<BlockPos> getCleanupPositions() {
@@ -226,22 +214,22 @@ public class BedrockTarget implements BedrockTargetStatusResolver.Host, BedrockT
 
     @Override
     public boolean tryRepowerTorch() {
-        return this.machine.tryRepowerTorch(this.tickTimes, this::markThroughputAction);
+        return this.machine.tryRepowerTorch(this.state.tickTimes(), this::markThroughputAction);
     }
 
     private void updateStatus() {
         if (isTargetCompleted()) {
-            this.status = Status.RETRACTED;
+            this.state.setStatus(Status.RETRACTED);
             return;
         }
 
         if (!this.ensureTorchPlacement()) {
-            this.status = Status.FAILED;
+            this.state.setStatus(Status.FAILED);
             BedrockMessages.actionBar("bedrockminer.fail.place.redstonetorch");
             return;
         }
 
-        this.status = this.statusResolver.resolve(true);
+        this.state.setStatus(this.statusResolver.resolve(true));
     }
 
     private boolean ensureTorchPlacement() {
@@ -267,12 +255,8 @@ public class BedrockTarget implements BedrockTargetStatusResolver.Host, BedrockT
     }
 
     private void clearPostExecuteAttemptState() {
-        this.tickTimes = 0;
-        this.hasTried = false;
-        this.stuckTicksCounter = 0;
+        this.state.resetAttempt();
         this.machine.resetAttempt();
-        this.executeTick = -1;
-        this.initializeTick = -1;
         this.residue.resetAttempt();
     }
 
@@ -287,7 +271,7 @@ public class BedrockTarget implements BedrockTargetStatusResolver.Host, BedrockT
     }
 
     private boolean isPostExecuteCollapsed() {
-        return this.residue.isPostExecuteCollapsed(this.hasTried);
+        return this.residue.isPostExecuteCollapsed(this.state.hasTried());
     }
 
     @Override
@@ -307,21 +291,17 @@ public class BedrockTarget implements BedrockTargetStatusResolver.Host, BedrockT
 
     @Override
     public void cleanupStablePostExecuteResidue() {
-        if (this.residue.cleanupStablePostExecuteResidue(this.tickTimes)) {
+        if (this.residue.cleanupStablePostExecuteResidue(this.state.tickTimes())) {
             markThroughputAction();
         }
-    }
-
-    private boolean hasCleanupResidue(BlockPos pos) {
-        return this.residue.hasCleanupResidue(pos);
     }
 
     @Override
     public boolean hasPollutedMachineState() {
         return this.residue.hasPollutedMachineState(
-                this.hasTried,
-                this.executeTick,
-                this.tickTimes,
+                this.state.hasTried(),
+                this.state.executeTick(),
+                this.state.tickTimes(),
                 this.machine.torchPlacement(),
                 getTorchSupportPos(),
                 getSlimePos()
@@ -331,9 +311,9 @@ public class BedrockTarget implements BedrockTargetStatusResolver.Host, BedrockT
     @Override
     public void cleanupPollutedMachineState() {
         if (this.residue.cleanupPollutedMachineState(
-                this.tickTimes,
-                this.hasTried,
-                this.executeTick,
+                this.state.tickTimes(),
+                this.state.hasTried(),
+                this.state.executeTick(),
                 this.machine.torchPlacement(),
                 getTorchSupportPos(),
                 getSlimePos()
@@ -373,37 +353,37 @@ public class BedrockTarget implements BedrockTargetStatusResolver.Host, BedrockT
 
     @Override
     public boolean hasTried() {
-        return this.hasTried;
+        return this.state.hasTried();
     }
 
     @Override
     public int executeTick() {
-        return this.executeTick;
+        return this.state.executeTick();
     }
 
     @Override
     public int initializeTick() {
-        return this.initializeTick;
+        return this.state.initializeTick();
     }
 
     @Override
     public int tickTimes() {
-        return this.tickTimes;
+        return this.state.tickTimes();
     }
 
     @Override
     public int stuckTicks() {
-        return this.stuckTicksCounter;
+        return this.state.stuckTicks();
     }
 
     @Override
     public Status currentStatus() {
-        return this.status;
+        return this.state.status();
     }
 
     @Override
     public void setStatus(Status status) {
-        this.status = status;
+        this.state.setStatus(status);
     }
 
     @Override
@@ -413,17 +393,17 @@ public class BedrockTarget implements BedrockTargetStatusResolver.Host, BedrockT
 
     @Override
     public void setHasTried(boolean value) {
-        this.hasTried = value;
+        this.state.setHasTried(value);
     }
 
     @Override
     public void setInitializeTick(int value) {
-        this.initializeTick = value;
+        this.state.setInitializeTick(value);
     }
 
     @Override
     public void setExecuteTick(int value) {
-        this.executeTick = value;
+        this.state.setExecuteTick(value);
     }
 
     @Override
@@ -438,7 +418,7 @@ public class BedrockTarget implements BedrockTargetStatusResolver.Host, BedrockT
 
     @Override
     public boolean canRepowerNow() {
-        return this.machine.canRepowerNow(this.tickTimes);
+        return this.machine.canRepowerNow(this.state.tickTimes());
     }
 
     @Override
@@ -448,17 +428,17 @@ public class BedrockTarget implements BedrockTargetStatusResolver.Host, BedrockT
 
     @Override
     public void recordRebuild() {
-        this.machine.recordRebuild(this.tickTimes);
+        this.machine.recordRebuild(this.state.tickTimes());
     }
 
     @Override
     public void incrementStuckTicks() {
-        this.stuckTicksCounter++;
+        this.state.incrementStuckTicks();
     }
 
     @Override
     public void markThroughputAction() {
-        this.throughputConsumedThisTick = true;
+        this.state.markThroughputAction();
     }
 
 }
