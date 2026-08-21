@@ -6,6 +6,7 @@ import me.aleksilassila.litematica.printer.core.runtime.RuntimeEventBus;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeScope;
 import me.aleksilassila.litematica.printer.handler.FeatureModuleSet;
+import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
@@ -33,6 +34,7 @@ public final class PrinterRuntime {
     private MaterialRequestCoordinator materialRequests;
     private final BedrockEngine bedrockEngine;
     private final FeatureModuleSet modules;
+    private final ActionBroker actionBroker;
 
     private PrinterRuntime() {
         Minecraft client = Minecraft.getInstance();
@@ -40,6 +42,8 @@ public final class PrinterRuntime {
         this.scope.register(new MinecraftInteractionRuntime(client));
         this.scope.register(new InventorySwitchRuntime());
         this.scope.register(this.bedrockEngine);
+        this.actionBroker = ActionBroker.INSTANCE;
+        this.scope.register(this.actionBroker);
         this.modules = new FeatureModuleSet(this);
     }
 
@@ -61,6 +65,10 @@ public final class PrinterRuntime {
 
     public FeatureModuleSet modules() {
         return this.modules;
+    }
+
+    public ActionBroker actionBroker() {
+        return this.actionBroker;
     }
 
     public Minecraft client() {

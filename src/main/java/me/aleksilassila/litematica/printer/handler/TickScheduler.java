@@ -57,7 +57,7 @@ final class TickScheduler implements RuntimeComponent {
         }
         boolean inventoryBusy = this.pauseForInventoryState("shared_precheck");
         if (this.pauseForPendingLookQueue()) {
-            ActionBroker.INSTANCE.sendQueue(mc.player);
+            this.runtime.actionBroker().sendQueue(mc.player);
             return;
         }
         if (this.pauseForLagCheck()) {
@@ -131,7 +131,7 @@ final class TickScheduler implements RuntimeComponent {
     }
 
     private boolean pauseForInventoryState(String reasonPrefix) {
-        boolean inventoryLease = ActionBroker.INSTANCE.isResourceHeld(ResourceLease.INVENTORY);
+        boolean inventoryLease = this.runtime.actionBroker().isResourceHeld(ResourceLease.INVENTORY);
         boolean inventorySwitchPending = InventorySwitchGuard.isWaiting();
         if (inventoryLease || inventorySwitchPending) {
             this.pause(reasonPrefix + " inventoryLease=" + inventoryLease
@@ -142,7 +142,7 @@ final class TickScheduler implements RuntimeComponent {
     }
 
     private boolean pauseForPendingLookQueue() {
-        if (!ActionBroker.INSTANCE.isWaitingForLook()) {
+        if (!this.runtime.actionBroker().isWaitingForLook()) {
             return false;
         }
         this.pause("send_queue_wait_modify_look");
@@ -162,7 +162,7 @@ final class TickScheduler implements RuntimeComponent {
     }
 
     private boolean pauseForHandlerPrecheck(FeatureModuleBase handler) {
-        if (ActionBroker.INSTANCE.isWaitingForLook()) {
+        if (this.runtime.actionBroker().isWaitingForLook()) {
             this.pause("action_wait_modify_look handler=" + handler.getId());
             return true;
         }

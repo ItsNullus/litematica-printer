@@ -43,7 +43,6 @@ public final class ActionBroker implements RuntimeComponent {
 
     private ActionBroker(ActionManager delegate) {
         this.delegate = delegate;
-        PrinterRuntime.get().register(this);
     }
 
     public boolean queueClick(
