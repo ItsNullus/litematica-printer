@@ -8,6 +8,7 @@ import me.aleksilassila.litematica.printer.mixin.printer.litematica.InventoryUti
 import me.aleksilassila.litematica.printer.utils.minecraft.PlayerUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.ToolSelectionUtils;
 import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
+import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.player.LocalPlayer;
@@ -35,7 +36,6 @@ import net.minecraft.world.item.alchemy.PotionContents;
 import net.minecraft.world.item.alchemy.Potions;
 
 import static fi.dy.masa.malilib.util.InventoryUtils.*;
-import static me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.lastNeedItemList;
 
 @SuppressWarnings({"DataFlowIssue", "SpellCheckingInspection", "GrazieInspection"})
 public class InventoryUtils {
@@ -103,7 +103,7 @@ public class InventoryUtils {
             }
         }
         for (Item item : items) {
-            me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.lastNeedItemList.add(item);
+            QuickShulkerBridge.requestItem(item);
         }
         return false;
     }
@@ -419,7 +419,7 @@ public class InventoryUtils {
             }
         }
         for (Item item : items) {
-            lastNeedItemList.add(item);
+            QuickShulkerBridge.requestItem(item);
         }
         return false;
     }

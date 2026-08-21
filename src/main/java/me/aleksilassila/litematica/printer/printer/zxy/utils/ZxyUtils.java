@@ -1,6 +1,5 @@
 package me.aleksilassila.litematica.printer.printer.zxy.utils;
 
-import me.aleksilassila.litematica.printer.printer.zxy.inventory.SwitchItem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.NonNullList;
@@ -31,7 +30,4 @@ public class ZxyUtils {
         return -1;
     }
 
-    public static void exitGameReSet() {
-        SwitchItem.reSet();
-    }
 }

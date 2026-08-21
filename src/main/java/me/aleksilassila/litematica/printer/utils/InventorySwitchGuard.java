@@ -1,7 +1,7 @@
 package me.aleksilassila.litematica.printer.utils;
 
 import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
-import me.aleksilassila.litematica.printer.printer.ActionManager;
+import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.Item;
 
@@ -24,7 +24,7 @@ public final class InventorySwitchGuard {
         }
         pendingItem = item;
         pendingStartedTick = ClientPlayerTickManager.getCurrentHandlerTime();
-        ActionManager.INSTANCE.cancelQueue();
+        ActionBroker.INSTANCE.cancelQueue();
         return true;
     }
 
@@ -32,7 +32,7 @@ public final class InventorySwitchGuard {
         if (pendingItem == null) {
             return false;
         }
-        ActionManager.INSTANCE.cancelQueue();
+        ActionBroker.INSTANCE.cancelQueue();
         long age = ClientPlayerTickManager.getCurrentHandlerTime() - pendingStartedTick;
         if (age <= 0) {
             return true;

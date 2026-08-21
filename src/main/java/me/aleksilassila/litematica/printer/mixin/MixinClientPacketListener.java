@@ -1,8 +1,7 @@
 package me.aleksilassila.litematica.printer.mixin;
 
-import me.aleksilassila.litematica.printer.printer.ActionManager;
-import me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils;
-import me.aleksilassila.litematica.printer.printer.zxy.inventory.SwitchItem;
+import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
+import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
 import me.aleksilassila.litematica.printer.utils.minecraft.NetworkUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
@@ -15,7 +14,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import static me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.isOpenHandler;
 
 @Mixin(ClientPacketListener.class)
 public abstract class MixinClientPacketListener {
@@ -30,10 +28,10 @@ public abstract class MixinClientPacketListener {
     )
     private void suppressTaskAnvilScreen(ClientboundOpenScreenPacket packet, CallbackInfo ci) {
         if (packet.getType() != MenuType.ANVIL
-                || ActionManager.INSTANCE.consumeManualAnvilScreenAllowance()) {
+                || ActionBroker.INSTANCE.consumeManualAnvilScreenAllowance()) {
             return;
         }
-        if (ActionManager.INSTANCE.consumeTaskAnvilScreenSuppression()) {
+        if (ActionBroker.INSTANCE.consumeTaskAnvilScreenSuppression()) {
             NetworkUtils.sendPacket(new ServerboundContainerClosePacket(packet.getContainerId()));
             ci.cancel();
         }
@@ -53,11 +51,6 @@ public abstract class MixinClientPacketListener {
                 != client.player.containerMenu.containerId) {
             return;
         }
-        if (isOpenHandler) {
-            InventoryUtils.switchInv();
-        }
-        if (SwitchItem.isWaitingForRestoreContainer()) {
-            SwitchItem.restorePendingItem();
-        }
+        QuickShulkerBridge.onInventoryContent();
     }
 }

@@ -9,10 +9,11 @@ import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.enums.*;
 import me.aleksilassila.litematica.printer.handler.scan.BoxRegionDiff;
 import me.aleksilassila.litematica.printer.handler.scan.DirtyRegionTracker;
-import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
-import me.aleksilassila.litematica.printer.handler.scan.ScanIdlePolicy;
+import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
+import me.aleksilassila.litematica.printer.handler.scan.ScanLifecycle;
 import me.aleksilassila.litematica.printer.printer.*;
+import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import me.aleksilassila.litematica.printer.utils.mods.LitematicaUtils;
@@ -45,7 +46,7 @@ public abstract class Module extends ConfigUtils {
     private final AtomicReference<PrinterBox> externalScanBoxRef;
     private final InteractionBoxTracker interactionBoxTracker;
     private final GuiBlockInfoBuffer guiBlockInfoBuffer = new GuiBlockInfoBuffer();
-    private final ScanIdlePolicy scanIdlePolicy = new ScanIdlePolicy();
+    private final ScanLifecycle scanLifecycle = new ScanLifecycle();
     @Getter
     private final String id;
     @Getter
@@ -59,8 +60,6 @@ public abstract class Module extends ConfigUtils {
     private final ConfigOptionList selectionType;
     private final AtomicReference<Boolean> skipIteration = new AtomicReference<>(false);
     private boolean iterationConsumedEffectiveExecution = true;
-    @Getter
-    private ScanState scanState = ScanState.FULL;
     @Getter
     private int pendingDirtyRegionCount;
     @Nullable
@@ -97,6 +96,10 @@ public abstract class Module extends ConfigUtils {
 
     private long lastTickTime = -1L;
 
+    public ScanState getScanState() {
+        return this.scanLifecycle.state();
+    }
+
     protected Module(String id, @Nullable PrintModeType printMode, @Nullable ConfigBoolean enableConfig, @Nullable ConfigOptionList selectionType, boolean useBox) {
         this.id = id;
         this.printMode = printMode;
@@ -127,7 +130,7 @@ public abstract class Module extends ConfigUtils {
         this.currentIterationDidWork = false;
         this.currentIterationFoundCandidate = false;
         this.currentIterationCompletedPass = false;
-        this.scanIdlePolicy.reset();
+        this.scanLifecycle.reset();
         this.inventoryRevisionInitialized = false;
         this.lastInventoryGainRevision = 0L;
         this.schematicIdentityInitialized = false;
@@ -159,7 +162,7 @@ public abstract class Module extends ConfigUtils {
             return;
         }
         WorldSchematic schematic = SchematicWorldHandler.getSchematicWorld();
-        ScanCache.INSTANCE.beginTick(this.level, schematic, context.gameTime);
+        ScanEngine.INSTANCE.beginTick(this.level, schematic, context.gameTime);
         this.wakeForSchematicChange(schematic);
         this.updatePlayerInteractionBox();
         this.preprocess(); // 运行前处理的事情
@@ -227,7 +230,7 @@ public abstract class Module extends ConfigUtils {
             return;
         }
         this.lastInventoryGainRevision = revision;
-        ScanCache.INSTANCE.resetOwner(this.id);
+        ScanEngine.INSTANCE.resetOwner(this.id);
         this.requestFullScan();
     }
 
@@ -268,12 +271,12 @@ public abstract class Module extends ConfigUtils {
         this.updateExternalScanBox(scanSourceBox);
         this.updateScanSource(scanSourceBox, scanSourceBoxes);
         if (!this.isLazyScanEnabled()) {
-            this.scanState = ScanState.FULL;
-            this.scanIdlePolicy.clearCompletedPassEvidence();
+            this.scanLifecycle.setState(ScanState.FULL);
+            this.scanLifecycle.idlePolicy().clearCompletedPassEvidence();
             this.clearDirtyScanQueue();
             return this.runFullIteration(playerInteractionBox);
         }
-        return switch (this.scanState) {
+        return switch (this.scanLifecycle.state()) {
             case FULL -> this.runFullIteration(playerInteractionBox);
             case PARTIAL -> this.runPartialIteration(playerInteractionBox);
             case LAZY -> this.runLazyIteration(playerInteractionBox);
@@ -291,20 +294,20 @@ public abstract class Module extends ConfigUtils {
                 && this.lastScanSourceBox.sameSectionWindow(scanSourceBox)) {
             PrinterBox previousScanSourceBox = this.lastScanSourceBox;
             this.lastScanSourceBox = scanSourceBox;
-            if (this.scanState == ScanState.LAZY) {
+            if (this.scanLifecycle.state() == ScanState.LAZY) {
                 if (this.usesDirtyRegionWakeup()) {
                     this.queueNewlyExposedScanRegions(previousScanSourceBox, scanSourceBox);
                 } else {
-                    this.scanState = ScanState.FULL;
-                    this.scanIdlePolicy.recordActivity();
+                    this.scanLifecycle.setState(ScanState.FULL);
+                    this.scanLifecycle.idlePolicy().recordActivity();
                     this.clearDirtyScanQueue();
                 }
             }
             return;
         }
         this.lastScanSourceBox = scanSourceBox;
-        this.scanState = ScanState.FULL;
-        this.scanIdlePolicy.recordActivity();
+        this.scanLifecycle.setState(ScanState.FULL);
+        this.scanLifecycle.idlePolicy().recordActivity();
         this.lastDirtyVersion = DirtyRegionTracker.INSTANCE.currentVersion();
         this.clearDirtyScanQueue();
     }
@@ -316,22 +319,22 @@ public abstract class Module extends ConfigUtils {
     }
 
     private boolean runLazyIteration(PrinterBox playerInteractionBox) {
-        if (this.scanIdlePolicy.shouldWakeForPendingWork(this.hasPendingIterationWork())) {
-            this.scanState = ScanState.FULL;
+        if (this.scanLifecycle.idlePolicy().shouldWakeForPendingWork(this.hasPendingIterationWork())) {
+            this.scanLifecycle.setState(ScanState.FULL);
             this.clearDirtyScanQueue();
             return this.runFullIteration(playerInteractionBox);
         }
-        if (this.usesDirtyRegionWakeup() && this.scanState == ScanState.LAZY) {
+        if (this.usesDirtyRegionWakeup() && this.scanLifecycle.state() == ScanState.LAZY) {
             this.refreshDirtyScanQueue(playerInteractionBox);
         }
-        if (this.scanState == ScanState.LAZY) {
+        if (this.scanLifecycle.state() == ScanState.LAZY) {
             int fallbackProbeInterval = Math.max(40, Configs.Core.LAZY_ENTER_TICKS.getIntegerValue() * 10);
-            if (!this.scanIdlePolicy.shouldRunLazyProbe(fallbackProbeInterval)) {
+            if (!this.scanLifecycle.idlePolicy().shouldRunLazyProbe(fallbackProbeInterval)) {
                 return false;
             }
             return this.runLazyProbeIteration(playerInteractionBox);
         }
-        if (this.scanState == ScanState.FULL) {
+        if (this.scanLifecycle.state() == ScanState.FULL) {
             return this.runFullIteration(playerInteractionBox);
         }
         return this.runPartialIteration(playerInteractionBox);
@@ -346,11 +349,11 @@ public abstract class Module extends ConfigUtils {
     private boolean runLazyProbeIteration(PrinterBox playerInteractionBox) {
         this.pendingDirtyRegionCount = 0;
         boolean interrupt = this.runIterationLoop(playerInteractionBox);
-        if (this.scanIdlePolicy.recordLazyProbe(this.currentIterationDidWork, this.currentIterationFoundCandidate)) {
-            this.scanState = ScanState.FULL;
+        if (this.scanLifecycle.idlePolicy().recordLazyProbe(this.currentIterationDidWork, this.currentIterationFoundCandidate)) {
+            this.scanLifecycle.setState(ScanState.FULL);
             return interrupt;
         }
-        this.scanState = ScanState.LAZY;
+        this.scanLifecycle.setState(ScanState.LAZY);
         return true;
     }
 
@@ -358,10 +361,10 @@ public abstract class Module extends ConfigUtils {
         if (this.activeDirtyScanBox == null) {
             if (this.dirtyScanQueue.isEmpty()) {
                 this.refreshDirtyScanQueue(playerInteractionBox);
-                if (this.scanState == ScanState.LAZY) {
+                if (this.scanLifecycle.state() == ScanState.LAZY) {
                     return false;
                 }
-                if (this.scanState == ScanState.FULL) {
+                if (this.scanLifecycle.state() == ScanState.FULL) {
                     return this.runFullIteration(playerInteractionBox);
                 }
             }
@@ -369,7 +372,7 @@ public abstract class Module extends ConfigUtils {
         }
 
         if (this.activeDirtyScanBox == null) {
-            this.scanState = ScanState.LAZY;
+            this.scanLifecycle.setState(ScanState.LAZY);
             this.pendingDirtyRegionCount = 0;
             return false;
         }
@@ -407,22 +410,22 @@ public abstract class Module extends ConfigUtils {
 
         this.pendingDirtyRegionCount = this.dirtyScanQueue.size();
         if (this.dirtyScanQueue.isEmpty()) {
-            this.scanState = ScanState.LAZY;
+            this.scanLifecycle.setState(ScanState.LAZY);
             return;
         }
-        this.scanState = ScanState.PARTIAL;
+        this.scanLifecycle.setState(ScanState.PARTIAL);
     }
 
     private void updateFullScanIdleState() {
         int lazyThreshold = Configs.Core.LAZY_ENTER_TICKS.getIntegerValue();
-        if (this.scanIdlePolicy.recordFullIteration(
+        if (this.scanLifecycle.idlePolicy().recordFullIteration(
                 this.currentIterationDidWork,
                 this.currentIterationFoundCandidate,
                 this.currentIterationCompletedPass,
                 this.hasPendingIterationWork(),
                 lazyThreshold
         )) {
-            this.scanState = ScanState.LAZY;
+            this.scanLifecycle.setState(ScanState.LAZY);
             this.clearDirtyScanQueue();
         }
     }
@@ -433,8 +436,8 @@ public abstract class Module extends ConfigUtils {
             return;
         }
         if (!this.hasPendingPartialScan()) {
-            this.scanState = ScanState.LAZY;
-            this.scanIdlePolicy.resetIdleAndProbe();
+            this.scanLifecycle.setState(ScanState.LAZY);
+            this.scanLifecycle.idlePolicy().resetIdleAndProbe();
             this.pendingDirtyRegionCount = 0;
         }
     }
@@ -456,8 +459,8 @@ public abstract class Module extends ConfigUtils {
     private void queueNewlyExposedScanRegions(PrinterBox previous, PrinterBox current) {
         BoxRegionDiff.Result diff = BoxRegionDiff.newlyExposed(previous, current);
         if (diff.requiresFullScan()) {
-            this.scanState = ScanState.FULL;
-            this.scanIdlePolicy.recordActivity();
+            this.scanLifecycle.setState(ScanState.FULL);
+            this.scanLifecycle.idlePolicy().recordActivity();
             this.clearDirtyScanQueue();
             return;
         }
@@ -469,14 +472,14 @@ public abstract class Module extends ConfigUtils {
             this.dirtyScanQueue.clear();
             this.dirtyScanQueue.addAll(sorted);
             this.pendingDirtyRegionCount = this.dirtyScanQueue.size();
-            this.scanState = ScanState.PARTIAL;
-            this.scanIdlePolicy.resetIdle();
+            this.scanLifecycle.setState(ScanState.PARTIAL);
+            this.scanLifecycle.idlePolicy().resetIdle();
         }
     }
 
     protected final void requestFullScan() {
-        this.scanState = ScanState.FULL;
-        this.scanIdlePolicy.reset();
+        this.scanLifecycle.setState(ScanState.FULL);
+        this.scanLifecycle.idlePolicy().reset();
         this.clearDirtyScanQueue();
     }
 
@@ -499,7 +502,7 @@ public abstract class Module extends ConfigUtils {
             return;
         }
         this.lastScanCenter = new BlockPos(sectionX, sectionY, sectionZ);
-        if (this.scanState != ScanState.FULL) {
+        if (this.scanLifecycle.state() != ScanState.FULL) {
             // The source AABB can remain unchanged while the spherical/octahedral reach shape
             // moves inside it. Wake positions that have just entered the actual reach shape.
             this.requestFullScan();
@@ -512,8 +515,8 @@ public abstract class Module extends ConfigUtils {
     }
 
     private void resetScanRuntime() {
-        this.scanState = ScanState.FULL;
-        this.scanIdlePolicy.reset();
+        this.scanLifecycle.setState(ScanState.FULL);
+        this.scanLifecycle.idlePolicy().reset();
         this.currentIterationCompletedPass = false;
         this.lastScanSourceBox = null;
         this.lastScanSourceBoxes = List.of();
@@ -563,7 +566,7 @@ public abstract class Module extends ConfigUtils {
         this.currentIterationCompletedPass = false;
         this.guiBlockInfoBuffer.resetForTracking(trackGuiBlockInfo);
 
-        int completedPassesBefore = ScanCache.INSTANCE.metricsFor(this.id).completedPasses();
+        int completedPassesBefore = ScanEngine.INSTANCE.metricsFor(this.id).completedPasses();
         Iterable<BlockPos> iterationPositions = this.getIterationPositions(playerInteractionBox);
         if (this.iterationPositionsArePrefetched()) {
             // Prefetching is already constrained by ScanCache's per-tick budget. Do not charge
@@ -583,7 +586,7 @@ public abstract class Module extends ConfigUtils {
                 interrupt = true;
                 break;
             }
-            if (this.skipIteration.get() || ActionManager.INSTANCE.needWaitModifyLook) {
+            if (this.skipIteration.get() || ActionBroker.INSTANCE.isWaitingForLook()) {
                 interrupt = true;
                 break;
             }
@@ -655,7 +658,7 @@ public abstract class Module extends ConfigUtils {
                 break;
             }
         }
-        this.currentIterationCompletedPass = ScanCache.INSTANCE.metricsFor(this.id).completedPasses()
+        this.currentIterationCompletedPass = ScanEngine.INSTANCE.metricsFor(this.id).completedPasses()
                 > completedPassesBefore;
         stopIteration(interrupt);
         return interrupt;
@@ -767,7 +770,7 @@ public abstract class Module extends ConfigUtils {
     }
 
     protected Iterable<BlockPos> getFilteredIterationPositions(PrinterBox playerInteractionBox, Predicate<BlockPos> candidatePredicate) {
-        return ScanCache.INSTANCE.rawIterable(
+        return ScanEngine.INSTANCE.rawIterable(
                 this.id + "_raw",
                 playerInteractionBox,
                 this.player,
@@ -783,7 +786,7 @@ public abstract class Module extends ConfigUtils {
         }
         Predicate<BlockPos> selectionPredicate = this.createSelectionRangePredicate();
         Predicate<BlockPos> reachPredicate = this.createScanReachPredicate();
-        return ScanCache.INSTANCE.iterable(
+        return ScanEngine.INSTANCE.iterable(
                 this.id,
                 scanSourceBoxes,
                 this.level,

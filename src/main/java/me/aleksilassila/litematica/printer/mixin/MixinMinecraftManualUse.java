@@ -1,6 +1,7 @@
 package me.aleksilassila.litematica.printer.mixin;
 
-import me.aleksilassila.litematica.printer.printer.ActionManager;
+import me.aleksilassila.litematica.printer.config.Configs;
+import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.level.block.AnvilBlock;
 import net.minecraft.world.phys.BlockHitResult;
@@ -14,11 +15,14 @@ public abstract class MixinMinecraftManualUse {
 
     @Inject(method = "startUseItem", at = @At("HEAD"))
     private void preserveManualAnvilScreens(CallbackInfo ci) {
+        if (!Configs.Core.WORK_SWITCH.getBooleanValue()) {
+            return;
+        }
         Minecraft client = Minecraft.getInstance();
         if (client.level != null
                 && client.hitResult instanceof BlockHitResult blockHit
                 && client.level.getBlockState(blockHit.getBlockPos()).getBlock() instanceof AnvilBlock) {
-            ActionManager.INSTANCE.prioritizeManualAnvilScreen();
+            ActionBroker.INSTANCE.prioritizeManualAnvilScreen();
         }
     }
 }

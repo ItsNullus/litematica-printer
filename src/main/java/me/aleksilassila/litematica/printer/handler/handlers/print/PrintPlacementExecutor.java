@@ -6,6 +6,7 @@ import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.handler.handlers.PrintHandler;
 import me.aleksilassila.litematica.printer.interfaces.Implementation;
 import me.aleksilassila.litematica.printer.printer.ActionManager;
+import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import me.aleksilassila.litematica.printer.printer.MissingMaterialTracker;
 import me.aleksilassila.litematica.printer.printer.PlayerLook;
 import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
@@ -18,6 +19,7 @@ import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
 import me.aleksilassila.litematica.printer.utils.minecraft.DirectionUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.MessageUtils;
 import me.aleksilassila.litematica.printer.utils.mods.LitematicaUtils;
+import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
 import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -80,7 +82,7 @@ public final class PrintPlacementExecutor {
         if (!itemReady) {
             boolean retrievalPending =
                     InventorySwitchGuard.isWaiting()
-                            || me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.shouldPauseForSwitchRequest()
+                            || QuickShulkerBridge.shouldPause()
                             || TakeItOutUtils.isAwaitingStack();
             ItemStack reserveBlockedStack = reserveItems
                     ? InventoryUtils.findReserveBlockedStack(
@@ -126,13 +128,13 @@ public final class PrintPlacementExecutor {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "动作队列占用");
             return PrintPlacementResult.cancelled(true);
         }
-        ActionManager.INSTANCE.setExpectedStackPredicate(requiredStackPredicate);
+        ActionBroker.INSTANCE.setExpectedStackPredicate(requiredStackPredicate);
         Vec3 hitModifier = LitematicaUtils.usePrecisionPlacement(blockPos, context.requiredState);
         if (hitModifier != null) {
-            ActionManager.INSTANCE.useProtocolHitModifier(hitModifier);
+            ActionBroker.INSTANCE.useProtocolHitModifier(hitModifier);
         }
-        ActionManager.INSTANCE.setLook(adjustHorizontalLook(action.getPlayerLook(), context));
-        ActionManager.INSTANCE.setNeedWaitModifyLookFromAction(action.isNeedWaitModifyLook());
+        ActionBroker.INSTANCE.setLook(adjustHorizontalLook(action.getPlayerLook(), context));
+        ActionBroker.INSTANCE.setNeedWaitModifyLookFromAction(action.isNeedWaitModifyLook());
         boolean consumedEffectiveExecution = action.isConsumeEffectiveExecution();
         int cooldownTicks = action.getCooldownTicksOverride() >= 0
                 ? action.getCooldownTicksOverride()
@@ -140,9 +142,9 @@ public final class PrintPlacementExecutor {
         AtomicBoolean deferred = new AtomicBoolean(false);
         boolean signPlacement = context.requiredState.getBlock() instanceof SignBlock;
         if (signPlacement) {
-            ActionManager.INSTANCE.armPrintSignEdit(blockPos);
+            ActionBroker.INSTANCE.armPrintSignEdit(blockPos);
         }
-        ActionManager.INSTANCE.setQueueCompletionListener(sendResult -> {
+        ActionBroker.INSTANCE.setQueueCompletionListener(sendResult -> {
             if (!deferred.get()) {
                 return;
             }
@@ -161,7 +163,7 @@ public final class PrintPlacementExecutor {
                 }
             } else {
                 if (signPlacement) {
-                    ActionManager.INSTANCE.cancelPrintSignEdit(blockPos);
+                    ActionBroker.INSTANCE.cancelPrintSignEdit(blockPos);
                 }
                 if (sendResult == ActionManager.SendResult.RESERVE_LIMIT) {
                     showReserveNotice(context, context.client.player.getMainHandItem());
@@ -176,7 +178,7 @@ public final class PrintPlacementExecutor {
             }
         });
 
-        ActionManager.SendResult sendResult = ActionManager.INSTANCE.sendQueue(context.client.player);
+        ActionManager.SendResult sendResult = ActionBroker.INSTANCE.sendQueue(context.client.player);
         if (sendResult.isWaiting()) {
             deferred.set(true);
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "等待转头");
@@ -189,7 +191,7 @@ public final class PrintPlacementExecutor {
         }
         if (!sendResult.isSent()) {
             if (signPlacement) {
-                ActionManager.INSTANCE.cancelPrintSignEdit(blockPos);
+                ActionBroker.INSTANCE.cancelPrintSignEdit(blockPos);
             }
             if (sendResult == ActionManager.SendResult.RESERVE_LIMIT) {
                 showReserveNotice(context, context.client.player.getMainHandItem());
@@ -210,7 +212,7 @@ public final class PrintPlacementExecutor {
 
     private static void recordPlacementSent(SchematicBlockContext context) {
         if (context.requiredState.getBlock() instanceof SignBlock) {
-            ActionManager.INSTANCE.confirmPrintSignEditSent(context.blockPos);
+            ActionBroker.INSTANCE.confirmPrintSignEditSent(context.blockPos);
         }
         HudStatsManager.INSTANCE.trackExpectedBlockState(
                 HudStatsManager.Mode.PRINT,
@@ -251,7 +253,7 @@ public final class PrintPlacementExecutor {
         if (primaryLookDirection.getAxis().isHorizontal()) {
             float currentPitch = context.client.player.getXRot();
             currentPitch = Math.max(-40.0F, Math.min(40.0F, currentPitch));
-            ActionManager.INSTANCE.setWaitForHorizontalLook(false);
+            ActionBroker.INSTANCE.setWaitForHorizontalLook(false);
             return new PlayerLook(playerLook.getYaw(), currentPitch);
         }
         return playerLook;

@@ -8,7 +8,7 @@ import me.aleksilassila.litematica.printer.enums.PrintModeType;
 import me.aleksilassila.litematica.printer.guide.Guides;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.handler.Module;
-import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
+import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
 import me.aleksilassila.litematica.printer.handler.handlers.print.PrintPlacementExecutor;
 import me.aleksilassila.litematica.printer.handler.handlers.print.PrintPlacementResult;
@@ -86,8 +86,8 @@ public class PrintHandler extends Module {
         if (this.observedActionConfigHash != Integer.MIN_VALUE
                 && this.observedActionConfigHash != actionConfigHash) {
             this.sortedTargets.clear();
-            ScanCache.INSTANCE.resetOwner(NAME);
-            ScanCache.INSTANCE.resetOwner("print_sorted");
+            ScanEngine.INSTANCE.resetOwner(NAME);
+            ScanEngine.INSTANCE.resetOwner("print_sorted");
             this.requestFullScan();
         }
         this.observedActionConfigHash = actionConfigHash;

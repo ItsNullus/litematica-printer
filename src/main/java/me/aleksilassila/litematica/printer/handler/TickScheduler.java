@@ -4,15 +4,13 @@ import com.google.common.collect.ImmutableList;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.handler.handlers.GuiHandler;
 import me.aleksilassila.litematica.printer.handler.handlers.MineDebugLog;
-import me.aleksilassila.litematica.printer.printer.ActionManager;
 import me.aleksilassila.litematica.printer.printer.MissingMaterialTracker;
+import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
+import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
 import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import net.minecraft.client.Minecraft;
 
-import static me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.hasPendingSwitchRequest;
-import static me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.isOpenHandler;
-import static me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.switchItem;
 
 final class TickScheduler {
     private static final Minecraft MC = Minecraft.getInstance();
@@ -58,7 +56,7 @@ final class TickScheduler {
             return;
         }
         if (this.pauseForPendingLookQueue()) {
-            ActionManager.INSTANCE.sendQueue(MC.player);
+            ActionBroker.INSTANCE.sendQueue(MC.player);
             return;
         }
         if (this.pauseForLagCheck()) {
@@ -125,13 +123,13 @@ final class TickScheduler {
     }
 
     private boolean pauseForInventoryState(String reasonPrefix) {
-        boolean switchingItem = switchItem();
-        boolean pendingSwitch = hasPendingSwitchRequest();
+        boolean switchingItem = QuickShulkerBridge.switchItem();
+        boolean pendingSwitch = QuickShulkerBridge.hasPendingRequest();
         boolean takeItOutPending = TakeItOutUtils.isAwaitingStack();
         boolean inventorySwitchPending = InventorySwitchGuard.isWaiting();
-        boolean openHandler = isOpenHandler;
+        boolean openHandler = QuickShulkerBridge.isOpenHandler();
         if (pendingSwitch || switchingItem || takeItOutPending || inventorySwitchPending) {
-            ActionManager.INSTANCE.cancelQueue();
+            ActionBroker.INSTANCE.cancelQueue();
             this.pause(reasonPrefix + " openHandler=" + openHandler + " pendingSwitch=" + pendingSwitch + " switchingItem=" + switchingItem + " takeItOutPending=" + takeItOutPending + " inventorySwitchPending=" + inventorySwitchPending);
             return true;
         }
@@ -139,7 +137,7 @@ final class TickScheduler {
     }
 
     private boolean pauseForPendingLookQueue() {
-        if (!ActionManager.INSTANCE.needWaitModifyLook) {
+        if (!ActionBroker.INSTANCE.isWaitingForLook()) {
             return false;
         }
         this.pause("send_queue_wait_modify_look");
@@ -162,7 +160,7 @@ final class TickScheduler {
         if (this.pauseForInventoryState("handler_precheck handler=" + handler.getId())) {
             return true;
         }
-        if (ActionManager.INSTANCE.needWaitModifyLook) {
+        if (ActionBroker.INSTANCE.isWaitingForLook()) {
             this.pause("action_wait_modify_look handler=" + handler.getId());
             return true;
         }

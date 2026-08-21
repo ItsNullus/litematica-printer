@@ -18,7 +18,7 @@ public class ClickAction extends Action {
 
     @Override
     public boolean queueAction(@NotNull BlockPos blockPos, @NotNull Direction side, boolean useShift, @NotNull LocalPlayer player, @Nullable Item[] expectedItems) {
-        return ActionManager.INSTANCE.queueClick(
+        return ActionBroker.INSTANCE.queueClick(
                 blockPos,
                 side,
                 getSides().get(side),

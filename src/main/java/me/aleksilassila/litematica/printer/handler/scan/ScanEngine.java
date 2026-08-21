@@ -1,0 +1,162 @@
+package me.aleksilassila.litematica.printer.handler.scan;
+
+import fi.dy.masa.litematica.world.WorldSchematic;
+import me.aleksilassila.litematica.printer.printer.PrinterBox;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
+
+import java.util.List;
+import java.util.function.Predicate;
+
+/**
+ * Feature-facing scan middleware.
+ *
+ * <p>The current implementation is backed by {@link ScanCache}. Keeping this
+ * boundary separate lets the scan algorithm evolve without making handlers
+ * depend on cache ownership, invalidation storage, or cursor internals.</p>
+ */
+public final class ScanEngine {
+    public static final ScanEngine INSTANCE = new ScanEngine(ScanCache.INSTANCE);
+
+    public enum PassPolicy {
+        RESTART,
+        INVALIDATIONS_ONLY
+    }
+
+    private final ScanCache cache;
+
+    private ScanEngine(ScanCache cache) {
+        this.cache = cache;
+    }
+
+    public void clear() {
+        this.cache.clear();
+    }
+
+    public void beginTick(ClientLevel level, WorldSchematic schematic, long tickTime) {
+        this.cache.beginTick(level, schematic, tickTime);
+    }
+
+    public void invalidate(BlockPos pos) {
+        this.cache.invalidate(pos);
+    }
+
+    public void resetOwner(String ownerKey) {
+        this.cache.resetOwner(ownerKey);
+    }
+
+    public ScanCache.ScanMetrics metricsFor(String ownerKey) {
+        return this.cache.metricsFor(ownerKey);
+    }
+
+    public static long key(BlockPos pos) {
+        return ScanCache.key(pos);
+    }
+
+    public Iterable<BlockPos> rawIterable(
+            String ownerKey,
+            PrinterBox sourceBox,
+            LocalPlayer player,
+            int scanGuardLimit,
+            Predicate<BlockPos> preFilter
+    ) {
+        return this.cache.rawIterable(ownerKey, sourceBox, player, scanGuardLimit, preFilter);
+    }
+
+    public Iterable<BlockPos> iterable(
+            String ownerKey,
+            List<PrinterBox> sourceBoxes,
+            ClientLevel level,
+            WorldSchematic schematic,
+            LocalPlayer player,
+            int scanGuardLimit,
+            ScanIntent intent,
+            Predicate<BlockPos> exactPredicate,
+            Predicate<BlockPos> preFilter
+    ) {
+        return this.cache.iterable(
+                ownerKey,
+                sourceBoxes,
+                level,
+                schematic,
+                player,
+                scanGuardLimit,
+                intent,
+                exactPredicate,
+                preFilter
+        );
+    }
+
+    public Iterable<BlockPos> iterable(
+            String ownerKey,
+            List<PrinterBox> sourceBoxes,
+            ClientLevel level,
+            WorldSchematic schematic,
+            LocalPlayer player,
+            int scanGuardLimit,
+            ScanIntent intent,
+            Predicate<BlockPos> exactPredicate
+    ) {
+        return this.cache.iterable(
+                ownerKey,
+                sourceBoxes,
+                level,
+                schematic,
+                player,
+                scanGuardLimit,
+                intent,
+                exactPredicate
+        );
+    }
+
+    public Iterable<BlockPos> iterable(
+            String ownerKey,
+            List<PrinterBox> sourceBoxes,
+            ClientLevel level,
+            WorldSchematic schematic,
+            LocalPlayer player,
+            int scanGuardLimit,
+            ScanIntent intent,
+            Predicate<BlockPos> exactPredicate,
+            Predicate<BlockPos> preFilter,
+            PassPolicy passPolicy
+    ) {
+        return this.cache.iterable(
+                ownerKey,
+                sourceBoxes,
+                level,
+                schematic,
+                player,
+                scanGuardLimit,
+                intent,
+                exactPredicate,
+                preFilter,
+                passPolicy == PassPolicy.INVALIDATIONS_ONLY
+                        ? ScanCache.PassPolicy.INVALIDATIONS_ONLY
+                        : ScanCache.PassPolicy.RESTART
+        );
+    }
+
+    public Iterable<BlockPos> iterable(
+            String ownerKey,
+            PrinterBox sourceBox,
+            ClientLevel level,
+            WorldSchematic schematic,
+            LocalPlayer player,
+            int scanGuardLimit,
+            ScanIntent intent,
+            Predicate<BlockPos> exactPredicate
+    ) {
+        return this.cache.iterable(
+                ownerKey,
+                sourceBox,
+                level,
+                schematic,
+                player,
+                scanGuardLimit,
+                intent,
+                exactPredicate
+        );
+    }
+}

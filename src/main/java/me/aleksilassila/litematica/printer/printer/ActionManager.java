@@ -7,7 +7,7 @@ import fi.dy.masa.litematica.util.EasyPlaceUtils;
 import me.aleksilassila.litematica.printer.Reference;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.mixin_extension.MultiPlayerGameModeExtension;
-import me.aleksilassila.litematica.printer.printer.zxy.inventory.SwitchItem;
+import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
 import me.aleksilassila.litematica.printer.utils.minecraft.DirectionUtils;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.NetworkUtils;
@@ -192,7 +192,7 @@ public class ActionManager {
         } else {
             hitVec = click.hitModifier;
         }
-        SwitchItem.onMainHandUse(player);
+        QuickShulkerBridge.onMainHandUse(player);
         boolean wasSneak = player.isShiftKeyDown();
         if (click.useShift && !wasSneak) {
             setShift(player, true);

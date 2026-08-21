@@ -1,7 +1,7 @@
 package me.aleksilassila.litematica.printer.handler.handlers.bedrock;
 
 import me.aleksilassila.litematica.printer.config.Configs;
-import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
+import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import me.aleksilassila.litematica.printer.utils.mods.LitematicaUtils;
@@ -141,7 +141,7 @@ public final class BedrockCandidatePlanner {
             return new CandidateShard(List.of(), true);
         }
         int scanLimit = this.getCandidateScanLimit(scanGuardLimit);
-        Iterator<BlockPos> iterator = ScanCache.INSTANCE.iterable(
+        Iterator<BlockPos> iterator = ScanEngine.INSTANCE.iterable(
                 "bedrock",
                 sourceBox,
                 level,

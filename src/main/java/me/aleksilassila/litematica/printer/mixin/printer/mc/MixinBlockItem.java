@@ -2,7 +2,7 @@ package me.aleksilassila.litematica.printer.mixin.printer.mc;
 
 import fi.dy.masa.litematica.util.PlacementHandler;
 import me.aleksilassila.litematica.printer.config.Configs;
-import me.aleksilassila.litematica.printer.printer.ActionManager;
+import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.context.BlockPlaceContext;
@@ -29,9 +29,9 @@ public abstract class MixinBlockItem extends Item {
     @Inject(method = "getPlacementState", at = @At("HEAD"), cancellable = true)
     private void modifyPlacementState(BlockPlaceContext ctx, CallbackInfoReturnable<BlockState> cir) {
         boolean usePrinterProtocol = Configs.Print.EASY_PLACE_PROTOCOL.getBooleanValue()
-                && ActionManager.INSTANCE.isEasyPlaceProtocolActive();
+                && ActionBroker.INSTANCE.isEasyPlaceProtocolActive();
         //#if MC > 12100
-        if (!ActionManager.INSTANCE.isPrinterInteractionActive()) {
+        if (!ActionBroker.INSTANCE.isPrinterInteractionActive()) {
             return;
         }
         //#else

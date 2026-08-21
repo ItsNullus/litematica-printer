@@ -5,9 +5,9 @@ import fi.dy.masa.litematica.world.SchematicWorldHandler;
 import fi.dy.masa.litematica.world.WorldSchematic;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
-import me.aleksilassila.litematica.printer.printer.ActionManager;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
-import me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils;
+import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
+import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -61,7 +61,7 @@ public class MixinLocalPlayer extends AbstractClientPlayer {
     @Inject(at = @At("HEAD"), method = "tick")
     public void tick(CallbackInfo ci) {
         CooldownUtils.INSTANCE.tick();
-        InventoryUtils.tick();
+        QuickShulkerBridge.onTick();
         InteractionUtils.INSTANCE.preprocess();
         InteractionUtils.INSTANCE.onTick();
         ClientPlayerTickManager.tick();
@@ -84,7 +84,7 @@ public class MixinLocalPlayer extends AbstractClientPlayer {
             return;
         }
         getTargetSignEntity(sign)
-                .filter(signBlockEntity -> ActionManager.INSTANCE.consumePrintSignEdit(sign.getBlockPos()))
+                .filter(signBlockEntity -> ActionBroker.INSTANCE.consumePrintSignEdit(sign.getBlockPos()))
                 .ifPresent(signBlockEntity ->
         {
             //#if MC > 11904

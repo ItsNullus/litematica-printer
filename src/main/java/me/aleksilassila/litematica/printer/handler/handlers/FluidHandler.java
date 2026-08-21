@@ -4,15 +4,17 @@ import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.enums.PrintModeType;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.handler.Module;
-import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
+import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
 import me.aleksilassila.litematica.printer.printer.ActionManager;
+import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import me.aleksilassila.litematica.printer.printer.MissingMaterialTracker;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import me.aleksilassila.litematica.printer.printer.PrinterUtils;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.RegistryFilterResolver;
+import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
 import me.aleksilassila.litematica.printer.utils.minecraft.BlockUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -98,7 +100,7 @@ public class FluidHandler extends Module {
         int scanConfigHash = this.getScanConfigHash();
         if (this.observedScanConfigHash != Integer.MIN_VALUE
                 && this.observedScanConfigHash != scanConfigHash) {
-            ScanCache.INSTANCE.resetOwner(NAME);
+            ScanEngine.INSTANCE.resetOwner(NAME);
             this.requestFullScan();
         }
         this.observedScanConfigHash = scanConfigHash;
@@ -145,7 +147,7 @@ public class FluidHandler extends Module {
         // per-tick scan budget allows. No intermediate FIFO queue: a queue serialised work to one
         // target per tick and let already-placed ("zombie") entries accumulate to ~15k, which read
         // as a slow ring-by-ring expansion even though the scan itself finished in 3 ticks.
-        return ScanCache.INSTANCE.iterable(
+        return ScanEngine.INSTANCE.iterable(
                 NAME,
                 scanSourceBoxes,
                 this.level,
@@ -155,7 +157,7 @@ public class FluidHandler extends Module {
                 ScanIntent.FLUID,
                 this::isReadyFluidTarget,
                 pos -> reachPredicate.test(pos) && selectionPredicate.test(pos),
-                ScanCache.PassPolicy.RESTART
+                ScanEngine.PassPolicy.RESTART
         );
     }
 
@@ -180,7 +182,7 @@ public class FluidHandler extends Module {
                     level.getGameTime()
             );
             setIterationConsumedEffectiveExecution(false);
-            if (me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.shouldPauseForSwitchRequest()
+            if (QuickShulkerBridge.shouldPause()
                     || me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils.isAwaitingStack()) {
                 skipIteration.set(true);
             }
@@ -202,7 +204,7 @@ public class FluidHandler extends Module {
             clickTarget = blockPos.relative(placementSide);
             clickSide = placementSide.getOpposite();
         }
-        if (!ActionManager.INSTANCE.queueClick(
+        if (!ActionBroker.INSTANCE.queueClick(
                 clickTarget,
                 clickSide,
                 Vec3.ZERO,
@@ -217,7 +219,7 @@ public class FluidHandler extends Module {
             return;
         }
         BlockState previousState = level.getBlockState(blockPos);
-        ActionManager.SendResult sendResult = ActionManager.INSTANCE.sendQueue(player);
+        ActionManager.SendResult sendResult = ActionBroker.INSTANCE.sendQueue(player);
         if (sendResult.isWaiting()) {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "等待转头");
             skipIteration.set(true);

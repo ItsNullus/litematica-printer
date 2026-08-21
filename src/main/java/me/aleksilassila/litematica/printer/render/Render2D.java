@@ -8,7 +8,7 @@ import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
 import me.aleksilassila.litematica.printer.handler.Module;
 import me.aleksilassila.litematica.printer.handler.Modules;
 import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockController;
-import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
+import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.render.Render2DUtils;
 import net.minecraft.client.Minecraft;
@@ -465,7 +465,7 @@ public class Render2D {
         if (dirtyRegions > 0) {
             text += "(" + dirtyRegions + ")";
         }
-        ScanCache.ScanMetrics metrics = ScanCache.INSTANCE.metricsFor(module.getId());
+        var metrics = ScanEngine.INSTANCE.metricsFor(module.getId());
         if (metrics.hasActivity()) {
             text += " " + formatScanMillis(metrics.scanNanos())
                     + "ms " + metrics.scannedBlocks()

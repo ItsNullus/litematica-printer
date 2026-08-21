@@ -7,10 +7,10 @@ import me.aleksilassila.litematica.printer.enums.ExcavateListMode;
 import me.aleksilassila.litematica.printer.enums.PrintModeType;
 import me.aleksilassila.litematica.printer.handler.Module;
 import me.aleksilassila.litematica.printer.handler.TickContext;
-import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
+import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
 import me.aleksilassila.litematica.printer.mixin_extension.BlockBreakResult;
-import me.aleksilassila.litematica.printer.printer.ActionManager;
+import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
@@ -111,7 +111,7 @@ public class MineHandler extends Module {
         Predicate<BlockPos> selectionPredicate = this.createSelectionRangePredicate();
         Predicate<BlockPos> reachPredicate = this.createScanReachPredicate();
         
-        return ScanCache.INSTANCE.iterable(
+        return ScanEngine.INSTANCE.iterable(
                 NAME,
                 scanSourceBoxes,
                 this.level,
@@ -178,7 +178,7 @@ public class MineHandler extends Module {
 
     @Override
     protected void stopIteration(boolean interrupt) {
-        if (ActionManager.INSTANCE.needWaitModifyLook || this.activeMinePos != null || this.candidates.isEmpty()) {
+        if (ActionBroker.INSTANCE.isWaitingForLook() || this.activeMinePos != null || this.candidates.isEmpty()) {
             return;
         }
         this.candidates.sort(this.toolSession.comparator(this.player));

@@ -7,17 +7,19 @@ import me.aleksilassila.litematica.printer.enums.PrintModeType;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.I18n;
 import me.aleksilassila.litematica.printer.handler.Module;
-import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
+import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
 import me.aleksilassila.litematica.printer.printer.PlayerLook;
 import me.aleksilassila.litematica.printer.printer.PrinterUtils;
 import me.aleksilassila.litematica.printer.printer.ActionManager;
+import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import me.aleksilassila.litematica.printer.printer.MissingMaterialTracker;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.FilterUtils;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.RegistryFilterResolver;
+import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
 import me.aleksilassila.litematica.printer.utils.minecraft.BlockUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.MessageUtils;
 import net.minecraft.core.BlockPos;
@@ -121,7 +123,7 @@ public class FillHandler extends Module {
         if (this.observedFillScanConfigHash != Integer.MIN_VALUE
                 && this.observedFillScanConfigHash != scanConfigHash) {
             this.clearFillTargets();
-            ScanCache.INSTANCE.resetOwner(NAME);
+            ScanEngine.INSTANCE.resetOwner(NAME);
             this.requestFullScan();
         }
         this.observedFillScanConfigHash = scanConfigHash;
@@ -231,7 +233,7 @@ public class FillHandler extends Module {
         ScanIntent scanIntent = Configs.Print.PLACE_IN_AIR.getBooleanValue()
                 ? ScanIntent.CUSTOM
                 : ScanIntent.FILL;
-        return ScanCache.INSTANCE.iterable(
+        return ScanEngine.INSTANCE.iterable(
                 NAME,
                 scanSourceBoxes,
                 this.level,
@@ -311,7 +313,7 @@ public class FillHandler extends Module {
         }
         if (!handheld && !InventoryUtils.switchToItems(player, this.fillModeItemList)) {
             boolean retrievalPending =
-                    me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.shouldPauseForSwitchRequest()
+                    QuickShulkerBridge.shouldPause()
                             || me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils.isAwaitingStack();
             if (retrievalPending) {
                 HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "等待取货");
@@ -345,7 +347,7 @@ public class FillHandler extends Module {
         Item[] expectedItems = handheld
                 ? new Item[]{player.getMainHandItem().getItem()}
                 : this.fillModeItemList;
-        if (!ActionManager.INSTANCE.queueClick(
+        if (!ActionBroker.INSTANCE.queueClick(
                 clickTarget,
                 clickSide,
                 Vec3.ZERO,
@@ -359,9 +361,9 @@ public class FillHandler extends Module {
             skipIteration.set(true);
             return;
         }
-        ActionManager.INSTANCE.setLook(new PlayerLook(clickSide));
-        ActionManager.INSTANCE.setWaitForHorizontalLook(false);
-        ActionManager.SendResult sendResult = ActionManager.INSTANCE.sendQueue(player);
+        ActionBroker.INSTANCE.setLook(new PlayerLook(clickSide));
+        ActionBroker.INSTANCE.setWaitForHorizontalLook(false);
+        ActionManager.SendResult sendResult = ActionBroker.INSTANCE.sendQueue(player);
         if (sendResult.isWaiting()) {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "等待转头");
             skipIteration.set(true);

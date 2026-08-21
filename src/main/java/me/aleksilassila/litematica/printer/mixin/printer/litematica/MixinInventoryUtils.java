@@ -4,6 +4,7 @@ package me.aleksilassila.litematica.printer.mixin.printer.litematica;
 import fi.dy.masa.litematica.util.InventoryUtils;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
+import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.player.Player;
@@ -25,8 +26,8 @@ public class MixinInventoryUtils {
                 && !TakeItOutUtils.isLoaded()
                 && mc.player.inventoryMenu.slots.stream().noneMatch(slot -> slot.getItem().is(stack.getItem()))
         ) {
-            me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.lastNeedItemList.add(stack.getItem());
-            me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.switchItem();
+            QuickShulkerBridge.requestItem(stack.getItem());
+            QuickShulkerBridge.switchItem();
         }
     }
 

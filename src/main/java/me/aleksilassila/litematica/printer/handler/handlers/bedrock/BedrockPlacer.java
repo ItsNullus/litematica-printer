@@ -1,6 +1,6 @@
 package me.aleksilassila.litematica.printer.handler.handlers.bedrock;
 
-import me.aleksilassila.litematica.printer.printer.ActionManager;
+import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import me.aleksilassila.litematica.printer.printer.PlayerLook;
 import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
@@ -111,7 +111,7 @@ public final class BedrockPlacer {
         boolean useShift = CLIENT.level != null && BedrockTargetBlocks.requiresSneakPlacement(CLIENT.level.getBlockState(hitResult.getBlockPos()));
         boolean wasSneak = player.isShiftKeyDown();
         if (useShift && !wasSneak) {
-            ActionManager.INSTANCE.setShift(player, true);
+            ActionBroker.INSTANCE.setShift(player, true);
         }
         try {
             InteractionUtils.INSTANCE.useItemOn(false, InteractionHand.OFF_HAND, hitResult);
@@ -123,7 +123,7 @@ public final class BedrockPlacer {
             }
         } finally {
             if (useShift && !wasSneak) {
-                ActionManager.INSTANCE.setShift(player, false);
+                ActionBroker.INSTANCE.setShift(player, false);
             }
         }
     }

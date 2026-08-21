@@ -4,7 +4,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import me.aleksilassila.litematica.printer.Reference;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.NonNullList;
-import me.aleksilassila.litematica.printer.printer.ActionManager;
+import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
@@ -48,7 +48,7 @@ public final class TakeItOutUtils {
     public static boolean isAwaitingStack() {
         ItemStack awaitingStack = getAwaitingStack();
         if (awaitingStack != null && !awaitingStack.isEmpty()) {
-            ActionManager.INSTANCE.cancelQueue();
+            ActionBroker.INSTANCE.cancelQueue();
             return true;
         }
         return false;

@@ -4,6 +4,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
+import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
@@ -40,8 +41,8 @@ public abstract class MixinMinecraftPickBlock {
         Minecraft client = Minecraft.getInstance();
         Item item = client.level == null ? Items.AIR : client.level.getBlockState(pos).getBlock().asItem();
         if (shouldTakeFromQuickShulker(client.player, item)) {
-            me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.lastNeedItemList.add(item);
-            me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.switchItem();
+            QuickShulkerBridge.requestItem(item);
+            QuickShulkerBridge.switchItem();
             return;
         }
         original.call(gameMode, pos, includeData);
@@ -51,8 +52,8 @@ public abstract class MixinMinecraftPickBlock {
     //$$ private int litematica_printer$pickRealBlock(Inventory inventory, ItemStack stack, Operation<Integer> original) {
     //$$     int slot = original.call(inventory, stack);
     //$$     if (slot == -1 && !stack.isEmpty() && shouldTakeFromQuickShulker(Minecraft.getInstance().player, stack.getItem())) {
-    //$$         me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.lastNeedItemList.add(stack.getItem());
-    //$$         me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.switchItem();
+    //$$         QuickShulkerBridge.requestItem(stack.getItem());
+    //$$         QuickShulkerBridge.switchItem();
     //$$     }
     //$$     return slot;
     //$$ }

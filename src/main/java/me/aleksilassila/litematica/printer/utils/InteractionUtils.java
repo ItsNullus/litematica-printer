@@ -28,10 +28,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
-import static fi.dy.masa.tweakeroo.config.Configs.Lists.BLOCK_TYPE_BREAK_RESTRICTION_BLACKLIST;
-import static fi.dy.masa.tweakeroo.config.Configs.Lists.BLOCK_TYPE_BREAK_RESTRICTION_WHITELIST;
-import static fi.dy.masa.tweakeroo.tweaks.PlacementTweaks.BLOCK_TYPE_BREAK_RESTRICTION;
-
 @SuppressWarnings({"DataFlowIssue", "BooleanMethodIsAlwaysInverted"})
 @Environment(EnvType.CLIENT)
 public class InteractionUtils {
@@ -69,10 +65,10 @@ public class InteractionUtils {
     public static boolean breakRestriction(BlockState blockState) {
         if (Configs.Break.BREAK_LIMITER.getOptionListValue().equals(ExcavateListMode.TWEAKEROO)) {
             if (!ModLoadUtils.isTweakerooLoaded()) return true;
-            UsageRestriction.ListType listType = BLOCK_TYPE_BREAK_RESTRICTION.getListType();
+            UsageRestriction.ListType listType = TweakerooUtils.getBreakRestrictionListType();
             return BREAK_RESTRICTION_CACHE.allows("break_tweakeroo", listType,
-                    BLOCK_TYPE_BREAK_RESTRICTION_BLACKLIST.getStrings(),
-                    BLOCK_TYPE_BREAK_RESTRICTION_WHITELIST.getStrings(),
+                    TweakerooUtils.getBreakRestrictionBlacklist(),
+                    TweakerooUtils.getBreakRestrictionWhitelist(),
                     blockState);
         } else {
             IConfigOptionListEntry optionListValue = Configs.Break.BREAK_LIMIT.getOptionListValue();

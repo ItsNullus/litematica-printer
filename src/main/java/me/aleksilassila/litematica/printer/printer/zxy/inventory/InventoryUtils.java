@@ -76,6 +76,16 @@ public class InventoryUtils {
     public static HashSet<Item> lastNeedItemList = new LinkedHashSet<>();
     public static boolean isOpenHandler = false;
 
+    public static void requestItem(Item item) {
+        if (item != null) {
+            lastNeedItemList.add(item);
+        }
+    }
+
+    public static boolean isOpenHandler() {
+        return isOpenHandler;
+    }
+
     public static boolean switchItem() {
         if (!lastNeedItemList.isEmpty() && !isOpenHandler) {
             LocalPlayer player = client.player;
