@@ -105,7 +105,7 @@ public class FluidHandler extends FeatureModuleBase {
         int scanConfigHash = this.getScanConfigHash();
         if (this.observedScanConfigHash != Integer.MIN_VALUE
                 && this.observedScanConfigHash != scanConfigHash) {
-            ScanEngine.INSTANCE.resetOwner(NAME);
+            this.scanEngine.resetOwner(NAME);
             this.requestFullScan();
         }
         this.observedScanConfigHash = scanConfigHash;
@@ -152,7 +152,7 @@ public class FluidHandler extends FeatureModuleBase {
         // per-tick scan budget allows. No intermediate FIFO queue: a queue serialised work to one
         // target per tick and let already-placed ("zombie") entries accumulate to ~15k, which read
         // as a slow ring-by-ring expansion even though the scan itself finished in 3 ticks.
-        return ScanEngine.INSTANCE.iterable(
+        return this.scanEngine.iterable(
                 NAME,
                 scanSourceBoxes,
                 this.level,
@@ -187,7 +187,7 @@ public class FluidHandler extends FeatureModuleBase {
                     level.getGameTime()
             );
             setIterationConsumedEffectiveExecution(false);
-            if (ActionBroker.INSTANCE.isResourceHeld(ResourceLease.INVENTORY)) {
+            if (this.actionBroker.isResourceHeld(ResourceLease.INVENTORY)) {
                 skipIteration.set(true);
             }
             return;
@@ -208,7 +208,7 @@ public class FluidHandler extends FeatureModuleBase {
             clickTarget = blockPos.relative(placementSide);
             clickSide = placementSide.getOpposite();
         }
-        if (!ActionBroker.INSTANCE.queueClick(
+        if (!this.actionBroker.queueClick(
                 clickTarget,
                 clickSide,
                 Vec3.ZERO,
@@ -223,7 +223,7 @@ public class FluidHandler extends FeatureModuleBase {
             return;
         }
         BlockState previousState = level.getBlockState(blockPos);
-        ActionManager.SendResult sendResult = ActionBroker.INSTANCE.sendQueue(player);
+        ActionManager.SendResult sendResult = this.actionBroker.sendQueue(player);
         if (sendResult.isWaiting()) {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "等待转头");
             skipIteration.set(true);

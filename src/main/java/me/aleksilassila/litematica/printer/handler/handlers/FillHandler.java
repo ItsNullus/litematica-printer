@@ -128,7 +128,7 @@ public class FillHandler extends FeatureModuleBase {
         if (this.observedFillScanConfigHash != Integer.MIN_VALUE
                 && this.observedFillScanConfigHash != scanConfigHash) {
             this.clearFillTargets();
-            ScanEngine.INSTANCE.resetOwner(NAME);
+            this.scanEngine.resetOwner(NAME);
             this.requestFullScan();
         }
         this.observedFillScanConfigHash = scanConfigHash;
@@ -238,7 +238,7 @@ public class FillHandler extends FeatureModuleBase {
         ScanIntent scanIntent = Configs.Print.PLACE_IN_AIR.getBooleanValue()
                 ? ScanIntent.CUSTOM
                 : ScanIntent.FILL;
-        return ScanEngine.INSTANCE.iterable(
+        return this.scanEngine.iterable(
                 NAME,
                 scanSourceBoxes,
                 this.level,
@@ -318,7 +318,7 @@ public class FillHandler extends FeatureModuleBase {
         }
         if (!handheld && !InventoryUtils.switchToItems(player, this.fillModeItemList)) {
             boolean retrievalPending =
-                    ActionBroker.INSTANCE.isResourceHeld(ResourceLease.INVENTORY);
+                    this.actionBroker.isResourceHeld(ResourceLease.INVENTORY);
             if (retrievalPending) {
                 HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "等待取货");
                 MissingMaterialTracker.INSTANCE.resolve(this.fillModeItemList, null);
@@ -351,7 +351,7 @@ public class FillHandler extends FeatureModuleBase {
         Item[] expectedItems = handheld
                 ? new Item[]{player.getMainHandItem().getItem()}
                 : this.fillModeItemList;
-        if (!ActionBroker.INSTANCE.queueClick(
+        if (!this.actionBroker.queueClick(
                 clickTarget,
                 clickSide,
                 Vec3.ZERO,
@@ -365,9 +365,9 @@ public class FillHandler extends FeatureModuleBase {
             skipIteration.set(true);
             return;
         }
-        ActionBroker.INSTANCE.setLook(new PlayerLook(clickSide));
-        ActionBroker.INSTANCE.setWaitForHorizontalLook(false);
-        ActionManager.SendResult sendResult = ActionBroker.INSTANCE.sendQueue(player);
+        this.actionBroker.setLook(new PlayerLook(clickSide));
+        this.actionBroker.setWaitForHorizontalLook(false);
+        ActionManager.SendResult sendResult = this.actionBroker.sendQueue(player);
         if (sendResult.isWaiting()) {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "等待转头");
             skipIteration.set(true);

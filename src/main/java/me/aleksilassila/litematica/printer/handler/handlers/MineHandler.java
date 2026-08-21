@@ -111,7 +111,7 @@ public class MineHandler extends FeatureModuleBase {
         Predicate<BlockPos> selectionPredicate = this.createSelectionRangePredicate();
         Predicate<BlockPos> reachPredicate = this.createScanReachPredicate();
         
-        return ScanEngine.INSTANCE.iterable(
+        return this.scanEngine.iterable(
                 NAME,
                 scanSourceBoxes,
                 this.level,
@@ -178,7 +178,7 @@ public class MineHandler extends FeatureModuleBase {
 
     @Override
     protected void stopIteration(boolean interrupt) {
-        if (ActionBroker.INSTANCE.isWaitingForLook() || this.activeMinePos != null || this.candidates.isEmpty()) {
+        if (this.actionBroker.isWaitingForLook() || this.activeMinePos != null || this.candidates.isEmpty()) {
             return;
         }
         this.candidates.sort(this.toolSession.comparator(this.player));

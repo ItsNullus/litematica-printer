@@ -20,9 +20,14 @@ import java.util.Iterator;
 import java.util.List;
 
 public final class SortedSchematicTargetQueue {
+    private final ScanEngine scanEngine;
     private final Deque<BlockPos> queue = new ArrayDeque<>();
     private List<PrinterBox> boxes = List.of();
     private boolean hasMoreSource;
+
+    public SortedSchematicTargetQueue(ScanEngine scanEngine) {
+        this.scanEngine = scanEngine;
+    }
 
     public void clear() {
         this.queue.clear();
@@ -50,7 +55,7 @@ public final class SortedSchematicTargetQueue {
         List<TargetScore> targets = new ArrayList<>();
         LongSet queuedKeys = new LongOpenHashSet();
         this.hasMoreSource = false;
-        Iterable<BlockPos> candidates = ScanEngine.INSTANCE.iterable(
+        Iterable<BlockPos> candidates = this.scanEngine.iterable(
                 "print_sorted",
                 sourceBoxes,
                 level,

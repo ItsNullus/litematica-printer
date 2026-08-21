@@ -27,8 +27,13 @@ public final class BedrockCandidatePlanner {
      * 廉价过滤(空气/非基岩/冷却)不计入此预算。大交互距离下命中的基岩极多,若不设上限会在单 tick 内对成百上千个基岩
      */
     private static final int MODELING_BUDGET_PER_TICK = 128;
+    private final ScanEngine scanEngine;
     private final BedrockCandidateBacklog<CandidateInfo> candidateBacklog =
             new BedrockCandidateBacklog<>(CANDIDATE_COLLECT_CAP);
+
+    public BedrockCandidatePlanner(ScanEngine scanEngine) {
+        this.scanEngine = scanEngine;
+    }
 
     public Iterable<BlockPos> iterable(PrinterBox sourceBox, ClientLevel level, LocalPlayer player, int maxEffectiveExecutions, int scanGuardLimit) {
         this.pruneCandidateBacklog(sourceBox, level);
@@ -141,7 +146,7 @@ public final class BedrockCandidatePlanner {
             return new CandidateShard(List.of(), true);
         }
         int scanLimit = this.getCandidateScanLimit(scanGuardLimit);
-        Iterator<BlockPos> iterator = ScanEngine.INSTANCE.iterable(
+        Iterator<BlockPos> iterator = this.scanEngine.iterable(
                 "bedrock",
                 sourceBox,
                 level,

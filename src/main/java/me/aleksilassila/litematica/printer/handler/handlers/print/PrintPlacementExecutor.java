@@ -34,9 +34,14 @@ import java.util.function.Predicate;
 import net.minecraft.world.item.ItemStack;
 
 public final class PrintPlacementExecutor {
+    private final ActionBroker actionBroker;
     private static final Item[] EMPTY_HAND_ITEMS = {Items.AIR};
     private static final long RESERVE_NOTICE_COOLDOWN_TICKS = 100L;
     private static long lastReserveNoticeTick = Long.MIN_VALUE;
+
+    public PrintPlacementExecutor(ActionBroker actionBroker) {
+        this.actionBroker = actionBroker;
+    }
 
     public PrintPlacementResult execute(SchematicBlockContext context, Action action, @Nullable PrintTaskAction taskAction) {
         BlockPos blockPos = context.blockPos;
@@ -81,7 +86,7 @@ public final class PrintPlacementExecutor {
         if (!itemReady) {
             boolean retrievalPending =
                     InventorySwitchGuard.isWaiting()
-                            || ActionBroker.INSTANCE.isResourceHeld(ResourceLease.INVENTORY);
+                            || this.actionBroker.isResourceHeld(ResourceLease.INVENTORY);
             ItemStack reserveBlockedStack = reserveItems
                     ? InventoryUtils.findReserveBlockedStack(
                             context.client.player,
@@ -126,13 +131,13 @@ public final class PrintPlacementExecutor {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "动作队列占用");
             return PrintPlacementResult.cancelled(true);
         }
-        ActionBroker.INSTANCE.setExpectedStackPredicate(requiredStackPredicate);
+        this.actionBroker.setExpectedStackPredicate(requiredStackPredicate);
         Vec3 hitModifier = LitematicaUtils.usePrecisionPlacement(blockPos, context.requiredState);
         if (hitModifier != null) {
-            ActionBroker.INSTANCE.useProtocolHitModifier(hitModifier);
+            this.actionBroker.useProtocolHitModifier(hitModifier);
         }
-        ActionBroker.INSTANCE.setLook(adjustHorizontalLook(action.getPlayerLook(), context));
-        ActionBroker.INSTANCE.setNeedWaitModifyLookFromAction(action.isNeedWaitModifyLook());
+        this.actionBroker.setLook(adjustHorizontalLook(action.getPlayerLook(), context));
+        this.actionBroker.setNeedWaitModifyLookFromAction(action.isNeedWaitModifyLook());
         boolean consumedEffectiveExecution = action.isConsumeEffectiveExecution();
         int cooldownTicks = action.getCooldownTicksOverride() >= 0
                 ? action.getCooldownTicksOverride()
@@ -140,14 +145,14 @@ public final class PrintPlacementExecutor {
         AtomicBoolean deferred = new AtomicBoolean(false);
         boolean signPlacement = context.requiredState.getBlock() instanceof SignBlock;
         if (signPlacement) {
-            ActionBroker.INSTANCE.armPrintSignEdit(blockPos);
+            this.actionBroker.armPrintSignEdit(blockPos);
         }
-        ActionBroker.INSTANCE.setQueueCompletionListener(sendResult -> {
+        this.actionBroker.setQueueCompletionListener(sendResult -> {
             if (!deferred.get()) {
                 return;
             }
             if (sendResult.isSent()) {
-                recordPlacementSent(context);
+                this.recordPlacementSent(context);
                 if (cooldownTicks > 0) {
                     CooldownUtils.INSTANCE.setCooldown(
                             context.level,
@@ -161,7 +166,7 @@ public final class PrintPlacementExecutor {
                 }
             } else {
                 if (signPlacement) {
-                    ActionBroker.INSTANCE.cancelPrintSignEdit(blockPos);
+                    this.actionBroker.cancelPrintSignEdit(blockPos);
                 }
                 if (sendResult == ActionManager.SendResult.RESERVE_LIMIT) {
                     showReserveNotice(context, context.client.player.getMainHandItem());
@@ -176,7 +181,7 @@ public final class PrintPlacementExecutor {
             }
         });
 
-        ActionManager.SendResult sendResult = ActionBroker.INSTANCE.sendQueue(context.client.player);
+        ActionManager.SendResult sendResult = this.actionBroker.sendQueue(context.client.player);
         if (sendResult.isWaiting()) {
             deferred.set(true);
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "等待转头");
@@ -189,7 +194,7 @@ public final class PrintPlacementExecutor {
         }
         if (!sendResult.isSent()) {
             if (signPlacement) {
-                ActionBroker.INSTANCE.cancelPrintSignEdit(blockPos);
+                this.actionBroker.cancelPrintSignEdit(blockPos);
             }
             if (sendResult == ActionManager.SendResult.RESERVE_LIMIT) {
                 showReserveNotice(context, context.client.player.getMainHandItem());
@@ -198,7 +203,7 @@ public final class PrintPlacementExecutor {
             return PrintPlacementResult.cancelled(true);
         }
 
-        recordPlacementSent(context);
+        this.recordPlacementSent(context);
 
         return new PrintPlacementResult(
                 consumedEffectiveExecution,
@@ -208,9 +213,9 @@ public final class PrintPlacementExecutor {
         );
     }
 
-    private static void recordPlacementSent(SchematicBlockContext context) {
+    private void recordPlacementSent(SchematicBlockContext context) {
         if (context.requiredState.getBlock() instanceof SignBlock) {
-            ActionBroker.INSTANCE.confirmPrintSignEditSent(context.blockPos);
+            this.actionBroker.confirmPrintSignEditSent(context.blockPos);
         }
         HudStatsManager.INSTANCE.trackExpectedBlockState(
                 HudStatsManager.Mode.PRINT,
@@ -243,7 +248,7 @@ public final class PrintPlacementExecutor {
     }
 
     @Nullable
-    private static PlayerLook adjustHorizontalLook(@Nullable PlayerLook playerLook, SchematicBlockContext context) {
+    private PlayerLook adjustHorizontalLook(@Nullable PlayerLook playerLook, SchematicBlockContext context) {
         if (playerLook == null) {
             return null;
         }
@@ -251,7 +256,7 @@ public final class PrintPlacementExecutor {
         if (primaryLookDirection.getAxis().isHorizontal()) {
             float currentPitch = context.client.player.getXRot();
             currentPitch = Math.max(-40.0F, Math.min(40.0F, currentPitch));
-            ActionBroker.INSTANCE.setWaitForHorizontalLook(false);
+            this.actionBroker.setWaitForHorizontalLook(false);
             return new PlayerLook(playerLook.getYaw(), currentPitch);
         }
         return playerLook;

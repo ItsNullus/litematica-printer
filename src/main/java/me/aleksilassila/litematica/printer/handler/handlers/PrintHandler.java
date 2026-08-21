@@ -8,7 +8,6 @@ import me.aleksilassila.litematica.printer.enums.PrintModeType;
 import me.aleksilassila.litematica.printer.guide.Guides;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.handler.FeatureModuleBase;
-import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
 import me.aleksilassila.litematica.printer.handler.handlers.print.PrintPlacementExecutor;
 import me.aleksilassila.litematica.printer.handler.handlers.print.PrintPlacementResult;
@@ -38,8 +37,8 @@ public class PrintHandler extends FeatureModuleBase {
 
     private SchematicBlockContext ctx;
     private final PrintTaskController printTasks = new PrintTaskController();
-    private final SortedSchematicTargetQueue sortedTargets = new SortedSchematicTargetQueue();
-    private final PrintPlacementExecutor placementExecutor = new PrintPlacementExecutor();
+    private final SortedSchematicTargetQueue sortedTargets;
+    private final PrintPlacementExecutor placementExecutor;
 
     private List<String> printSkipListCache = List.of();
     private String[] printSkipFilters = new String[0];
@@ -47,10 +46,14 @@ public class PrintHandler extends FeatureModuleBase {
 
     public PrintHandler() {
         super(PrinterRuntime.get(), NAME, PrintModeType.PRINTER, Configs.Core.PRINT, Configs.Print.PRINT_SELECTION_TYPE, true);
+        this.sortedTargets = new SortedSchematicTargetQueue(this.scanEngine);
+        this.placementExecutor = new PrintPlacementExecutor(this.actionBroker);
     }
 
     public PrintHandler(PrinterRuntime runtime) {
         super(runtime, NAME, PrintModeType.PRINTER, Configs.Core.PRINT, Configs.Print.PRINT_SELECTION_TYPE, true);
+        this.sortedTargets = new SortedSchematicTargetQueue(this.scanEngine);
+        this.placementExecutor = new PrintPlacementExecutor(this.actionBroker);
     }
 
     public SchematicBlockContext getContext() {
@@ -91,8 +94,8 @@ public class PrintHandler extends FeatureModuleBase {
         if (this.observedActionConfigHash != Integer.MIN_VALUE
                 && this.observedActionConfigHash != actionConfigHash) {
             this.sortedTargets.clear();
-            ScanEngine.INSTANCE.resetOwner(NAME);
-            ScanEngine.INSTANCE.resetOwner("print_sorted");
+            this.scanEngine.resetOwner(NAME);
+            this.scanEngine.resetOwner("print_sorted");
             this.requestFullScan();
         }
         this.observedActionConfigHash = actionConfigHash;

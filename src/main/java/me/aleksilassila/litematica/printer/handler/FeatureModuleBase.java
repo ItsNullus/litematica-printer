@@ -43,8 +43,8 @@ public abstract class FeatureModuleBase extends ConfigUtils implements RuntimeCo
     private final ModuleSelectionScope selectionScope;
     private final ModuleRuntimeLoop runtimeLoop;
     private final String id;
-    final ScanEngine scanEngine;
-    final ActionBroker actionBroker;
+    protected final ScanEngine scanEngine;
+    protected final ActionBroker actionBroker;
     @Nullable
     final PrintModeType printMode;
     @Nullable
