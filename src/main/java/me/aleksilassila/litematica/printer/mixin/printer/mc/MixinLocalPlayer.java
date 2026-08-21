@@ -4,7 +4,6 @@ import com.mojang.authlib.GameProfile;
 import fi.dy.masa.litematica.world.SchematicWorldHandler;
 import fi.dy.masa.litematica.world.WorldSchematic;
 import me.aleksilassila.litematica.printer.config.Configs;
-import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
 import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -50,7 +49,7 @@ public class MixinLocalPlayer extends AbstractClientPlayer {
     @Inject(at = @At("HEAD"), method = "resetPos")
     public void init(CallbackInfo ci) {
         if (!this.litematica_printer$runtimeResetDone) {
-            ClientPlayerTickManager.resetRuntime("local_player_init");
+            PrinterRuntime.get().reset("local_player_init");
             this.litematica_printer$runtimeResetDone = true;
         }
     }

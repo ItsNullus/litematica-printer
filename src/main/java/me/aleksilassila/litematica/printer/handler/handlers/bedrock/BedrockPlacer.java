@@ -1,7 +1,6 @@
 package me.aleksilassila.litematica.printer.handler.handlers.bedrock;
 
 import me.aleksilassila.litematica.printer.printer.PlayerLook;
-import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
 import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.DirectionUtils;
@@ -149,7 +148,7 @@ public final class BedrockPlacer {
             return false;
         }
 
-        long sentTick = ClientPlayerTickManager.getCurrentHandlerTime();
+        long sentTick = PrinterRuntime.get().currentTick();
         pendingHorizontalPistonPlacements.put(pendingKey, new PendingHorizontalPlacement(facing, sentTick));
         NetworkUtils.setScopedLookOverride(look);
         NetworkUtils.sendLookPacketIgnoringQueuedLook(player, look);
@@ -157,7 +156,7 @@ public final class BedrockPlacer {
     }
 
     private static boolean isHorizontalLookReady(PendingHorizontalPlacement pendingPlacement) {
-        long now = ClientPlayerTickManager.getCurrentHandlerTime();
+        long now = PrinterRuntime.get().currentTick();
         // Movement and interaction packets share the ordered game connection.  Sending the
         // placement on the following client tick is sufficient and keeps the original safety
         // boundary without treating an unrelated inbound packet as an acknowledgement.

@@ -4,7 +4,7 @@ import fi.dy.masa.malilib.interfaces.IInitializationHandler;
 import me.aleksilassila.litematica.printer.gui.ConfigUi;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.enums.PrintModeType;
-import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockController;
 import me.aleksilassila.litematica.printer.integration.quickshulker.HighlightBlockRenderer;
 import me.aleksilassila.litematica.printer.utils.minecraft.MessageUtils;
@@ -38,7 +38,7 @@ public class InitHandler implements IInitializationHandler {
         // 工作开关
         Core.WORK_SWITCH.setValueChangeCallback(b -> {
             if (!b.getBooleanValue()) {
-                ClientPlayerTickManager.resetRuntime("work_switch_off");
+                PrinterRuntime.get().reset("work_switch_off");
             }
         });
 

@@ -2,7 +2,7 @@ package me.aleksilassila.litematica.printer.mixin.printer.mc;
 
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.guide.guides.RailGuide;
-import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -22,13 +22,13 @@ public class MixinConnection {
     @Inject(method = "genericsFtw", at = @At("HEAD"), require = 0)
     private static void hookGenericsFtw(Packet<?> packet, PacketListener listener, CallbackInfo ci) {
         if (ConfigUtils.isEnable()) {
-            ClientPlayerTickManager.recordInboundPacket();   // 仅用于连接静默/延迟检测
+            PrinterRuntime.get().modules().recordInboundPacket();   // 仅用于连接静默/延迟检测
         }
     }
 
     @Inject(method = "disconnect*", at = {@At("HEAD")})
     public void disconnect(Component ignored, CallbackInfo ci) {
-        ClientPlayerTickManager.resetRuntime("disconnect");
+        PrinterRuntime.get().reset("disconnect");
         RailGuide.clearRepairState();
         if (Configs.Core.AUTO_DISABLE_PRINTER.getBooleanValue() && Configs.Core.WORK_SWITCH.getBooleanValue()) {
             Configs.Core.WORK_SWITCH.setBooleanValue(false);
