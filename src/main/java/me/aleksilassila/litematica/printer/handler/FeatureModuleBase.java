@@ -45,6 +45,7 @@ public abstract class FeatureModuleBase extends ConfigUtils implements RuntimeCo
     private final String id;
     protected final ScanEngine scanEngine;
     protected final ActionBroker actionBroker;
+    final InventoryAvailabilityTracker inventoryAvailability;
     @Nullable
     final PrintModeType printMode;
     @Nullable
@@ -84,6 +85,7 @@ public abstract class FeatureModuleBase extends ConfigUtils implements RuntimeCo
     ) {
         this.scanEngine = runtime.scanEngine();
         this.actionBroker = runtime.actionBroker();
+        this.inventoryAvailability = runtime.inventoryAvailability();
         this.id = id;
         this.printMode = printMode;
         this.enableConfig = enableConfig;

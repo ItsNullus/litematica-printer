@@ -6,6 +6,7 @@ import me.aleksilassila.litematica.printer.core.runtime.RuntimeEventBus;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeScope;
 import me.aleksilassila.litematica.printer.handler.FeatureModuleSet;
+import me.aleksilassila.litematica.printer.handler.InventoryAvailabilityTracker;
 import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.printer.ActionManager;
 import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
@@ -38,6 +39,7 @@ public final class PrinterRuntime {
     private final FeatureModuleSet modules;
     private final ActionBroker actionBroker;
     private final ScanEngine scanEngine;
+    private final InventoryAvailabilityTracker inventoryAvailability;
 
     private PrinterRuntime() {
         Minecraft client = Minecraft.getInstance();
@@ -49,6 +51,8 @@ public final class PrinterRuntime {
         this.scope.register(this.actionBroker);
         this.scanEngine = new ScanEngine();
         this.scope.register(this.scanEngine);
+        this.inventoryAvailability = new InventoryAvailabilityTracker();
+        this.scope.register(this.inventoryAvailability);
         this.modules = new FeatureModuleSet(this);
     }
 
@@ -78,6 +82,10 @@ public final class PrinterRuntime {
 
     public ScanEngine scanEngine() {
         return this.scanEngine;
+    }
+
+    public InventoryAvailabilityTracker inventoryAvailability() {
+        return this.inventoryAvailability;
     }
 
     public Minecraft client() {

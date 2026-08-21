@@ -72,7 +72,7 @@ final class ModuleRuntimeLoop {
     }
 
     private void wakeForInventoryChange() {
-        long revision = InventoryAvailabilityTracker.INSTANCE.gainRevision();
+        long revision = this.owner.inventoryAvailability.gainRevision();
         if (!this.inventoryRevisionInitialized) {
             this.inventoryRevisionInitialized = true;
             this.lastInventoryGainRevision = revision;

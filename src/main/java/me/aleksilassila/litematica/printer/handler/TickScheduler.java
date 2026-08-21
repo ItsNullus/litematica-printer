@@ -29,7 +29,7 @@ final class TickScheduler implements RuntimeComponent {
 
     void tick() {
         Minecraft mc = this.runtime.client();
-        InventoryAvailabilityTracker.INSTANCE.tick(mc.player);
+        this.runtime.inventoryAvailability().tick(mc.player);
         HudStatsManager.INSTANCE.tick();
         MissingMaterialTracker.INSTANCE.tick(
                 mc.player,
