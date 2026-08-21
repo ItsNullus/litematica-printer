@@ -7,8 +7,6 @@
     "printer.litematica.EasyPlaceUtilsAccessor",
     "printer.litematica.InventoryUtilsAccessor",
     "printer.litematica.MixinInventoryUtils",
-    "printer.malilib.config.MixinConfigBase",
-    "printer.malilib.config.MixinIConfigBase",
     "printer.mc.MixinBlockItem",
     "printer.mc.MixinConnection",
     "printer.mc.MixinServerboundMovePlayerPacket"
@@ -26,8 +24,7 @@
     "printer.mc.MixinClientPacketListener",
     "printer.mc.MixinGui",
     "printer.mc.MixinLocalPlayer",
-    "printer.mc.MixinMultiPlayerGameMode",
-    "printer.tweakeroo.MixinInputHandler"
+    "printer.mc.MixinMultiPlayerGameMode"
   ],
   "injectors": {
     "defaultRequire": 1

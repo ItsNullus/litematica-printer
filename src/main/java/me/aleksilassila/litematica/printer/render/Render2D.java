@@ -5,7 +5,7 @@ import me.aleksilassila.litematica.printer.enums.ScanState;
 import me.aleksilassila.litematica.printer.enums.WorkingModeType;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
-import me.aleksilassila.litematica.printer.handler.Module;
+import me.aleksilassila.litematica.printer.handler.FeatureModuleBase;
 import me.aleksilassila.litematica.printer.handler.Modules;
 import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockController;
 import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
@@ -288,7 +288,7 @@ public class Render2D {
         if (shouldDisplayModeRate(mode)) {
             text.append(getModeRateLabel(mode)).append(' ').append(formatRate(actualRate)).append("/s | ");
         }
-        Module module = getModule(mode);
+        FeatureModuleBase module = getModule(mode);
         text.append("设置 ").append(formatModeSettings(mode));
         if (module != null) {
             text.append(" | 扫描 ").append(formatScanState(module));
@@ -443,7 +443,7 @@ public class Render2D {
         };
     }
 
-    private Module getModule(HudStatsManager.Mode mode) {
+    private FeatureModuleBase getModule(HudStatsManager.Mode mode) {
         return switch (mode) {
             case PRINT -> Modules.PRINT;
             case MINE -> Modules.MINE;
@@ -454,7 +454,7 @@ public class Render2D {
         };
     }
 
-    private String formatScanState(Module module) {
+    private String formatScanState(FeatureModuleBase module) {
         ScanState state = module.getScanState();
         String text = switch (state) {
             case FULL -> "全量";

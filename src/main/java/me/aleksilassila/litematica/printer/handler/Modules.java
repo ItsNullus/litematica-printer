@@ -16,7 +16,7 @@ public final class Modules {
     public static final FluidHandler FLUID = new FluidHandler();
     public static final BedrockHandler BEDROCK = new BedrockHandler();
 
-    public static final ImmutableList<Module> VALUES = ImmutableList.of(
+    public static final ImmutableList<FeatureModuleBase> VALUES = ImmutableList.of(
             GUI, MINE, FLUID, PRINT, FILL, BEDROCK
     );
 

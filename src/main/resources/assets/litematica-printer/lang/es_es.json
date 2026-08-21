@@ -234,6 +234,8 @@
   "litematica-printer.config.unlockBeaconEffects.desc": "Relaja en el cliente los límites de nivel de los efectos de la interfaz del faro y permite elegir efectos primarios y secundarios que normalmente no estarían disponibles con el nivel actual, de forma similar a wacko-beacons.\nNo modifica la validación del servidor; que funcione realmente depende de que el servidor siga siendo vulnerable o no esté parcheado.",
   "litematica-printer.config.scanTimeBudgetMs": "Presupuesto de tiempo de escaneo",
   "litematica-printer.config.scanTimeBudgetMs.desc": "Límite de tiempo por tick para el escáner de entradas en el hilo principal, en milisegundos.\nEs un fusible de seguridad, no un interruptor de optimización de rendimiento. Aumentarlo solo permite escanear más durante el mismo tick y puede causar tirones; reducirlo cede antes hasta el tick siguiente y puede hacer que los objetivos se actualicen más despacio.",
+  "litematica-printer.config.asyncScan": "Recorrido de escaneo asíncrono",
+  "litematica-printer.config.asyncScan.desc": "Precarga en segundo plano el recorrido por distancia limitado a la selección. El mundo y el esquema se leen y validan únicamente en el hilo del cliente; ante un fallo se vuelve al modo síncrono.",
   "litematica-printer.config.lazyEnterTicks": "Retraso del escaneo lento",
   "litematica-printer.config.lazyEnterTicks.desc": "Número de ticks inactivos consecutivos antes de que el escáner de entradas pase al estado lento; 0 desactiva el escaneo lento.",
   "litematica-printer.config.workRange": "Radio de trabajo",

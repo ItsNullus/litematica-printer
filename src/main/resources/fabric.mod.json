@@ -30,7 +30,8 @@
     ]
   },
   "mixins": [
-    "litematica-printer.mixins.json"
+    "litematica-printer.mixins.json",
+    "litematica-printer.optional.mixins.json"
   ],
   "depends": {
     "minecraft": "${minecraft_dependency}",

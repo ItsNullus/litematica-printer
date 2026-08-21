@@ -7,7 +7,7 @@ import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.enums.PrintModeType;
 import me.aleksilassila.litematica.printer.guide.Guides;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
-import me.aleksilassila.litematica.printer.handler.Module;
+import me.aleksilassila.litematica.printer.handler.FeatureModuleBase;
 import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
 import me.aleksilassila.litematica.printer.handler.handlers.print.PrintPlacementExecutor;
@@ -28,7 +28,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jetbrains.annotations.Nullable;
 
-public class PrintHandler extends Module {
+public class PrintHandler extends FeatureModuleBase {
     public final static String NAME = "print";
 
     private Action action;

@@ -4,6 +4,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.player.LocalPlayer;
+import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
+import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 
 /**
  * RTT(往返延迟)自适应重放间隔。
@@ -16,7 +19,7 @@ import net.minecraft.client.player.LocalPlayer;
  * 且该 API 在所有目标版本上稳定。单机/局域网或被代理隐藏 ping 时返回 0,此时不施加任何额外间隔(本就无需放慢)。
  * 用 EWMA 平滑抖动,避免 ping 跳变导致间隔忽快忽慢。
  */
-public final class RttReplayController {
+public final class RttReplayController implements RuntimeComponent {
     public static final RttReplayController INSTANCE = new RttReplayController();
 
     private static final int MILLIS_PER_TICK = 50;
@@ -28,6 +31,7 @@ public final class RttReplayController {
     private double smoothedRttMillis = 0.0D;
 
     private RttReplayController() {
+        PrinterRuntime.get().register(this);
     }
 
     /**
@@ -54,6 +58,8 @@ public final class RttReplayController {
     public void reset() {
         this.smoothedRttMillis = 0.0D;
     }
+
+    @Override public void onEpochChanged(RuntimeEvent.EpochChanged event) { this.reset(); }
 
     private double sampleRttMillis() {
         int rawLatency = readLatencyMillis();

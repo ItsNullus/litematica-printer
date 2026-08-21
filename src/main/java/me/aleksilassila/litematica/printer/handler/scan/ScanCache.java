@@ -34,6 +34,7 @@ public final class ScanCache {
 
     private final Map<String, SectionScanSession> sessions = new HashMap<>();
     private final Map<String, MutableMetrics> scanMetrics = new HashMap<>();
+    private final AsyncPositionCursorScheduler asyncScheduler = new AsyncPositionCursorScheduler();
 
     private Object levelIdentity;
     private Object schematicIdentity;
@@ -45,7 +46,7 @@ public final class ScanCache {
     }
 
     public void clear() {
-        this.sessions.clear();
+        this.closeSessions();
         this.scanMetrics.clear();
         this.levelIdentity = null;
         this.schematicIdentity = null;
@@ -92,7 +93,7 @@ public final class ScanCache {
             return;
         }
         if (this.levelIdentity != level || this.schematicIdentity != schematic) {
-            this.sessions.clear();
+            this.closeSessions();
             this.scanMetrics.clear();
             DirtyRegionTracker.INSTANCE.clear();
             this.levelIdentity = level;
@@ -129,7 +130,14 @@ public final class ScanCache {
             return;
         }
         String prefix = ownerKey + ":";
-        this.sessions.keySet().removeIf(key -> key.startsWith(prefix));
+        Iterator<Map.Entry<String, SectionScanSession>> iterator = this.sessions.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, SectionScanSession> entry = iterator.next();
+            if (entry.getKey().startsWith(prefix)) {
+                entry.getValue().close();
+                iterator.remove();
+            }
+        }
     }
 
     public Iterable<BlockPos> rawIterable(
@@ -393,13 +401,31 @@ public final class ScanCache {
         Region region = Region.from(sourceBounds, player);
         String key = ownerKey + ":" + intent.name();
         SectionScanSession session = this.sessions.get(key);
-        if (session == null || !session.canReuse(region)) {
-            session = new SectionScanSession(region, sourceBoxes, intent, metrics);
+        boolean asynchronous = Configs.Core.ASYNC_SCAN.getBooleanValue();
+        if (session == null || !session.canReuse(region) || session.usesAsyncTraversal() != asynchronous) {
+            if (session != null) {
+                session.close();
+            }
+            session = new SectionScanSession(
+                    region,
+                    sourceBoxes,
+                    intent,
+                    metrics,
+                    this.asyncScheduler,
+                    asynchronous
+            );
             this.sessions.put(key, session);
         } else {
             session.updateRegion(region, sourceBoxes);
         }
         return session;
+    }
+
+    private void closeSessions() {
+        for (SectionScanSession session : this.sessions.values()) {
+            session.close();
+        }
+        this.sessions.clear();
     }
 
     private static PrinterBox enclosingBox(List<PrinterBox> boxes) {

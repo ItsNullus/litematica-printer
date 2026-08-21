@@ -5,10 +5,7 @@ import fi.dy.masa.litematica.world.SchematicWorldHandler;
 import fi.dy.masa.litematica.world.WorldSchematic;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
-import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
-import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
-import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
@@ -56,15 +53,6 @@ public class MixinLocalPlayer extends AbstractClientPlayer {
             ClientPlayerTickManager.resetRuntime("local_player_init");
             this.litematica_printer$runtimeResetDone = true;
         }
-    }
-
-    @Inject(at = @At("HEAD"), method = "tick")
-    public void tick(CallbackInfo ci) {
-        CooldownUtils.INSTANCE.tick();
-        QuickShulkerBridge.onTick();
-        InteractionUtils.INSTANCE.preprocess();
-        InteractionUtils.INSTANCE.onTick();
-        ClientPlayerTickManager.tick();
     }
 
     @Inject(method = "openTextEdit", at = @At("HEAD"), cancellable = true)

@@ -34,9 +34,12 @@ final class SectionScanSession {
 
     private final ScanIntent intent;
     private final MutableMetrics metrics;
+    private final AsyncPositionCursorScheduler asyncScheduler;
     private Region region;
     private List<PrinterBox> sourceBoxes;
-    private PlayerDistanceCursor distanceCursor;
+    private PositionCursor distanceCursor;
+    private final boolean configuredAsync;
+    private boolean asynchronous;
     private long sourceRevision;
     private long cursorRevision;
     private long exhaustedUntilTick = Long.MIN_VALUE;
@@ -49,23 +52,40 @@ final class SectionScanSession {
     private int lastChunkZ = Integer.MIN_VALUE;
     private boolean lastChunkLoaded;
 
-    SectionScanSession(Region region, List<PrinterBox> sourceBoxes, ScanIntent intent, MutableMetrics metrics) {
+    SectionScanSession(
+            Region region,
+            List<PrinterBox> sourceBoxes,
+            ScanIntent intent,
+            MutableMetrics metrics,
+            AsyncPositionCursorScheduler asyncScheduler,
+            boolean asynchronous
+    ) {
         this.region = region;
         this.sourceBoxes = List.copyOf(sourceBoxes);
         this.intent = intent;
         this.metrics = metrics;
-        this.distanceCursor = new PlayerDistanceCursor(
-                this.sourceBoxes,
-                region.centerX(),
-                region.centerY(),
-                region.centerZ(),
-                region.maxDistanceBand()
-        );
+        this.asyncScheduler = asyncScheduler;
+        this.configuredAsync = asynchronous;
+        this.asynchronous = asynchronous;
+        this.distanceCursor = this.createDistanceCursor();
+    }
+
+    SectionScanSession(
+            Region region,
+            List<PrinterBox> sourceBoxes,
+            ScanIntent intent,
+            MutableMetrics metrics
+    ) {
+        this(region, sourceBoxes, intent, metrics, null, false);
     }
 
     boolean canReuse(Region region) {
         return this.region.sameSectionWindow(region)
                 && this.region.maxDistanceBand() == region.maxDistanceBand();
+    }
+
+    boolean usesAsyncTraversal() {
+        return this.configuredAsync;
     }
 
     void updateRegion(Region region, List<PrinterBox> sourceBoxes) {
@@ -107,18 +127,33 @@ final class SectionScanSession {
     }
 
     private void rebuildDistanceCursor() {
-        this.distanceCursor = new PlayerDistanceCursor(
+        this.distanceCursor.close();
+        this.distanceCursor = this.createDistanceCursor();
+        this.cursorRevision = this.sourceRevision;
+        this.exhaustedUntilTick = Long.MIN_VALUE;
+        this.lastChunkX = Integer.MIN_VALUE;
+        this.lastChunkZ = Integer.MIN_VALUE;
+        this.lastChunkLoaded = false;
+    }
+
+    private PositionCursor createDistanceCursor() {
+        if (this.asynchronous) {
+            return new AsyncPositionCursor(
+                    this.asyncScheduler,
+                    this.sourceBoxes,
+                    this.region.centerX(),
+                    this.region.centerY(),
+                    this.region.centerZ(),
+                    this.region.maxDistanceBand()
+            );
+        }
+        return new SynchronousPositionCursor(
                 this.sourceBoxes,
                 this.region.centerX(),
                 this.region.centerY(),
                 this.region.centerZ(),
                 this.region.maxDistanceBand()
         );
-        this.cursorRevision = this.sourceRevision;
-        this.exhaustedUntilTick = Long.MIN_VALUE;
-        this.lastChunkX = Integer.MIN_VALUE;
-        this.lastChunkZ = Integer.MIN_VALUE;
-        this.lastChunkLoaded = false;
     }
 
     boolean hasPendingSource(long tickTime, boolean restartCompletedPass) {
@@ -212,7 +247,19 @@ final class SectionScanSession {
                 z = dirtyPos.getZ();
                 this.liveMutable.set(x, y, z);
             } else {
-                if (!this.distanceCursor.next(this.liveMutable)) {
+                PositionCursor.PollResult pollResult = this.distanceCursor.poll(this.liveMutable);
+                if (pollResult == PositionCursor.PollResult.PENDING) {
+                    this.paused = true;
+                    return null;
+                }
+                if (pollResult == PositionCursor.PollResult.FAILED) {
+                    // A worker failure must never stop a feature. Restart this pass through the
+                    // synchronous cursor and keep all live-world reads on the client thread.
+                    this.asynchronous = false;
+                    this.rebuildDistanceCursor();
+                    continue;
+                }
+                if (pollResult == PositionCursor.PollResult.COMPLETE) {
                     if (this.finishPass(tickTime)) {
                         return null;
                     }
@@ -274,7 +321,7 @@ final class SectionScanSession {
             this.rebuildDistanceCursor();
             return false;
         }
-        // Restart on the next client tick. Lazy admission is owned by Module and must count
+        // Restart on the next client tick. Lazy admission is owned by the feature runtime and must count
         // real empty passes instead of coupling availability to the lazy admission window.
         this.exhaustedUntilTick = tickTime + 1;
         this.metrics.completedPasses++;
@@ -369,6 +416,12 @@ final class SectionScanSession {
         long dy = pos.getY() - (long) centerY;
         long dz = pos.getZ() - (long) centerZ;
         return dx * dx + dy * dy + dz * dz;
+    }
+
+    void close() {
+        this.distanceCursor.close();
+        this.dirtyPositions.clear();
+        this.dirtyPositionKeys.clear();
     }
 
     record Candidate(BlockPos pos, byte flags) {

@@ -6,7 +6,7 @@ import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.enums.PrintModeType;
 import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
 import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockController;
-import me.aleksilassila.litematica.printer.printer.zxy.utils.HighlightBlockRenderer;
+import me.aleksilassila.litematica.printer.integration.quickshulker.HighlightBlockRenderer;
 import me.aleksilassila.litematica.printer.utils.minecraft.MessageUtils;
 
 import static me.aleksilassila.litematica.printer.config.Configs.*;

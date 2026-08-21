@@ -228,6 +228,8 @@
   "litematica-printer.config.unlockBeaconEffects.desc": "寬客端信標介面之效階限，得如 wacko-beacons 然，擇今階本不可擇之主效、副效。\n此不改服器校驗；能否真行，視服器猶存其隙、未加補綴與否。",
   "litematica-printer.config.scanTimeBudgetMs": "掃描時限",
   "litematica-printer.config.scanTimeBudgetMs.desc": "入口掃描器每 tick 可用主緒之時限，單位毫秒。\n此乃保險限，不是效能妙藥。值大則同 tick 掃描更多，亦可傷幀；值小則早讓至後 tick，尋標或稍遲。",
+  "litematica-printer.config.asyncScan": "異緒掃描",
+  "litematica-printer.config.asyncScan.desc": "以異緒預取選區內之距離遍歷；世界與原理圖仍於主緒讀取並覆驗。異緒若敗，則自降為同步。",
   "litematica-printer.config.lazyEnterTicks": "惰掃延時",
   "litematica-printer.config.lazyEnterTicks.desc": "入口掃描器連續閒置若干 tick 後入惰態；零則不用惰掃。",
   "litematica-printer.config.workRange": "工徑",

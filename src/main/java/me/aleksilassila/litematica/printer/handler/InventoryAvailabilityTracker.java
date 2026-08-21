@@ -3,12 +3,15 @@ package me.aleksilassila.litematica.printer.handler;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
+import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 
 import java.util.IdentityHashMap;
 import java.util.Map;
 
 /** Tracks material gains once per client tick without treating normal consumption as a rescan event. */
-final class InventoryAvailabilityTracker {
+final class InventoryAvailabilityTracker implements RuntimeComponent {
     static final InventoryAvailabilityTracker INSTANCE = new InventoryAvailabilityTracker();
 
     private final Map<Item, Integer> previousCounts = new IdentityHashMap<>();
@@ -17,6 +20,7 @@ final class InventoryAvailabilityTracker {
     private long gainRevision;
 
     private InventoryAvailabilityTracker() {
+        PrinterRuntime.get().register(this);
     }
 
     void tick(LocalPlayer player) {
@@ -56,4 +60,6 @@ final class InventoryAvailabilityTracker {
         this.initialized = false;
         this.gainRevision++;
     }
+
+    @Override public void onEpochChanged(RuntimeEvent.EpochChanged event) { this.reset(); }
 }

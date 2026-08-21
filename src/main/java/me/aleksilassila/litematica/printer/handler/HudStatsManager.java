@@ -2,6 +2,9 @@ package me.aleksilassila.litematica.printer.handler;
 
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.printer.RttReplayController;
+import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
+import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.state.BlockState;
@@ -11,7 +14,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-public final class HudStatsManager {
+public final class HudStatsManager implements RuntimeComponent {
     public static final HudStatsManager INSTANCE = new HudStatsManager();
     private static final long RATE_WINDOW_NANOS = 1_000_000_000L;
     private static final int PRINT_CONFIRM_TIMEOUT_TICKS = 80;
@@ -25,6 +28,7 @@ public final class HudStatsManager {
     private long lastFallbackFlushTick = Long.MIN_VALUE;
 
     private HudStatsManager() {
+        PrinterRuntime.get().register(this);
         for (Mode mode : Mode.values()) {
             this.stats.put(mode, new ModeStats());
         }
@@ -39,6 +43,8 @@ public final class HudStatsManager {
             this.resetMode(mode);
         }
     }
+
+    @Override public void onEpochChanged(RuntimeEvent.EpochChanged event) { this.resetAll(); }
 
     public void resetMode(Mode mode) {
         switch (mode) {

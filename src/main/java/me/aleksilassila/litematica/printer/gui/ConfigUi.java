@@ -8,7 +8,7 @@ import fi.dy.masa.malilib.gui.button.ButtonGeneric;
 import fi.dy.masa.malilib.gui.button.IButtonActionListener;
 import me.aleksilassila.litematica.printer.I18n;
 import me.aleksilassila.litematica.printer.Reference;
-import me.aleksilassila.litematica.printer.mixin_extension.ConfigExtension;
+import me.aleksilassila.litematica.printer.config.ConfigMetadata;
 import me.aleksilassila.litematica.printer.config.Configs;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
@@ -16,7 +16,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.function.BooleanSupplier;
 
 public class ConfigUi extends GuiConfigsBase {
     private static Tab tab = Tab.CORE;
@@ -71,11 +70,8 @@ public class ConfigUi extends GuiConfigsBase {
     public List<ConfigOptionWrapper> getConfigs() {
         ImmutableList.Builder<ConfigOptionWrapper> builder = ImmutableList.builder();
         for (IConfigBase config : ConfigUi.tab.getConfigs()) {
-            if (config instanceof ConfigExtension extension) {
-                @Nullable BooleanSupplier visible = extension.litematica_printer$getVisible();
-                if (visible != null && visible.getAsBoolean()) {
-                    builder.add(new ConfigOptionWrapper(config));
-                }
+            if (ConfigMetadata.isVisible(config)) {
+                builder.add(new ConfigOptionWrapper(config));
             }
         }
         return builder.build();

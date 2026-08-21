@@ -234,6 +234,8 @@
   "litematica-printer.config.unlockBeaconEffects.desc": "放宽客户端信标界面的效果等级限制，允许像 wacko-beacons 那样选择当前信标等级原本不可选的主效果/副效果。\n这不会修改服务端校验；能否真正生效取决于服务端是否仍存在对应漏洞或未做修补。",
   "litematica-printer.config.scanTimeBudgetMs": "扫描时间预算",
   "litematica-printer.config.scanTimeBudgetMs.desc": "入口扫描器每 tick 的主线程耗时上限，单位毫秒。\n这是保险丝，不是性能优化开关。调大只允许单 tick 做更多扫描，可能更卡；调小会更早让到下一 tick，目标刷新可能变慢。",
+  "litematica-printer.config.asyncScan": "异步扫描遍历",
+  "litematica-printer.config.asyncScan.desc": "在后台线程预取仅限选区的距离遍历。世界与原理图状态仍只在客户端主线程读取并二次验证；后台任务异常时自动降级为同步遍历。",
   "litematica-printer.config.lazyEnterTicks": "惰性扫描延迟",
   "litematica-printer.config.lazyEnterTicks.desc": "入口扫描器连续空闲多少 tick 后进入惰性状态；0 表示禁用惰性扫描。",
   "litematica-printer.config.workRange": "工作半径",

@@ -8,6 +8,9 @@ import net.minecraft.core.BlockPos;
 
 import java.util.List;
 import java.util.function.Predicate;
+import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
+import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 
 /**
  * Feature-facing scan middleware.
@@ -16,7 +19,7 @@ import java.util.function.Predicate;
  * boundary separate lets the scan algorithm evolve without making handlers
  * depend on cache ownership, invalidation storage, or cursor internals.</p>
  */
-public final class ScanEngine {
+public final class ScanEngine implements RuntimeComponent {
     public static final ScanEngine INSTANCE = new ScanEngine(ScanCache.INSTANCE);
 
     public enum PassPolicy {
@@ -28,10 +31,16 @@ public final class ScanEngine {
 
     private ScanEngine(ScanCache cache) {
         this.cache = cache;
+        PrinterRuntime.get().register(this);
     }
 
     public void clear() {
         this.cache.clear();
+    }
+
+    @Override
+    public void onEpochChanged(RuntimeEvent.EpochChanged event) {
+        this.clear();
     }
 
     public void beginTick(ClientLevel level, WorldSchematic schematic, long tickTime) {

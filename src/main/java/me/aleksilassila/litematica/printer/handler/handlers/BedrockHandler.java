@@ -2,7 +2,7 @@ package me.aleksilassila.litematica.printer.handler.handlers;
 
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.enums.PrintModeType;
-import me.aleksilassila.litematica.printer.handler.Module;
+import me.aleksilassila.litematica.printer.handler.FeatureModuleBase;
 import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockCandidatePlanner;
 import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockController;
 import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockEnvironment;
@@ -16,7 +16,7 @@ import net.minecraft.core.BlockPos;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
-public class BedrockHandler extends Module {
+public class BedrockHandler extends FeatureModuleBase {
     private final BedrockCandidatePlanner candidatePlanner = new BedrockCandidatePlanner();
 
     public BedrockHandler() {

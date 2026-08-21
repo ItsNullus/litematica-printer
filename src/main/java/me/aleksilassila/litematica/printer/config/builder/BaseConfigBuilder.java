@@ -3,7 +3,7 @@ package me.aleksilassila.litematica.printer.config.builder;
 import fi.dy.masa.malilib.config.IConfigBase;
 import fi.dy.masa.malilib.config.options.ConfigBase;
 import me.aleksilassila.litematica.printer.I18n;
-import me.aleksilassila.litematica.printer.mixin_extension.ConfigExtension;
+import me.aleksilassila.litematica.printer.config.ConfigMetadata;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -47,7 +47,7 @@ public abstract class BaseConfigBuilder<T extends ConfigBase<?>, B extends BaseC
     }
 
     public B setVisible(boolean visible) {
-        this.visible = visible ? ConfigExtension.litematica_printer$TRUE : ConfigExtension.litematica_printer$FALSE;
+        this.visible = () -> visible;
         return (B) this;
     }
 
@@ -64,30 +64,22 @@ public abstract class BaseConfigBuilder<T extends ConfigBase<?>, B extends BaseC
     }
 
     protected T buildExtension(T config) {
-        buildI18n(config);
-        buildVisible(config);
+        buildMetadata(config);
         buildValueChangeCallbacks(config);
         return config;
     }
 
-    protected void buildI18n(T config) {
-        ConfigExtension extension = (ConfigExtension) config;
-        extension.litematica_printer$setTranslateNameKey(this.nameKey);
-        extension.litematica_printer$setTranslateCommentKey(this.descKey);
-    }
-
-    protected void buildVisible(T config) {
-        if (visible != null) {
-            ConfigExtension extension = (ConfigExtension) config;
-            extension.litematica_printer$setVisible(this.visible);
-        }
+    protected void buildMetadata(T config) {
+        ConfigMetadata.register(config, this.nameKey, this.descKey, this.visible);
     }
 
     protected void buildValueChangeCallbacks(T config) {
-        if (config instanceof ConfigExtension extension && !this.valueChangeCallbacks.isEmpty()) {
-            for (Consumer<IConfigBase> callback : this.valueChangeCallbacks) {
-                extension.litematica_printer$addValueChangeListener(callback);
-            }
+        if (!this.valueChangeCallbacks.isEmpty()) {
+            config.setValueChangeCallback(changed -> {
+                for (Consumer<IConfigBase> callback : this.valueChangeCallbacks) {
+                    callback.accept(changed);
+                }
+            });
         }
     }
 

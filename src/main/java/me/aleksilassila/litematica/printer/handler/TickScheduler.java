@@ -2,6 +2,8 @@ package me.aleksilassila.litematica.printer.handler;
 
 import com.google.common.collect.ImmutableList;
 import me.aleksilassila.litematica.printer.config.Configs;
+import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
+import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
 import me.aleksilassila.litematica.printer.handler.handlers.GuiHandler;
 import me.aleksilassila.litematica.printer.handler.handlers.MineDebugLog;
 import me.aleksilassila.litematica.printer.printer.MissingMaterialTracker;
@@ -10,20 +12,22 @@ import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
 import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
 import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import net.minecraft.client.Minecraft;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 
 
-final class TickScheduler {
+final class TickScheduler implements RuntimeComponent {
     private static final Minecraft MC = Minecraft.getInstance();
 
-    private final ImmutableList<Module> modules;
+    private final ImmutableList<FeatureModuleBase> modules;
     private int packetTick;
     private String lastPauseReason;
     private boolean runtimeActive;
     private int executionScopeHash = Integer.MIN_VALUE;
     private int roundRobinOffset;
 
-    TickScheduler(ImmutableList<Module> modules) {
+    TickScheduler(ImmutableList<FeatureModuleBase> modules) {
         this.modules = modules;
+        PrinterRuntime.get().register(this);
     }
 
     void tick() {
@@ -52,9 +56,7 @@ final class TickScheduler {
             this.executionScopeHash = currentScopeHash;
             return;
         }
-        if (this.pauseForInventoryState("shared_precheck")) {
-            return;
-        }
+        boolean inventoryBusy = this.pauseForInventoryState("shared_precheck");
         if (this.pauseForPendingLookQueue()) {
             ActionBroker.INSTANCE.sendQueue(MC.player);
             return;
@@ -63,8 +65,10 @@ final class TickScheduler {
             return;
         }
         TickContext context = TickContext.capture();
-        this.resume();
-        for (Module handler : this.modules) {
+        if (!inventoryBusy) {
+            this.resume();
+        }
+        for (FeatureModuleBase handler : this.modules) {
             if (handler instanceof GuiHandler) {
                 handler.tick(context);
             }
@@ -76,7 +80,7 @@ final class TickScheduler {
         int startIndex = this.roundRobinOffset % actionableCount;
         this.roundRobinOffset = (this.roundRobinOffset + 1) % actionableCount;
         for (int offset = 0; offset < actionableCount; offset++) {
-            Module handler = this.modules.get(1 + (startIndex + offset) % actionableCount);
+            FeatureModuleBase handler = this.modules.get(1 + (startIndex + offset) % actionableCount);
             if (this.pauseForHandlerPrecheck(handler)) {
                 return;
             }
@@ -102,6 +106,11 @@ final class TickScheduler {
         this.runtimeActive = false;
         this.executionScopeHash = Integer.MIN_VALUE;
         this.roundRobinOffset = 0;
+    }
+
+    @Override
+    public void onEpochChanged(RuntimeEvent.EpochChanged event) {
+        this.resetRuntime();
     }
 
     String getLastPauseReason() {
@@ -156,10 +165,7 @@ final class TickScheduler {
         return false;
     }
 
-    private boolean pauseForHandlerPrecheck(Module handler) {
-        if (this.pauseForInventoryState("handler_precheck handler=" + handler.getId())) {
-            return true;
-        }
+    private boolean pauseForHandlerPrecheck(FeatureModuleBase handler) {
         if (ActionBroker.INSTANCE.isWaitingForLook()) {
             this.pause("action_wait_modify_look handler=" + handler.getId());
             return true;

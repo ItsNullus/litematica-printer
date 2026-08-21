@@ -2,6 +2,9 @@ package me.aleksilassila.litematica.printer.printer;
 
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.utils.minecraft.PlayerUtils;
+import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
+import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
@@ -24,7 +27,7 @@ import java.util.function.Predicate;
  * executors report a requirement as soon as the inventory switch cannot supply
  * it. A successful retrieval removes the entry on the next tick.</p>
  */
-public final class MissingMaterialTracker {
+public final class MissingMaterialTracker implements RuntimeComponent {
     public static final MissingMaterialTracker INSTANCE = new MissingMaterialTracker();
 
     private static final long STALE_AFTER_TICKS = 100L;
@@ -34,6 +37,7 @@ public final class MissingMaterialTracker {
     private long lastTick = Long.MIN_VALUE;
 
     private MissingMaterialTracker() {
+        PrinterRuntime.get().register(this);
     }
 
     public void tick(@Nullable LocalPlayer player, long currentTick) {
@@ -123,6 +127,8 @@ public final class MissingMaterialTracker {
             this.snapshot = List.of();
         }
     }
+
+    @Override public void onEpochChanged(RuntimeEvent.EpochChanged event) { this.clear(); }
 
     private void rebuildSnapshot() {
         List<Entry> entries = new ArrayList<>(this.requirements.size());

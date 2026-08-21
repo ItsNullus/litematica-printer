@@ -9,6 +9,7 @@ import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.language.jvm.tasks.ProcessResources
 import org.gradle.kotlin.dsl.*
 import org.gradle.api.plugins.JavaPlugin
+import java.nio.file.Files
 
 @Suppress("unused")
 abstract class ModPlugin : Plugin<Project> {
@@ -21,6 +22,7 @@ abstract class ModPlugin : Plugin<Project> {
         configureJavaCompile()
         configureResources()
         configureJar()
+        configureArchitectureVerification()
     }
 
     private fun Project.configureArchives() {
@@ -90,6 +92,85 @@ abstract class ModPlugin : Plugin<Project> {
                     )
                 )
             }
+        }
+    }
+
+    private fun Project.configureArchitectureVerification() {
+        val taskName = "verifyArchitecture"
+        val verification = rootProject.tasks.findByName(taskName)?.let { rootProject.tasks.named(taskName) }
+            ?: rootProject.tasks.register(taskName) {
+                group = "verification"
+                description = "Checks architectural dependency boundaries in shared production sources"
+                val sourceRoot = rootProject.file("src/main/java")
+                inputs.dir(sourceRoot)
+                doLast {
+                    val violations = mutableListOf<String>()
+                    if (!sourceRoot.exists()) return@doLast
+
+                    Files.walk(sourceRoot.toPath()).use { paths ->
+                        paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".java") }
+                            .forEach { path ->
+                                val relative = sourceRoot.toPath().relativize(path).toString().replace('\\', '/')
+                                val text = Files.readString(path)
+
+                                if (relative.contains("/core/")) {
+                                    val forbidden = listOf(
+                                        ".handler.",
+                                        ".mixin.",
+                                        ".printer.zxy.",
+                                        ".utils.mods.",
+                                        "fi.dy.masa.",
+                                        "net.fabricmc."
+                                    )
+                                    forbidden.filter(text::contains).forEach { dependency ->
+                                        violations += "$relative: core source depends on forbidden boundary '$dependency'"
+                                    }
+                                }
+
+                                if (relative.contains("/feature/")) {
+                                    val forbidden = listOf(".mixin.", ".printer.zxy.", ".utils.mods.")
+                                    forbidden.filter(text::contains).forEach { dependency ->
+                                        violations += "$relative: feature source depends on forbidden boundary '$dependency'"
+                                    }
+                                }
+
+                                val lineCount = text.lineSequence().count()
+                                if (relative.contains("/mixin/") && lineCount > 150) {
+                                    violations += "$relative: mixin has $lineCount lines (maximum 150)"
+                                }
+                                if (relative.endsWith("/handler/FeatureModuleBase.java") && lineCount > 400) {
+                                    violations += "$relative: orchestration base has $lineCount lines (maximum 400)"
+                                }
+
+                                if (relative.contains("/printer/zxy/")
+                                    || text.contains(".printer.zxy.")) {
+                                    violations += "$relative: legacy zxy production dependency is forbidden"
+                                }
+
+                                if (relative.endsWith("MixinConfigBase.java")
+                                    || relative.endsWith("MixinIConfigBase.java")) {
+                                    violations += "$relative: global MaLiLib config mixins are forbidden"
+                                }
+
+                                if (relative.contains("/handler/scan/Async")
+                                    && listOf("ClientLevel", "WorldSchematic", "LocalPlayer", "Connection")
+                                        .any(text::contains)) {
+                                    violations += "$relative: async traversal must not access live client state"
+                                }
+
+                            }
+                    }
+
+                    if (violations.isNotEmpty()) {
+                        throw org.gradle.api.GradleException(
+                            "Architecture verification failed:\n" + violations.sorted().joinToString("\n")
+                        )
+                    }
+                }
+            }
+
+        tasks.named("check").configure {
+            dependsOn(verification)
         }
     }
 }

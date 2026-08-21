@@ -27,10 +27,13 @@ import net.minecraft.world.phys.BlockHitResult;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
+import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
+import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 
 @SuppressWarnings({"DataFlowIssue", "BooleanMethodIsAlwaysInverted"})
 @Environment(EnvType.CLIENT)
-public class InteractionUtils {
+public final class InteractionUtils implements RuntimeComponent {
     public static final Minecraft client = Minecraft.getInstance();
     public static final InteractionUtils INSTANCE = new InteractionUtils();
     private static final UsageRestrictionCache BREAK_RESTRICTION_CACHE = new UsageRestrictionCache();
@@ -44,6 +47,7 @@ public class InteractionUtils {
     private int externalDestroyLockTicks;
 
     private InteractionUtils() {
+        PrinterRuntime.get().register(this);
     }
 
     public static boolean canBreakBlock(BlockPos pos) {
@@ -229,6 +233,8 @@ public class InteractionUtils {
         this.forceDelayedDestroy = false;
         this.externalDestroyLockTicks = 0;
     }
+
+    @Override public void onEpochChanged(RuntimeEvent.EpochChanged event) { this.resetRuntime(); }
 
     public boolean isNeedHandle() {
         return !breakQueue.isEmpty() || breakPos != null;

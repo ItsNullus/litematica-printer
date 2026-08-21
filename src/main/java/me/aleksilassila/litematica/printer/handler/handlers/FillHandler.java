@@ -6,7 +6,7 @@ import me.aleksilassila.litematica.printer.enums.FillBlockModeType;
 import me.aleksilassila.litematica.printer.enums.PrintModeType;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.I18n;
-import me.aleksilassila.litematica.printer.handler.Module;
+import me.aleksilassila.litematica.printer.handler.FeatureModuleBase;
 import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
 import me.aleksilassila.litematica.printer.printer.PlayerLook;
@@ -40,7 +40,7 @@ import java.util.NoSuchElementException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
-public class FillHandler extends Module {
+public class FillHandler extends FeatureModuleBase {
     public final static String NAME = "fill";
     private static final Direction[] FILL_SIDE_ORDER = {
             Direction.DOWN,

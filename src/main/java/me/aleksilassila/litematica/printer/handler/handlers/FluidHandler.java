@@ -3,7 +3,7 @@ package me.aleksilassila.litematica.printer.handler.handlers;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.enums.PrintModeType;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
-import me.aleksilassila.litematica.printer.handler.Module;
+import me.aleksilassila.litematica.printer.handler.FeatureModuleBase;
 import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
 import me.aleksilassila.litematica.printer.printer.ActionManager;
@@ -30,7 +30,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
-public class FluidHandler extends Module {
+public class FluidHandler extends FeatureModuleBase {
     public final static String NAME = "fluid";
     private static final Direction[] PLACEMENT_SIDE_ORDER = {
             Direction.DOWN,
@@ -137,7 +137,7 @@ public class FluidHandler extends Module {
 
         // Always run full passes (RESTART), mirroring FillHandler. A full pass that yields nothing
         // still counts as a completed pass (SectionScanSession.finishPass increments
-        // completedPasses), which Module's idle policy needs to admit lazy scanning once the water
+        // completedPasses), which the feature idle policy needs to admit lazy scanning once the water
         // is fully filled. The previous INVALIDATIONS_ONLY state machine stopped scheduling passes
         // after the first completed pass, so empty passes never accumulated and the module could
         // never settle into lazy scanning.

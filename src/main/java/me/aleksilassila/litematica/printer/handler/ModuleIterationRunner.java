@@ -1,0 +1,111 @@
+package me.aleksilassila.litematica.printer.handler;
+
+import me.aleksilassila.litematica.printer.config.Configs;
+import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
+import me.aleksilassila.litematica.printer.printer.PrinterBox;
+import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
+import me.aleksilassila.litematica.printer.utils.mods.LitematicaUtils;
+import net.minecraft.core.BlockPos;
+
+import java.util.concurrent.atomic.AtomicReference;
+
+/** Consumes one feature candidate stream without owning its scan lifecycle. */
+final class ModuleIterationRunner {
+    private static final int BUDGET_CHECK_INTERVAL = 8;
+
+    private ModuleIterationRunner() {
+    }
+
+    static FeatureModuleBase.IterationOutcome run(FeatureModuleBase module, PrinterBox interactionBox) {
+        int maxEffectiveExec = module.getMaxEffectiveExecutionsPerTick();
+        int scanGuardLimit = module.getScanGuardLimit();
+        int totalIterCount = 0;
+        int effectiveExecCount = 0;
+        int budgetChecks = 0;
+        long iterationStartNanos = System.nanoTime();
+        long actionExecutionNanos = 0L;
+        long budgetNanos = Math.max(1L, Configs.Core.SCAN_TIME_BUDGET_MS.getIntegerValue()) * 1_000_000L;
+        boolean interrupt = false;
+        boolean didWork = false;
+        boolean foundCandidate = false;
+        boolean trackGui = module.shouldTrackGuiBlockInfo();
+        boolean prefilteredReachAndSelection = module.iterationPositionsPrefilterReachAndSelection();
+        boolean prefilteredCooldown = module.iterationPositionsPrefilterCooldown();
+        boolean exactCandidates = module.iterationPositionsAreExactCandidates();
+        AtomicReference<Boolean> skip = new AtomicReference<>(false);
+        module.guiBuffer().resetForTracking(trackGui);
+
+        int completedPassesBefore = ScanEngine.INSTANCE.metricsFor(module.getId()).completedPasses();
+        Iterable<BlockPos> positions = module.getIterationPositions(interactionBox);
+        if (module.iterationPositionsArePrefetched()) {
+            iterationStartNanos = System.nanoTime();
+        }
+        for (BlockPos pos : positions) {
+            if (++budgetChecks % BUDGET_CHECK_INTERVAL == 0
+                    && System.nanoTime() - iterationStartNanos - actionExecutionNanos >= budgetNanos) {
+                interrupt = true;
+                break;
+            }
+            if (scanGuardLimit > 0 && totalIterCount++ >= scanGuardLimit) {
+                interrupt = true;
+                break;
+            }
+            if (skip.get() || ActionBroker.INSTANCE.isWaitingForLook() || pos == null) {
+                interrupt = true;
+                break;
+            }
+            GuiBlockInfo gui = module.createGuiBlockInfo(trackGui, pos);
+            if (prefilteredReachAndSelection || module.canReachIterationPosition(pos)) {
+                if (gui != null) gui.interacted = true;
+            } else {
+                if (gui != null) gui.interacted = false;
+                module.guiBuffer().add(gui);
+                continue;
+            }
+            if (module.isSchematicBlockHandler() && !LitematicaUtils.isSchematicBlock(pos)) {
+                module.guiBuffer().add(gui);
+                continue;
+            }
+            if (!prefilteredReachAndSelection && !module.isInSelectionRange(pos)) {
+                if (gui != null) gui.posInSelectionRange = false;
+                module.guiBuffer().add(gui);
+                continue;
+            }
+            if (gui != null) gui.posInSelectionRange = true;
+            if (!prefilteredCooldown && module.isBlockPosOnCooldown(pos)) {
+                foundCandidate = true;
+                module.guiBuffer().add(gui);
+                continue;
+            }
+            if (exactCandidates || module.canIterationBlockPos(pos)) {
+                foundCandidate = true;
+                if (ActionBroker.INSTANCE.isResourceHeldByOther(
+                        me.aleksilassila.litematica.printer.core.action.ResourceLease.MAIN_HAND,
+                        module.getId())) {
+                    interrupt = true;
+                    break;
+                }
+                module.beginEffectiveExecution();
+                long actionStart = System.nanoTime();
+                try {
+                    module.executeIteration(pos, skip);
+                } finally {
+                    if (module.consumedEffectiveExecution()) {
+                        actionExecutionNanos += Math.max(0L, System.nanoTime() - actionStart);
+                    }
+                }
+                if (gui != null) gui.execute = true;
+                boolean consumed = module.consumedEffectiveExecution();
+                if (skip.get() || maxEffectiveExec > 0 && consumed && ++effectiveExecCount >= maxEffectiveExec) {
+                    interrupt = true;
+                }
+                if (consumed) didWork = true;
+            }
+            module.guiBuffer().add(gui);
+            if (interrupt) break;
+        }
+        boolean completedPass = ScanEngine.INSTANCE.metricsFor(module.getId()).completedPasses() > completedPassesBefore;
+        module.stopIteration(interrupt);
+        return new FeatureModuleBase.IterationOutcome(interrupt, didWork, foundCandidate, completedPass);
+    }
+}

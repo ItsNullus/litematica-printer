@@ -5,7 +5,7 @@ import fi.dy.masa.malilib.util.restrictions.UsageRestriction;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.enums.ExcavateListMode;
 import me.aleksilassila.litematica.printer.enums.PrintModeType;
-import me.aleksilassila.litematica.printer.handler.Module;
+import me.aleksilassila.litematica.printer.handler.FeatureModuleBase;
 import me.aleksilassila.litematica.printer.handler.TickContext;
 import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
@@ -31,7 +31,7 @@ import static fi.dy.masa.tweakeroo.config.Configs.Lists.BLOCK_TYPE_BREAK_RESTRIC
 import static fi.dy.masa.tweakeroo.config.Configs.Lists.BLOCK_TYPE_BREAK_RESTRICTION_WHITELIST;
 import static fi.dy.masa.tweakeroo.tweaks.PlacementTweaks.BLOCK_TYPE_BREAK_RESTRICTION;
 
-public class MineHandler extends Module {
+public class MineHandler extends FeatureModuleBase {
     public static final String NAME = "mine";
     private static final UsageRestrictionCache MINE_RESTRICTION_CACHE = new UsageRestrictionCache();
 
@@ -43,11 +43,6 @@ public class MineHandler extends Module {
 
     public MineHandler() {
         super(NAME, PrintModeType.MINE, Configs.Core.MINE, Configs.Mine.MINE_SELECTION_TYPE, true);
-    }
-
-    @Override
-    public void tick() {
-        this.tick(TickContext.capture());
     }
 
     @Override
