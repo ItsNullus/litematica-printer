@@ -225,6 +225,20 @@ abstract class ModPlugin : Plugin<Project> {
                                     violations += "$relative: feature handler depends on a concrete inventory integration"
                                 }
 
+                                if (relative.contains("/handler/handlers/")
+                                    && text.contains("PrinterRuntime.get()")
+                                    && !relative.endsWith("/bedrock/BedrockController.java")
+                                    && !relative.endsWith("/bedrock/BedrockPlacer.java")) {
+                                    violations += "$relative: feature handler must use injected runtime services"
+                                }
+
+                                if ((relative.contains("/handler/scan/")
+                                        || relative.contains("/printer/action/")
+                                        || relative.contains("/integration/"))
+                                    && text.contains("ClientPlayerTickManager")) {
+                                    violations += "$relative: boundary must use RuntimeScope clock, not legacy tick facade"
+                                }
+
                                 if (relative.endsWith("/mixin/printer/litematica/MixinInventoryUtils.java")
                                     && text.contains("getPickBlockTargetSlot")) {
                                     violations += "$relative: must not replace Litematica's global pick-slot policy"
