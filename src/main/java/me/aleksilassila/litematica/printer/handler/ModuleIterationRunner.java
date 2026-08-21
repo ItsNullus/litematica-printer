@@ -1,9 +1,7 @@
 package me.aleksilassila.litematica.printer.handler;
 
 import me.aleksilassila.litematica.printer.config.Configs;
-import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
-import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import me.aleksilassila.litematica.printer.utils.mods.LitematicaUtils;
 import net.minecraft.core.BlockPos;
 
@@ -35,7 +33,7 @@ final class ModuleIterationRunner {
         AtomicReference<Boolean> skip = new AtomicReference<>(false);
         module.guiBuffer().resetForTracking(trackGui);
 
-        int completedPassesBefore = ScanEngine.INSTANCE.metricsFor(module.getId()).completedPasses();
+        int completedPassesBefore = module.scanEngine.metricsFor(module.getId()).completedPasses();
         Iterable<BlockPos> positions = module.getIterationPositions(interactionBox);
         if (module.iterationPositionsArePrefetched()) {
             iterationStartNanos = System.nanoTime();
@@ -50,7 +48,7 @@ final class ModuleIterationRunner {
                 interrupt = true;
                 break;
             }
-            if (skip.get() || ActionBroker.INSTANCE.isWaitingForLook() || pos == null) {
+            if (skip.get() || module.actionBroker.isWaitingForLook() || pos == null) {
                 interrupt = true;
                 break;
             }
@@ -79,7 +77,7 @@ final class ModuleIterationRunner {
             }
             if (exactCandidates || module.canIterationBlockPos(pos)) {
                 foundCandidate = true;
-                if (ActionBroker.INSTANCE.isResourceHeldByOther(
+                if (module.actionBroker.isResourceHeldByOther(
                         me.aleksilassila.litematica.printer.core.action.ResourceLease.MAIN_HAND,
                         module.getId())) {
                     interrupt = true;
@@ -104,7 +102,7 @@ final class ModuleIterationRunner {
             module.guiBuffer().add(gui);
             if (interrupt) break;
         }
-        boolean completedPass = ScanEngine.INSTANCE.metricsFor(module.getId()).completedPasses() > completedPassesBefore;
+        boolean completedPass = module.scanEngine.metricsFor(module.getId()).completedPasses() > completedPassesBefore;
         module.stopIteration(interrupt);
         return new FeatureModuleBase.IterationOutcome(interrupt, didWork, foundCandidate, completedPass);
     }

@@ -16,6 +16,7 @@ import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import me.aleksilassila.litematica.printer.utils.UsageRestrictionCache;
 import me.aleksilassila.litematica.printer.utils.mods.ModLoadUtils;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.LiquidBlock;
@@ -42,7 +43,11 @@ public class MineHandler extends FeatureModuleBase {
     private BlockPos activeMinePos;
 
     public MineHandler() {
-        super(NAME, PrintModeType.MINE, Configs.Core.MINE, Configs.Mine.MINE_SELECTION_TYPE, true);
+        super(PrinterRuntime.get(), NAME, PrintModeType.MINE, Configs.Core.MINE, Configs.Mine.MINE_SELECTION_TYPE, true);
+    }
+
+    public MineHandler(PrinterRuntime runtime) {
+        super(runtime, NAME, PrintModeType.MINE, Configs.Core.MINE, Configs.Mine.MINE_SELECTION_TYPE, true);
     }
 
     @Override

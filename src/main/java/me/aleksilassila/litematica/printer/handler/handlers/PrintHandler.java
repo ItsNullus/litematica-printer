@@ -18,6 +18,7 @@ import me.aleksilassila.litematica.printer.handler.handlers.print.PrintTaskContr
 import me.aleksilassila.litematica.printer.handler.handlers.print.SortedSchematicTargetQueue;
 import me.aleksilassila.litematica.printer.printer.*;
 import me.aleksilassila.litematica.printer.printer.action.Action;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import me.aleksilassila.litematica.printer.utils.*;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.state.BlockState;
@@ -45,7 +46,11 @@ public class PrintHandler extends FeatureModuleBase {
     private int observedActionConfigHash = Integer.MIN_VALUE;
 
     public PrintHandler() {
-        super(NAME, PrintModeType.PRINTER, Configs.Core.PRINT, Configs.Print.PRINT_SELECTION_TYPE, true);
+        super(PrinterRuntime.get(), NAME, PrintModeType.PRINTER, Configs.Core.PRINT, Configs.Print.PRINT_SELECTION_TYPE, true);
+    }
+
+    public PrintHandler(PrinterRuntime runtime) {
+        super(runtime, NAME, PrintModeType.PRINTER, Configs.Core.PRINT, Configs.Print.PRINT_SELECTION_TYPE, true);
     }
 
     public SchematicBlockContext getContext() {

@@ -31,7 +31,6 @@ public final class ScanEngine implements RuntimeComponent {
 
     private ScanEngine(ScanCache cache) {
         this.cache = cache;
-        PrinterRuntime.get().register(this);
     }
 
     public void clear() {

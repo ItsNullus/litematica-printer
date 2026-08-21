@@ -9,6 +9,9 @@ import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
 import me.aleksilassila.litematica.printer.enums.*;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
+import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
+import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import me.aleksilassila.litematica.printer.printer.*;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
@@ -29,7 +32,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
-public abstract class FeatureModuleBase extends ConfigUtils implements ModuleScanCoordinator.Host, RuntimeComponent {
+public abstract class FeatureModuleBase extends ConfigUtils implements RuntimeComponent {
     @Nullable
     public final AtomicReference<PrinterBox> playerInteractionBox;
     @Nullable
@@ -40,6 +43,8 @@ public abstract class FeatureModuleBase extends ConfigUtils implements ModuleSca
     private final ModuleSelectionScope selectionScope;
     private final ModuleRuntimeLoop runtimeLoop;
     private final String id;
+    final ScanEngine scanEngine;
+    final ActionBroker actionBroker;
     @Nullable
     final PrintModeType printMode;
     @Nullable
@@ -69,37 +74,16 @@ public abstract class FeatureModuleBase extends ConfigUtils implements ModuleSca
         return this.scanCoordinator.pendingDirtyRegionCount();
     }
 
-    @Override
-    public final List<PrinterBox> scanSourceBoxes(PrinterBox interactionBox) {
-        return this.getScanSourceBoxes(interactionBox);
-    }
-
-    @Override
-    public final @Nullable PrinterBox scanSourceBox(PrinterBox interactionBox) {
-        return this.getScanSourceBox(interactionBox);
-    }
-
-    @Override
-    public final boolean hasPendingWork() {
-        return this.hasPendingIterationWork();
-    }
-
-    @Override
-    public final double playerX() {
-        return this.player.getX();
-    }
-
-    @Override
-    public final double playerEyeY() {
-        return this.player.getEyeY();
-    }
-
-    @Override
-    public final double playerZ() {
-        return this.player.getZ();
-    }
-
-    protected FeatureModuleBase(String id, @Nullable PrintModeType printMode, @Nullable ConfigBoolean enableConfig, @Nullable ConfigOptionList selectionType, boolean useBox) {
+    protected FeatureModuleBase(
+            PrinterRuntime runtime,
+            String id,
+            @Nullable PrintModeType printMode,
+            @Nullable ConfigBoolean enableConfig,
+            @Nullable ConfigOptionList selectionType,
+            boolean useBox
+    ) {
+        this.scanEngine = runtime.scanEngine();
+        this.actionBroker = runtime.actionBroker();
         this.id = id;
         this.printMode = printMode;
         this.enableConfig = enableConfig;
@@ -107,7 +91,7 @@ public abstract class FeatureModuleBase extends ConfigUtils implements ModuleSca
         this.interactionBoxTracker = new InteractionBoxTracker(useBox);
         this.playerInteractionBox = this.interactionBoxTracker.getBoxReference();
         this.externalScanBoxRef = this.playerInteractionBox == null ? null : new AtomicReference<>();
-        this.scanCoordinator = new ModuleScanCoordinator(this, this.externalScanBoxRef);
+        this.scanCoordinator = new ModuleScanCoordinator(new ModuleScanHost(this), this.externalScanBoxRef);
         this.selectionScope = new ModuleSelectionScope(this, selectionType);
         this.runtimeLoop = new ModuleRuntimeLoop(this);
         this.updateVariables(TickContext.capture());
@@ -180,7 +164,6 @@ public abstract class FeatureModuleBase extends ConfigUtils implements ModuleSca
         this.scanCoordinator.reset();
     }
 
-    @Override
     public final IterationOutcome runIteration(PrinterBox playerInteractionBox) {
         return ModuleIterationRunner.run(this, playerInteractionBox);
     }
@@ -321,7 +304,6 @@ public abstract class FeatureModuleBase extends ConfigUtils implements ModuleSca
         return 0;
     }
 
-    @Override
     public boolean usesDirtyRegionWakeup() {
         return true;
     }

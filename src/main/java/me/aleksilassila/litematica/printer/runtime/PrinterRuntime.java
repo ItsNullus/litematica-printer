@@ -6,6 +6,7 @@ import me.aleksilassila.litematica.printer.core.runtime.RuntimeEventBus;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeScope;
 import me.aleksilassila.litematica.printer.handler.FeatureModuleSet;
+import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
@@ -35,6 +36,7 @@ public final class PrinterRuntime {
     private final BedrockEngine bedrockEngine;
     private final FeatureModuleSet modules;
     private final ActionBroker actionBroker;
+    private final ScanEngine scanEngine;
 
     private PrinterRuntime() {
         Minecraft client = Minecraft.getInstance();
@@ -44,6 +46,8 @@ public final class PrinterRuntime {
         this.scope.register(this.bedrockEngine);
         this.actionBroker = ActionBroker.INSTANCE;
         this.scope.register(this.actionBroker);
+        this.scanEngine = ScanEngine.INSTANCE;
+        this.scope.register(this.scanEngine);
         this.modules = new FeatureModuleSet(this);
     }
 
@@ -69,6 +73,10 @@ public final class PrinterRuntime {
 
     public ActionBroker actionBroker() {
         return this.actionBroker;
+    }
+
+    public ScanEngine scanEngine() {
+        return this.scanEngine;
     }
 
     public Minecraft client() {

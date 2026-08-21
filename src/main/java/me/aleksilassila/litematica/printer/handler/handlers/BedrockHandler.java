@@ -11,6 +11,7 @@ import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockTarge
 import me.aleksilassila.litematica.printer.I18n;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import me.aleksilassila.litematica.printer.utils.minecraft.MessageUtils;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import net.minecraft.core.BlockPos;
 
 import java.util.List;
@@ -20,7 +21,11 @@ public class BedrockHandler extends FeatureModuleBase {
     private final BedrockCandidatePlanner candidatePlanner = new BedrockCandidatePlanner();
 
     public BedrockHandler() {
-        super("bedrock", PrintModeType.BEDROCK, Configs.Hotkeys.BEDROCK, null, true);
+        super(PrinterRuntime.get(), "bedrock", PrintModeType.BEDROCK, Configs.Hotkeys.BEDROCK, null, true);
+    }
+
+    public BedrockHandler(PrinterRuntime runtime) {
+        super(runtime, "bedrock", PrintModeType.BEDROCK, Configs.Hotkeys.BEDROCK, null, true);
     }
 
     @Override

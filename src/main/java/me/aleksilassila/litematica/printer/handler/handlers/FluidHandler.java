@@ -16,6 +16,7 @@ import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.RegistryFilterResolver;
 import me.aleksilassila.litematica.printer.utils.minecraft.BlockUtils;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.item.Item;
@@ -59,7 +60,11 @@ public class FluidHandler extends FeatureModuleBase {
     private int observedScanConfigHash = Integer.MIN_VALUE;
 
     public FluidHandler() {
-        super(NAME, PrintModeType.FLUID, Configs.Core.FLUID, Configs.Fluid.FLUID_SELECTION_TYPE, true);
+        super(PrinterRuntime.get(), NAME, PrintModeType.FLUID, Configs.Core.FLUID, Configs.Fluid.FLUID_SELECTION_TYPE, true);
+    }
+
+    public FluidHandler(PrinterRuntime runtime) {
+        super(runtime, NAME, PrintModeType.FLUID, Configs.Core.FLUID, Configs.Fluid.FLUID_SELECTION_TYPE, true);
     }
 
     @Override

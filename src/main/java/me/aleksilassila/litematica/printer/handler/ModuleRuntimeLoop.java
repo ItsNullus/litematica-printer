@@ -2,7 +2,6 @@ package me.aleksilassila.litematica.printer.handler;
 
 import fi.dy.masa.litematica.world.SchematicWorldHandler;
 import fi.dy.masa.litematica.world.WorldSchematic;
-import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import org.jetbrains.annotations.Nullable;
 
@@ -35,7 +34,7 @@ final class ModuleRuntimeLoop {
             return;
         }
         WorldSchematic schematic = SchematicWorldHandler.getSchematicWorld();
-        ScanEngine.INSTANCE.beginTick(this.owner.level, schematic, context.gameTime);
+        this.owner.scanEngine.beginTick(this.owner.level, schematic, context.gameTime);
         this.wakeForSchematicChange(schematic);
         this.owner.updatePlayerInteractionBox();
         this.owner.preprocess();
@@ -81,7 +80,7 @@ final class ModuleRuntimeLoop {
         }
         if (this.lastInventoryGainRevision == revision) return;
         this.lastInventoryGainRevision = revision;
-        ScanEngine.INSTANCE.resetOwner(this.owner.getId());
+        this.owner.scanEngine.resetOwner(this.owner.getId());
         this.owner.requestFullScan();
     }
 

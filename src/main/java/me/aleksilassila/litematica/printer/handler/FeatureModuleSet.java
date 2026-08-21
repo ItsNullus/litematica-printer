@@ -21,12 +21,12 @@ public final class FeatureModuleSet {
     private final TickScheduler scheduler;
 
     public FeatureModuleSet(PrinterRuntime runtime) {
-        this.gui = new GuiHandler();
-        this.print = new PrintHandler();
-        this.fill = new FillHandler();
-        this.mine = new MineHandler();
-        this.fluid = new FluidHandler();
-        this.bedrock = new BedrockHandler();
+        this.gui = new GuiHandler(runtime);
+        this.print = new PrintHandler(runtime);
+        this.fill = new FillHandler(runtime);
+        this.mine = new MineHandler(runtime);
+        this.fluid = new FluidHandler(runtime);
+        this.bedrock = new BedrockHandler(runtime);
         this.values = ImmutableList.of(this.gui, this.mine, this.fluid, this.print, this.fill, this.bedrock);
         for (FeatureModuleBase module : this.values) {
             runtime.register(module);

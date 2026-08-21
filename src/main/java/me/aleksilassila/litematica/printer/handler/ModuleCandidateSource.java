@@ -1,7 +1,6 @@
 package me.aleksilassila.litematica.printer.handler;
 
 import fi.dy.masa.litematica.world.SchematicWorldHandler;
-import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import net.minecraft.core.BlockPos;
@@ -15,7 +14,7 @@ final class ModuleCandidateSource {
     }
 
     static Iterable<BlockPos> raw(FeatureModuleBase module, PrinterBox box, Predicate<BlockPos> candidatePredicate) {
-        return ScanEngine.INSTANCE.rawIterable(
+        return module.scanEngine.rawIterable(
                 module.getId() + "_raw", box, module.player,
                 module.getScanGuardLimit(), candidatePredicate);
     }
@@ -30,7 +29,7 @@ final class ModuleCandidateSource {
         if (sourceBoxes.isEmpty()) return List.of();
         Predicate<BlockPos> selection = module.createSelectionRangePredicate();
         Predicate<BlockPos> reach = module.createScanReachPredicate();
-        return ScanEngine.INSTANCE.iterable(
+        return module.scanEngine.iterable(
                 module.getId(), sourceBoxes, module.level,
                 SchematicWorldHandler.getSchematicWorld(), module.player,
                 module.getScanGuardLimit(), intent, candidatePredicate,
