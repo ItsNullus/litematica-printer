@@ -9,12 +9,16 @@ import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.language.jvm.tasks.ProcessResources
 import org.gradle.kotlin.dsl.*
 import org.gradle.api.plugins.JavaPlugin
+import org.gradle.api.tasks.testing.Test
+import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
+import org.gradle.testing.jacoco.tasks.JacocoReport
 import java.nio.file.Files
 
 @Suppress("unused")
 abstract class ModPlugin : Plugin<Project> {
     override fun apply(project: Project) = with(project) {
         pluginManager.apply("java")
+        pluginManager.apply("jacoco")
 
         configureArchives()
         configureJava()
@@ -22,7 +26,49 @@ abstract class ModPlugin : Plugin<Project> {
         configureJavaCompile()
         configureResources()
         configureJar()
+        configureCoreCoverage()
         configureArchitectureVerification()
+    }
+
+    private fun Project.configureCoreCoverage() {
+        val coreClasses = { source: org.gradle.api.file.FileCollection ->
+            files(source.files.map { directory ->
+                fileTree(directory) {
+                    include("me/aleksilassila/litematica/printer/core/**/*.class")
+                    exclude("**/*\$*")
+                }
+            })
+        }
+        tasks.named<JacocoReport>("jacocoTestReport").configure {
+            dependsOn(tasks.named("test"))
+            classDirectories.setFrom(coreClasses(classDirectories))
+            reports {
+                xml.required.set(true)
+                html.required.set(true)
+                csv.required.set(false)
+            }
+        }
+        tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification").configure {
+            dependsOn(tasks.named("test"))
+            classDirectories.setFrom(coreClasses(classDirectories))
+            violationRules {
+                rule {
+                    limit {
+                        counter = "LINE"
+                        value = "COVEREDRATIO"
+                        minimum = "0.85".toBigDecimal()
+                    }
+                    limit {
+                        counter = "BRANCH"
+                        value = "COVEREDRATIO"
+                        minimum = "0.75".toBigDecimal()
+                    }
+                }
+            }
+        }
+        tasks.named("check").configure {
+            dependsOn(tasks.named("jacocoTestCoverageVerification"))
+        }
     }
 
     private fun Project.configureArchives() {

@@ -50,6 +50,18 @@ class ActionCoordinatorTest {
         assertTrue(coordinator.isHeldByOther(ResourceLease.MAIN_HAND, "print"));
     }
 
+    @Test
+    void sameOwnerCanRefreshLeasesAndReleaseThemByOwner() {
+        ActionCoordinator coordinator = new ActionCoordinator();
+        coordinator.tryAdmit(request("print", 0L), 10L).orElseThrow();
+        coordinator.tryAdmit(request("print", 0L), 20L).orElseThrow();
+
+        coordinator.releaseOwner("print");
+
+        assertEquals(0, coordinator.activeLeaseCount());
+        assertFalse(coordinator.isHeldByOther(ResourceLease.MAIN_HAND, "mine"));
+    }
+
     private static ActionRequest request(String owner, long deadline) {
         return new ActionRequest(
                 owner,

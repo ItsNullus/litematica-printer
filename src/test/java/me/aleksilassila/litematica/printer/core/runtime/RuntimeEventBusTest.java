@@ -25,4 +25,15 @@ class RuntimeEventBusTest {
         assertEquals(1L, event.current().value());
         assertEquals("join", event.reason());
     }
+
+    @Test
+    void clearRemovesEveryListener() {
+        RuntimeEventBus bus = new RuntimeEventBus();
+        List<RuntimeEvent> received = new ArrayList<>();
+        bus.subscribe(received::add);
+        bus.clear();
+        bus.publish(new RuntimeEvent.EpochChanged(
+                RuntimeEpoch.INITIAL, RuntimeEpoch.INITIAL.next(), "ignored"));
+        assertEquals(List.of(), received);
+    }
 }
