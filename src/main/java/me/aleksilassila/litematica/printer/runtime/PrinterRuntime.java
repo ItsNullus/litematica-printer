@@ -46,7 +46,7 @@ public final class PrinterRuntime {
         this.scope.register(this.bedrockEngine);
         this.actionBroker = ActionBroker.INSTANCE;
         this.scope.register(this.actionBroker);
-        this.scanEngine = ScanEngine.INSTANCE;
+        this.scanEngine = new ScanEngine();
         this.scope.register(this.scanEngine);
         this.modules = new FeatureModuleSet(this);
     }

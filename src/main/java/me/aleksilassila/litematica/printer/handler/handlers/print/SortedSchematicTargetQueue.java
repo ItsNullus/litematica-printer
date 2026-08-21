@@ -4,6 +4,7 @@ import fi.dy.masa.litematica.world.WorldSchematic;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
+import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -70,7 +71,7 @@ public final class SortedSchematicTargetQueue {
                 this.hasMoreSource = true;
                 break;
             }
-            if (queuedKeys.add(ScanEngine.key(candidate))) {
+            if (queuedKeys.add(ScanCache.key(candidate))) {
                 targets.add(scoreTarget(schematic, heldItem, eye, view, candidate));
             }
         }

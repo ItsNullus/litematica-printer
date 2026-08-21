@@ -20,8 +20,6 @@ import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
  * depend on cache ownership, invalidation storage, or cursor internals.</p>
  */
 public final class ScanEngine implements RuntimeComponent {
-    public static final ScanEngine INSTANCE = new ScanEngine(ScanCache.INSTANCE);
-
     public enum PassPolicy {
         RESTART,
         INVALIDATIONS_ONLY
@@ -29,8 +27,12 @@ public final class ScanEngine implements RuntimeComponent {
 
     private final ScanCache cache;
 
-    private ScanEngine(ScanCache cache) {
+    public ScanEngine(ScanCache cache) {
         this.cache = cache;
+    }
+
+    public ScanEngine() {
+        this(new ScanCache());
     }
 
     public void clear() {

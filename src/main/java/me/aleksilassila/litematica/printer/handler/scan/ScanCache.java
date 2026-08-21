@@ -17,8 +17,6 @@ import java.util.List;
 import java.util.function.Predicate;
 
 public final class ScanCache {
-    public static final ScanCache INSTANCE = new ScanCache();
-
     private static final int BUDGET_CHECK_INTERVAL = 8;
     private static final int OWNER_SCAN_BUDGET_PERCENT = 75;
 
@@ -42,7 +40,7 @@ public final class ScanCache {
     private long scanBudgetTickTime = Long.MIN_VALUE;
     private long globalScanBudgetUsedNanos;
 
-    private ScanCache() {
+    public ScanCache() {
     }
 
     public void clear() {
