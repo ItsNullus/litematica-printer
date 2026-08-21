@@ -1,7 +1,6 @@
 package me.aleksilassila.litematica.printer.handler.handlers.bedrock;
 
 import me.aleksilassila.litematica.printer.config.Configs;
-import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import me.aleksilassila.litematica.printer.utils.mods.LitematicaUtils;
 import net.minecraft.client.Minecraft;
@@ -10,6 +9,7 @@ import net.minecraft.core.BlockPos;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.function.LongSupplier;
 
 /** Owns bedrock candidate admission, retry and capacity policy. */
 final class BedrockAdmissionController {
@@ -29,6 +29,7 @@ final class BedrockAdmissionController {
     private final BedrockCleanupCoordinator cleanup;
     private final BedrockRunStats stats;
     private final CooldownUtils cooldownUtils;
+    private final LongSupplier tickClock;
     private final BedrockExposureGate<BlockPos> exposureGate =
             new BedrockExposureGate<>(MAX_VERTICAL_EXPOSURE_DEFERS);
     private final BedrockScanActivityPolicy scanActivity = new BedrockScanActivityPolicy();
@@ -43,13 +44,15 @@ final class BedrockAdmissionController {
             BedrockTargetRegistry targets,
             BedrockCleanupCoordinator cleanup,
             BedrockRunStats stats,
-            CooldownUtils cooldownUtils
+            CooldownUtils cooldownUtils,
+            LongSupplier tickClock
     ) {
         this.client = client;
         this.targets = targets;
         this.cleanup = cleanup;
         this.stats = stats;
         this.cooldownUtils = cooldownUtils;
+        this.tickClock = tickClock;
         this.schedulingProbe = new BedrockSchedulingProbe(client, targets, cleanup);
     }
 
@@ -121,7 +124,7 @@ final class BedrockAdmissionController {
         }
         BedrockSubmissionPlanCache.Plan plan = this.submissionPlans.consume(
                 stablePos,
-                ClientPlayerTickManager.getCurrentHandlerTime()
+                this.tickClock.getAsLong()
         );
         BedrockTarget target = plan != null
                 ? new BedrockTarget(stablePos, level, plan.layout(), plan.placement(), plan.slimePos())
@@ -188,7 +191,7 @@ final class BedrockAdmissionController {
     void setRetryCooldown(BlockPos pos, int ticks) {
         if (this.client.level != null && pos != null && ticks > 0) {
             this.cooldownUtils.setCooldown(this.client.level, RETRY_COOLDOWN_KEY, pos, ticks);
-            this.scanActivity.recordRetry(ClientPlayerTickManager.getCurrentHandlerTime(), ticks);
+            this.scanActivity.recordRetry(this.tickClock.getAsLong(), ticks);
         }
     }
 
@@ -244,7 +247,7 @@ final class BedrockAdmissionController {
             BlockPos slimePos
     ) {
         this.submissionPlans.put(
-                pos, layout, placement, slimePos, ClientPlayerTickManager.getCurrentHandlerTime());
+                pos, layout, placement, slimePos, this.tickClock.getAsLong());
     }
 
     void purgeTargetsOutsideSelection() {
@@ -290,7 +293,7 @@ final class BedrockAdmissionController {
                 && !this.targets.isEmpty()) {
             return AcceptProbe.reject("startup_serial");
         }
-        if (ClientPlayerTickManager.getCurrentHandlerTime() < this.nextAcceptTick) {
+        if (this.tickClock.getAsLong() < this.nextAcceptTick) {
             return AcceptProbe.reject("accept_backpressure");
         }
         if (this.stats.acceptedThisTick >= this.submitCap()) {
@@ -360,7 +363,7 @@ final class BedrockAdmissionController {
         if (heavyPressure || this.stats.rejectedThisTick >= Math.max(8, this.configuredThroughput())) {
             this.nextAcceptTick = Math.max(
                     this.nextAcceptTick,
-                    ClientPlayerTickManager.getCurrentHandlerTime() + ACCEPT_BACKPRESSURE_TICKS
+                    this.tickClock.getAsLong() + ACCEPT_BACKPRESSURE_TICKS
             );
         }
     }

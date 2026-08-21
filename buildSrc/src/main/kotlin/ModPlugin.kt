@@ -226,6 +226,11 @@ abstract class ModPlugin : Plugin<Project> {
                                 }
 
                                 if (relative.contains("/handler/handlers/")
+                                    && (text.contains("ActionBroker") || text.contains("ActionManager"))) {
+                                    violations += "$relative: feature handler must depend on ActionPort, not the queue implementation"
+                                }
+
+                                if (relative.contains("/handler/handlers/")
                                     && text.contains("PrinterRuntime.get()")
                                     && !relative.endsWith("/bedrock/BedrockController.java")
                                     && !relative.endsWith("/bedrock/BedrockPlacer.java")) {

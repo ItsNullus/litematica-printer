@@ -2,7 +2,6 @@ package me.aleksilassila.litematica.printer.handler.handlers.bedrock;
 
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
-import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import net.minecraft.client.Minecraft;
@@ -11,6 +10,7 @@ import net.minecraft.core.BlockPos;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.function.LongSupplier;
 
 /** Runtime-owned orchestration for bedrock admission, execution and cleanup. */
 public final class BedrockEngine implements RuntimeComponent {
@@ -21,13 +21,15 @@ public final class BedrockEngine implements RuntimeComponent {
     private final BedrockAdmissionController admission;
     private final BedrockTargetExecutor targetExecutor;
     private final BedrockThroughputScheduler throughputScheduler = new BedrockThroughputScheduler();
+    private final LongSupplier tickClock;
     private long lastProcessedTick = Long.MIN_VALUE;
 
-    public BedrockEngine(Minecraft client, CooldownUtils cooldownUtils) {
+    public BedrockEngine(Minecraft client, CooldownUtils cooldownUtils, LongSupplier tickClock) {
         this.client = client;
+        this.tickClock = tickClock;
         this.cleanup = new BedrockCleanupCoordinator(client, cooldownUtils);
         this.admission = new BedrockAdmissionController(
-                client, this.targets, this.cleanup, this.stats, cooldownUtils);
+                client, this.targets, this.cleanup, this.stats, cooldownUtils, tickClock);
         this.targetExecutor = new BedrockTargetExecutor(
                 this.targets,
                 this.cleanup,
@@ -63,7 +65,7 @@ public final class BedrockEngine implements RuntimeComponent {
             this.reset();
             return;
         }
-        long now = ClientPlayerTickManager.getCurrentHandlerTime();
+        long now = this.tickClock.getAsLong();
         if (now == this.lastProcessedTick) {
             return;
         }
@@ -99,11 +101,11 @@ public final class BedrockEngine implements RuntimeComponent {
     }
 
     public boolean hasPendingScanWork() {
-        return this.admission.hasPendingScanWork(ClientPlayerTickManager.getCurrentHandlerTime());
+        return this.admission.hasPendingScanWork(this.tickClock.getAsLong());
     }
 
     public int getPendingScanWorkCount() {
-        return this.admission.pendingScanWorkCount(ClientPlayerTickManager.getCurrentHandlerTime());
+        return this.admission.pendingScanWorkCount(this.tickClock.getAsLong());
     }
 
     public boolean canScanForTargets() {

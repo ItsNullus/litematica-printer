@@ -57,7 +57,7 @@ public final class PrinterRuntime {
         Minecraft client = Minecraft.getInstance();
         this.cooldownUtils = new CooldownUtils();
         this.scope.register(this.cooldownUtils);
-        this.bedrockEngine = new BedrockEngine(client, this.cooldownUtils);
+        this.bedrockEngine = new BedrockEngine(client, this.cooldownUtils, this::currentTick);
         this.scope.register(new MinecraftInteractionRuntime(client));
         this.scope.register(this.bedrockEngine);
         this.actionBroker = new ActionBroker(this, new ActionManager());
