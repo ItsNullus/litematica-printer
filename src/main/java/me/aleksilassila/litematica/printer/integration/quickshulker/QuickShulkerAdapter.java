@@ -14,13 +14,11 @@ import net.minecraft.client.player.LocalPlayer;
 
 /** Public adapter around the Quick Shulker request and ordered-restore controllers. */
 public final class QuickShulkerAdapter implements InventoryProvider, RuntimeComponent {
-    public static final QuickShulkerAdapter INSTANCE = new QuickShulkerAdapter();
     private static final String LEASE_OWNER = "quick_shulker";
     private boolean resourcesAcquired;
     private long attemptedToken;
 
-    private QuickShulkerAdapter() {
-        PrinterRuntime.get().register(this);
+    public QuickShulkerAdapter() {
     }
 
     @Override

@@ -1,6 +1,5 @@
 package me.aleksilassila.litematica.printer.utils.mods;
 
-import me.aleksilassila.litematica.printer.integration.quickshulker.QuickShulkerAdapter;
 import me.aleksilassila.litematica.printer.integration.inventory.MaterialRequest;
 import me.aleksilassila.litematica.printer.integration.inventory.MaterialReservation;
 import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
@@ -14,8 +13,6 @@ import net.minecraft.world.item.Item;
  * bridge instead of depending on the legacy {@code zxy} package directly.</p>
  */
 public final class QuickShulkerBridge {
-    private static final QuickShulkerAdapter ADAPTER = QuickShulkerAdapter.INSTANCE;
-
     private QuickShulkerBridge() {
     }
 
@@ -33,38 +30,38 @@ public final class QuickShulkerBridge {
     }
 
     public static boolean switchItem() {
-        return ADAPTER.switchItem();
+        return PrinterRuntime.get().quickShulkerAdapter().switchItem();
     }
 
     public static boolean hasPendingRequest() {
-        return ADAPTER.hasPendingRequest();
+        return PrinterRuntime.get().quickShulkerAdapter().hasPendingRequest();
     }
 
     public static boolean isOpenHandler() {
-        return ADAPTER.isOpenHandler();
+        return PrinterRuntime.get().quickShulkerAdapter().isOpenHandler();
     }
 
     public static boolean shouldPause() {
-        return ADAPTER.shouldPause();
+        return PrinterRuntime.get().quickShulkerAdapter().shouldPause();
     }
 
     public static boolean shouldSuppressContainerScreen() {
-        return ADAPTER.shouldSuppressContainerScreen();
+        return PrinterRuntime.get().quickShulkerAdapter().shouldSuppressContainerScreen();
     }
 
     public static void onTick() {
-        ADAPTER.tick();
+        PrinterRuntime.get().quickShulkerAdapter().tick();
     }
 
     public static void onInventoryContent() {
-        ADAPTER.onInventoryContent();
+        PrinterRuntime.get().quickShulkerAdapter().onInventoryContent();
     }
 
     public static void onMainHandUse(LocalPlayer player) {
-        ADAPTER.onMainHandUse(player);
+        PrinterRuntime.get().quickShulkerAdapter().onMainHandUse(player);
     }
 
     public static void resetRuntime() {
-        ADAPTER.reset();
+        PrinterRuntime.get().quickShulkerAdapter().reset();
     }
 }

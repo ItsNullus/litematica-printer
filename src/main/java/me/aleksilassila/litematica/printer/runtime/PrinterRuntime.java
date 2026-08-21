@@ -48,6 +48,7 @@ public final class PrinterRuntime {
     private final RttReplayController rttReplayController;
     private final MissingMaterialTracker missingMaterials;
     private final HudStatsManager hudStats;
+    private final QuickShulkerAdapter quickShulkerAdapter;
 
     private PrinterRuntime() {
         Minecraft client = Minecraft.getInstance();
@@ -71,6 +72,8 @@ public final class PrinterRuntime {
         this.scope.register(this.missingMaterials);
         this.hudStats = new HudStatsManager();
         this.scope.register(this.hudStats);
+        this.quickShulkerAdapter = new QuickShulkerAdapter();
+        this.scope.register(this.quickShulkerAdapter);
         this.modules = new FeatureModuleSet(this);
     }
 
@@ -126,6 +129,10 @@ public final class PrinterRuntime {
         return this.hudStats;
     }
 
+    public QuickShulkerAdapter quickShulkerAdapter() {
+        return this.quickShulkerAdapter;
+    }
+
     public Minecraft client() {
         return Minecraft.getInstance();
     }
@@ -138,7 +145,7 @@ public final class PrinterRuntime {
         if (this.materialRequests == null) {
             this.materialRequests = new MaterialRequestCoordinator(List.of(
                     new PlayerInventoryProvider(Minecraft.getInstance()),
-                    QuickShulkerAdapter.INSTANCE,
+                    this.quickShulkerAdapter,
                     new TakeItOutAdapter()
             ));
             this.scope.register(this.materialRequests);
