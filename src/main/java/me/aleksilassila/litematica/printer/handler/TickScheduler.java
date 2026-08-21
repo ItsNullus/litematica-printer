@@ -15,30 +15,30 @@ import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 
 
 final class TickScheduler implements RuntimeComponent {
-    private static final Minecraft MC = Minecraft.getInstance();
-
     private final ImmutableList<FeatureModuleBase> modules;
+    private final PrinterRuntime runtime;
     private int packetTick;
     private String lastPauseReason;
     private boolean runtimeActive;
     private int executionScopeHash = Integer.MIN_VALUE;
     private int roundRobinOffset;
 
-    TickScheduler(ImmutableList<FeatureModuleBase> modules) {
+    TickScheduler(ImmutableList<FeatureModuleBase> modules, PrinterRuntime runtime) {
         this.modules = modules;
-        PrinterRuntime.get().register(this);
+        this.runtime = runtime;
     }
 
     void tick() {
-        InventoryAvailabilityTracker.INSTANCE.tick(MC.player);
+        Minecraft mc = this.runtime.client();
+        InventoryAvailabilityTracker.INSTANCE.tick(mc.player);
         HudStatsManager.INSTANCE.tick();
         MissingMaterialTracker.INSTANCE.tick(
-                MC.player,
-                MC.level != null ? MC.level.getGameTime() : 0L
+                mc.player,
+                mc.level != null ? mc.level.getGameTime() : 0L
         );
         if (!Configs.Core.WORK_SWITCH.getBooleanValue()) {
             if (this.runtimeActive) {
-                ClientPlayerTickManager.resetRuntime("work_switch_disabled");
+                this.runtime.reset("work_switch_disabled");
             }
             this.runtimeActive = false;
             HudStatsManager.INSTANCE.resetAll();
@@ -50,14 +50,14 @@ final class TickScheduler implements RuntimeComponent {
             this.runtimeActive = true;
             this.executionScopeHash = currentScopeHash;
         } else if (this.executionScopeHash != currentScopeHash) {
-            ClientPlayerTickManager.resetRuntime("execution_scope_changed");
+            this.runtime.reset("execution_scope_changed");
             this.runtimeActive = true;
             this.executionScopeHash = currentScopeHash;
             return;
         }
         boolean inventoryBusy = this.pauseForInventoryState("shared_precheck");
         if (this.pauseForPendingLookQueue()) {
-            ActionBroker.INSTANCE.sendQueue(MC.player);
+            ActionBroker.INSTANCE.sendQueue(mc.player);
             return;
         }
         if (this.pauseForLagCheck()) {

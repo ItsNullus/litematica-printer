@@ -5,7 +5,7 @@ import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEventBus;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeScope;
-import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
+import me.aleksilassila.litematica.printer.handler.FeatureModuleSet;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
@@ -32,6 +32,7 @@ public final class PrinterRuntime {
     private boolean resetting;
     private MaterialRequestCoordinator materialRequests;
     private final BedrockEngine bedrockEngine;
+    private final FeatureModuleSet modules;
 
     private PrinterRuntime() {
         Minecraft client = Minecraft.getInstance();
@@ -39,6 +40,7 @@ public final class PrinterRuntime {
         this.scope.register(new MinecraftInteractionRuntime(client));
         this.scope.register(new InventorySwitchRuntime());
         this.scope.register(this.bedrockEngine);
+        this.modules = new FeatureModuleSet(this);
     }
 
     public static PrinterRuntime get() {
@@ -55,6 +57,14 @@ public final class PrinterRuntime {
 
     public BedrockEngine bedrockEngine() {
         return this.bedrockEngine;
+    }
+
+    public FeatureModuleSet modules() {
+        return this.modules;
+    }
+
+    public Minecraft client() {
+        return Minecraft.getInstance();
     }
 
     public AutoCloseable register(RuntimeComponent component) {
@@ -89,7 +99,11 @@ public final class PrinterRuntime {
         }
         InteractionUtils.INSTANCE.preprocess();
         InteractionUtils.INSTANCE.onTick();
-        ClientPlayerTickManager.tickLegacyRuntime();
+        this.modules.tick();
+    }
+
+    public void tickModules() {
+        this.modules.tick();
     }
 
     public void reset(String reason) {

@@ -13,7 +13,6 @@ import me.aleksilassila.litematica.printer.printer.*;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import me.aleksilassila.litematica.printer.utils.mods.LitematicaUtils;
-import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
@@ -111,7 +110,6 @@ public abstract class FeatureModuleBase extends ConfigUtils implements ModuleSca
         this.scanCoordinator = new ModuleScanCoordinator(this, this.externalScanBoxRef);
         this.selectionScope = new ModuleSelectionScope(this, selectionType);
         this.runtimeLoop = new ModuleRuntimeLoop(this);
-        PrinterRuntime.get().register(this);
         this.updateVariables(TickContext.capture());
     }
 

@@ -1,6 +1,5 @@
 package me.aleksilassila.litematica.printer.handler;
 
-import com.google.common.collect.ImmutableList;
 import me.aleksilassila.litematica.printer.handler.handlers.*;
 import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import net.minecraft.client.Minecraft;
@@ -9,22 +8,21 @@ import net.minecraft.client.Minecraft;
 public class ClientPlayerTickManager {
     public static final Minecraft mc = Minecraft.getInstance();
 
-    public static final GuiHandler GUI = Modules.GUI;
-    public static final PrintHandler PRINT = Modules.PRINT;
-    public static final FillHandler FILL = Modules.FILL;
-    public static final MineHandler MINE = Modules.MINE;
-    public static final FluidHandler FLUID = Modules.FLUID;
-    public static final BedrockHandler BEDROCK = Modules.BEDROCK;
+    public static final GuiHandler GUI = PrinterRuntime.get().modules().gui();
+    public static final PrintHandler PRINT = PrinterRuntime.get().modules().print();
+    public static final FillHandler FILL = PrinterRuntime.get().modules().fill();
+    public static final MineHandler MINE = PrinterRuntime.get().modules().mine();
+    public static final FluidHandler FLUID = PrinterRuntime.get().modules().fluid();
+    public static final BedrockHandler BEDROCK = PrinterRuntime.get().modules().bedrock();
 
-    public static final ImmutableList<FeatureModuleBase> VALUES = Modules.VALUES;
-    private static final TickScheduler SCHEDULER = new TickScheduler(VALUES);
+    public static final java.util.List<FeatureModuleBase> VALUES = PrinterRuntime.get().modules().values();
 
     public static void tick() {
         PrinterRuntime.get().tick(mc);
     }
 
     public static void tickLegacyRuntime() {
-        SCHEDULER.tick();
+        PrinterRuntime.get().tickModules();
     }
 
     public static long getCurrentHandlerTime() {
@@ -32,15 +30,15 @@ public class ClientPlayerTickManager {
     }
 
     public static int getPacketTick() {
-        return SCHEDULER.getPacketTick();
+        return PrinterRuntime.get().modules().packetTick();
     }
 
     public static void setPacketTick(int packetTick) {
-        SCHEDULER.setPacketTick(packetTick);
+        PrinterRuntime.get().modules().setPacketTick(packetTick);
     }
 
     public static void recordInboundPacket() {
-        SCHEDULER.recordInboundPacket();
+        PrinterRuntime.get().modules().recordInboundPacket();
     }
 
     public static void resetRuntime(String reason) {
@@ -48,6 +46,6 @@ public class ClientPlayerTickManager {
     }
 
     public static String getLastPauseReason() {
-        return SCHEDULER.getLastPauseReason();
+        return PrinterRuntime.get().modules().lastPauseReason();
     }
 }

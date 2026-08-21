@@ -6,7 +6,6 @@ import me.aleksilassila.litematica.printer.enums.WorkingModeType;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
 import me.aleksilassila.litematica.printer.handler.FeatureModuleBase;
-import me.aleksilassila.litematica.printer.handler.Modules;
 import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockController;
 import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockEngine;
 import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
@@ -329,7 +328,7 @@ public class Render2D {
         lines.add(new HudLine("吞吐 " + bedrock.configuredThroughput()
                 + " | 提交 " + bedrock.acceptedThisTick() + "/" + bedrock.submitCap()
                 + " | 阻塞 " + bedrock.rejectedThisTick()
-                + " | 扫描 " + formatScanState(Modules.BEDROCK)
+                + " | 扫描 " + formatScanState(ClientPlayerTickManager.BEDROCK)
                 + " | 状态 " + status, new Color(255, 255, 255, 255)));
     }
 
@@ -446,11 +445,11 @@ public class Render2D {
 
     private FeatureModuleBase getModule(HudStatsManager.Mode mode) {
         return switch (mode) {
-            case PRINT -> Modules.PRINT;
-            case MINE -> Modules.MINE;
-            case FILL -> Modules.FILL;
-            case FLUID -> Modules.FLUID;
-            case BEDROCK -> Modules.BEDROCK;
+            case PRINT -> ClientPlayerTickManager.PRINT;
+            case MINE -> ClientPlayerTickManager.MINE;
+            case FILL -> ClientPlayerTickManager.FILL;
+            case FLUID -> ClientPlayerTickManager.FLUID;
+            case BEDROCK -> ClientPlayerTickManager.BEDROCK;
             case TOTAL -> null;
         };
     }
