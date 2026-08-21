@@ -20,8 +20,6 @@ import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
  * 用 EWMA 平滑抖动,避免 ping 跳变导致间隔忽快忽慢。
  */
 public final class RttReplayController implements RuntimeComponent {
-    public static final RttReplayController INSTANCE = new RttReplayController();
-
     private static final int MILLIS_PER_TICK = 50;
     /** EWMA 平滑系数:新样本占比。越小越平滑、对抖动越不敏感。 */
     private static final double SMOOTHING = 0.25D;
@@ -30,8 +28,7 @@ public final class RttReplayController implements RuntimeComponent {
 
     private double smoothedRttMillis = 0.0D;
 
-    private RttReplayController() {
-        PrinterRuntime.get().register(this);
+    public RttReplayController() {
     }
 
     /**

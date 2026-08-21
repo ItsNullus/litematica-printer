@@ -9,6 +9,7 @@ import me.aleksilassila.litematica.printer.handler.FeatureModuleSet;
 import me.aleksilassila.litematica.printer.handler.InventoryAvailabilityTracker;
 import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.printer.ActionManager;
+import me.aleksilassila.litematica.printer.printer.RttReplayController;
 import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
@@ -42,6 +43,7 @@ public final class PrinterRuntime {
     private final InventoryAvailabilityTracker inventoryAvailability;
     private final CooldownUtils cooldownUtils;
     private final InteractionUtils interactionUtils;
+    private final RttReplayController rttReplayController;
 
     private PrinterRuntime() {
         Minecraft client = Minecraft.getInstance();
@@ -59,6 +61,8 @@ public final class PrinterRuntime {
         this.scope.register(this.cooldownUtils);
         this.interactionUtils = new InteractionUtils();
         this.scope.register(this.interactionUtils);
+        this.rttReplayController = new RttReplayController();
+        this.scope.register(this.rttReplayController);
         this.modules = new FeatureModuleSet(this);
     }
 
@@ -100,6 +104,10 @@ public final class PrinterRuntime {
 
     public InteractionUtils interactionUtils() {
         return this.interactionUtils;
+    }
+
+    public RttReplayController rttReplayController() {
+        return this.rttReplayController;
     }
 
     public Minecraft client() {

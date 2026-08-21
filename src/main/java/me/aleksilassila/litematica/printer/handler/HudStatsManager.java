@@ -1,7 +1,6 @@
 package me.aleksilassila.litematica.printer.handler;
 
 import me.aleksilassila.litematica.printer.config.Configs;
-import me.aleksilassila.litematica.printer.printer.RttReplayController;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
 import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
@@ -214,7 +213,7 @@ public final class HudStatsManager implements RuntimeComponent {
                 : 100;
         return Math.max(
                 2,
-                RttReplayController.INSTANCE.getExtraIntervalTicks(safetyPercent)
+                PrinterRuntime.get().rttReplayController().getExtraIntervalTicks(safetyPercent)
         );
     }
 

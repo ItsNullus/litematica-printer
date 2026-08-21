@@ -70,7 +70,7 @@ public class PrintHandler extends FeatureModuleBase {
         int baseInterval = Configs.Placement.PLACE_INTERVAL.getIntegerValue();
         if (Configs.Placement.RTT_ADAPTIVE_INTERVAL.getBooleanValue()) {
             // 保证重放间隔不低于一次往返(RTT),避免在服务端确认上一次放置前就发下一个导致放错。
-            int rttFloor = RttReplayController.INSTANCE.getExtraIntervalTicks(
+            int rttFloor = PrinterRuntime.get().rttReplayController().getExtraIntervalTicks(
                     Configs.Placement.RTT_SAFETY_PERCENT.getIntegerValue());
             return Math.max(baseInterval, rttFloor);
         }
