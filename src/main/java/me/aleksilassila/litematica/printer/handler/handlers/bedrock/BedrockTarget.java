@@ -40,22 +40,8 @@ public class BedrockTarget implements BedrockTargetStatusResolver.Host, BedrockT
         this.bedrockPos = bedrockPos;
         this.level = level;
         this.layout = precomputedLayout != null ? precomputedLayout : BedrockMachineLayout.find(level, bedrockPos);
-        if (this.layout == null) {
-            this.pistonPos = bedrockPos.above();
-            this.headPos = this.pistonPos.above();
-            this.residue = new BedrockTargetResidue(level, null, this.pistonPos, this.headPos);
-            this.footprint = new BedrockTargetFootprint(level, bedrockPos, this.pistonPos, this.headPos);
-            this.machine = new BedrockTargetMachine(
-                    level, null, bedrockPos, this.pistonPos, this.headPos,
-                    this.footprint, precomputedPlacement, precomputedSlimePos);
-            this.statusResolver = new BedrockTargetStatusResolver(this);
-            this.actionExecutor = new BedrockTargetActionExecutor(this);
-            this.state.setStatus(Status.FAILED);
-            this.conservativeSync = BedrockTargetBlocks.requiresConservativeSync(level.getBlockState(bedrockPos));
-            return;
-        }
-        this.pistonPos = this.layout.getPistonPos();
-        this.headPos = this.layout.getHeadPos();
+        this.pistonPos = this.layout == null ? bedrockPos.above() : this.layout.getPistonPos();
+        this.headPos = this.layout == null ? this.pistonPos.above() : this.layout.getHeadPos();
         this.residue = new BedrockTargetResidue(level, this.layout, this.pistonPos, this.headPos);
         this.footprint = new BedrockTargetFootprint(level, bedrockPos, this.pistonPos, this.headPos);
         this.machine = new BedrockTargetMachine(
@@ -64,7 +50,7 @@ public class BedrockTarget implements BedrockTargetStatusResolver.Host, BedrockT
         this.statusResolver = new BedrockTargetStatusResolver(this);
         this.actionExecutor = new BedrockTargetActionExecutor(this);
         this.conservativeSync = BedrockTargetBlocks.requiresConservativeSync(level.getBlockState(bedrockPos));
-        if (!this.machine.isValid()) {
+        if (this.layout == null || !this.machine.isValid()) {
             this.state.setStatus(Status.FAILED);
         }
     }
