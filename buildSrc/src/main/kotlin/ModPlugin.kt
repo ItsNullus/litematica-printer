@@ -231,6 +231,11 @@ abstract class ModPlugin : Plugin<Project> {
                                 }
 
                                 if (relative.contains("/handler/handlers/")
+                                    && text.contains("ScanCache")) {
+                                    violations += "$relative: feature handler must depend on ScanEngine, not ScanCache internals"
+                                }
+
+                                if (relative.contains("/handler/handlers/")
                                     && text.contains("PrinterRuntime.get()")
                                     && !relative.endsWith("/bedrock/BedrockController.java")
                                     && !relative.endsWith("/bedrock/BedrockPlacer.java")) {
