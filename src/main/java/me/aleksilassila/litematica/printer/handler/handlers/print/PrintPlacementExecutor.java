@@ -13,7 +13,7 @@ import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
 import me.aleksilassila.litematica.printer.printer.action.Action;
 import me.aleksilassila.litematica.printer.printer.action.ClickAction;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
-import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
+import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
 import me.aleksilassila.litematica.printer.utils.minecraft.DirectionUtils;
@@ -34,12 +34,14 @@ import net.minecraft.world.item.ItemStack;
 
 public final class PrintPlacementExecutor {
     private final ActionBroker actionBroker;
+    private final CooldownUtils cooldownUtils;
     private static final Item[] EMPTY_HAND_ITEMS = {Items.AIR};
     private static final long RESERVE_NOTICE_COOLDOWN_TICKS = 100L;
     private static long lastReserveNoticeTick = Long.MIN_VALUE;
 
-    public PrintPlacementExecutor(ActionBroker actionBroker) {
+    public PrintPlacementExecutor(ActionBroker actionBroker, CooldownUtils cooldownUtils) {
         this.actionBroker = actionBroker;
+        this.cooldownUtils = cooldownUtils;
     }
 
     public PrintPlacementResult execute(SchematicBlockContext context, Action action, @Nullable PrintTaskAction taskAction) {
@@ -153,7 +155,7 @@ public final class PrintPlacementExecutor {
             if (sendResult.isSent()) {
                 this.recordPlacementSent(context);
                 if (cooldownTicks > 0) {
-                    PrinterRuntime.get().cooldownUtils().setCooldown(
+                    this.cooldownUtils.setCooldown(
                             context.level,
                             PrintHandler.NAME,
                             blockPos,
