@@ -34,14 +34,13 @@ import java.util.Optional;
  * action or how it is reset.</p>
  */
 public final class ActionBroker implements RuntimeComponent {
-    public static final ActionBroker INSTANCE = new ActionBroker(ActionManager.INSTANCE);
     private static final long ACTION_LEASE_TIMEOUT_NANOS = 10_000_000_000L;
 
     private final ActionManager delegate;
     private final ActionCoordinator coordinator = new ActionCoordinator();
     private ActionTransaction activeTransaction;
 
-    private ActionBroker(ActionManager delegate) {
+    public ActionBroker(ActionManager delegate) {
         this.delegate = delegate;
     }
 

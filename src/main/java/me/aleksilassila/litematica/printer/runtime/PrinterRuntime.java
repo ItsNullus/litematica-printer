@@ -7,6 +7,7 @@ import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeScope;
 import me.aleksilassila.litematica.printer.handler.FeatureModuleSet;
 import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
+import me.aleksilassila.litematica.printer.printer.ActionManager;
 import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
@@ -44,7 +45,7 @@ public final class PrinterRuntime {
         this.scope.register(new MinecraftInteractionRuntime(client));
         this.scope.register(new InventorySwitchRuntime());
         this.scope.register(this.bedrockEngine);
-        this.actionBroker = ActionBroker.INSTANCE;
+        this.actionBroker = new ActionBroker(ActionManager.INSTANCE);
         this.scope.register(this.actionBroker);
         this.scanEngine = new ScanEngine();
         this.scope.register(this.scanEngine);
