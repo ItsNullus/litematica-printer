@@ -49,7 +49,11 @@ public class PrintHandler extends FeatureModuleBase {
         this.printTasks = new PrintTaskController(runtime::currentTick);
         this.sortedTargets = new SortedSchematicTargetQueue(this.scanEngine);
         this.placementExecutor = new PrintPlacementExecutor(
-                this.actionBroker, this.cooldownUtils, runtime.inventorySwitchGuard());
+                this.actionBroker,
+                this.cooldownUtils,
+                runtime.inventorySwitchGuard(),
+                this.hudStats,
+                this.missingMaterials);
     }
 
     public SchematicBlockContext getContext() {
@@ -149,7 +153,7 @@ public class PrintHandler extends FeatureModuleBase {
         this.printTaskAction = null;
         WorldSchematic schematic = SchematicWorldHandler.getSchematicWorld();
         if (schematic == null) return false;
-        if (HudStatsManager.getRuntime().isPrintPlacementPending(blockPos)) {
+        if (this.hudStats.isPrintPlacementPending(blockPos)) {
             return false;
         }
         if (InteractionUtils.getRuntime().isRecentlyBroken(blockPos) && !this.printTasks.isActiveTaskPos(blockPos)) {
