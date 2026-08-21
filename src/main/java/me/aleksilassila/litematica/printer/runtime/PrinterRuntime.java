@@ -36,6 +36,7 @@ public final class PrinterRuntime {
     private RuntimeEpoch epoch = RuntimeEpoch.INITIAL;
     private Object levelIdentity;
     private Object connectionIdentity;
+    private long currentTick = Long.MIN_VALUE;
     private boolean resetting;
     private MaterialRequestCoordinator materialRequests;
     private final BedrockEngine bedrockEngine;
@@ -83,6 +84,10 @@ public final class PrinterRuntime {
 
     public RuntimeEpoch epoch() {
         return this.epoch;
+    }
+
+    public long currentTick() {
+        return this.currentTick;
     }
 
     public RuntimeEventBus events() {
@@ -156,6 +161,7 @@ public final class PrinterRuntime {
     public void tick(Minecraft client) {
         Object currentLevel = client.level;
         Object currentConnection = client.getConnection();
+        this.currentTick = currentLevel == null ? Long.MIN_VALUE : client.level.getGameTime();
         if (currentLevel != this.levelIdentity || currentConnection != this.connectionIdentity) {
             this.levelIdentity = currentLevel;
             this.connectionIdentity = currentConnection;
@@ -184,6 +190,7 @@ public final class PrinterRuntime {
         try {
             RuntimeEpoch previous = this.epoch;
             this.epoch = previous.next();
+            this.currentTick = Long.MIN_VALUE;
             RuntimeEvent.EpochChanged event = new RuntimeEvent.EpochChanged(previous, this.epoch, reason);
             this.scope.changeEpoch(event);
             this.events.publish(event);

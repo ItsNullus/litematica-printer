@@ -265,7 +265,7 @@ public final class ActionBroker implements RuntimeComponent {
         } else {
             this.activeTransaction.reject(
                     this.runtime.epoch(),
-                    me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager.getCurrentHandlerTime()
+                    this.runtime.currentTick()
             );
         }
     }
