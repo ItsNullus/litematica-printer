@@ -7,6 +7,7 @@ import me.aleksilassila.litematica.printer.utils.mods.ModLoadUtils;
 import me.aleksilassila.litematica.printer.utils.mods.ShulkerUtils;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.mixin.printer.litematica.InventoryUtilsAccessor;
+import me.aleksilassila.litematica.printer.integration.litematica.LitematicaPickSlotAdapter;
 import me.aleksilassila.litematica.printer.integration.quickshulker.QuickShulkerSupport;
 import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
 import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
@@ -172,7 +173,7 @@ public final class QuickShulkerRequestController {
                                 continue;
                             }
                             int a = InventoryUtilsAccessor.getEmptyPickBlockableHotbarSlot(player.getInventory()) == -1 ?
-                                    InventoryUtilsAccessor.getPickBlockTargetSlot(player) :
+                                    LitematicaPickSlotAdapter.selectNextAvailable(player) :
                                     InventoryUtilsAccessor.getEmptyPickBlockableHotbarSlot(player.getInventory());
                             c = a == -1 ? c : a;
                             ItemStack retrievedStack = slots.get(y).getItem().copy();

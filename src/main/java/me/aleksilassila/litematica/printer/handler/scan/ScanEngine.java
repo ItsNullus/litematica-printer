@@ -44,7 +44,7 @@ public final class ScanEngine implements RuntimeComponent {
     }
 
     public void beginTick(ClientLevel level, WorldSchematic schematic, long tickTime) {
-        this.cache.beginTick(level, schematic, tickTime);
+        this.cache.beginTick(level, schematic, tickTime, PrinterRuntime.get().epoch());
     }
 
     public void invalidate(BlockPos pos) {

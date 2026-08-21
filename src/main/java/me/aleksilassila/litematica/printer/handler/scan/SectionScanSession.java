@@ -4,6 +4,9 @@ import fi.dy.masa.litematica.world.WorldSchematic;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import me.aleksilassila.litematica.printer.config.Configs;
+import me.aleksilassila.litematica.printer.core.runtime.RuntimeEpoch;
+import me.aleksilassila.litematica.printer.core.scan.ScanGeneration;
+import me.aleksilassila.litematica.printer.core.scan.ScanHandle;
 import me.aleksilassila.litematica.printer.enums.RadiusShapeType;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
@@ -21,6 +24,7 @@ import java.util.List;
 import java.util.PriorityQueue;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
+import java.util.function.LongSupplier;
 
 /**
  * Owns one resumable, player-distance ordered scan pass.
@@ -39,6 +43,9 @@ final class SectionScanSession {
     private List<PrinterBox> sourceBoxes;
     private PositionCursor distanceCursor;
     private final boolean configuredAsync;
+    private final RuntimeEpoch epoch;
+    private final LongSupplier snapshotRevision;
+    private final LongSupplier generationSequence;
     private boolean asynchronous;
     private long sourceRevision;
     private long cursorRevision;
@@ -46,6 +53,8 @@ final class SectionScanSession {
     private final PriorityQueue<DirtyPosition> dirtyPositions = new PriorityQueue<>();
     private final LongSet dirtyPositionKeys = new LongOpenHashSet();
     private boolean paused;
+    private boolean closed;
+    private ScanHandle scanHandle;
     private final BlockPos.MutableBlockPos liveMutable = new BlockPos.MutableBlockPos();
     private final BlockPos.MutableBlockPos liveNeighbor = new BlockPos.MutableBlockPos();
     private int lastChunkX = Integer.MIN_VALUE;
@@ -58,7 +67,10 @@ final class SectionScanSession {
             ScanIntent intent,
             MutableMetrics metrics,
             AsyncPositionCursorScheduler asyncScheduler,
-            boolean asynchronous
+            boolean asynchronous,
+            RuntimeEpoch epoch,
+            LongSupplier snapshotRevision,
+            LongSupplier generationSequence
     ) {
         this.region = region;
         this.sourceBoxes = List.copyOf(sourceBoxes);
@@ -66,7 +78,11 @@ final class SectionScanSession {
         this.metrics = metrics;
         this.asyncScheduler = asyncScheduler;
         this.configuredAsync = asynchronous;
+        this.epoch = epoch;
+        this.snapshotRevision = snapshotRevision;
+        this.generationSequence = generationSequence;
         this.asynchronous = asynchronous;
+        this.scanHandle = this.createScanHandle();
         this.distanceCursor = this.createDistanceCursor();
     }
 
@@ -76,7 +92,7 @@ final class SectionScanSession {
             ScanIntent intent,
             MutableMetrics metrics
     ) {
-        this(region, sourceBoxes, intent, metrics, null, false);
+        this(region, sourceBoxes, intent, metrics, null, false, RuntimeEpoch.INITIAL, () -> 0L, () -> 0L);
     }
 
     boolean canReuse(Region region) {
@@ -110,6 +126,9 @@ final class SectionScanSession {
     }
 
     boolean canScan(long tickTime, boolean restartCompletedPass) {
+        if (this.closed) {
+            return false;
+        }
         if (this.exhaustedUntilTick == Long.MIN_VALUE) {
             return true;
         }
@@ -128,6 +147,8 @@ final class SectionScanSession {
 
     private void rebuildDistanceCursor() {
         this.distanceCursor.close();
+        this.scanHandle.close();
+        this.scanHandle = this.createScanHandle();
         this.distanceCursor = this.createDistanceCursor();
         this.cursorRevision = this.sourceRevision;
         this.exhaustedUntilTick = Long.MIN_VALUE;
@@ -144,7 +165,8 @@ final class SectionScanSession {
                     this.region.centerX(),
                     this.region.centerY(),
                     this.region.centerZ(),
-                    this.region.maxDistanceBand()
+                    this.region.maxDistanceBand(),
+                    this.scanHandle
             );
         }
         return new SynchronousPositionCursor(
@@ -163,6 +185,10 @@ final class SectionScanSession {
 
     boolean wasPaused() {
         return this.paused;
+    }
+
+    boolean belongsTo(RuntimeEpoch epoch) {
+        return !this.closed && this.epoch.equals(epoch) && this.scanHandle.accepts(this.scanHandle.generation());
     }
 
     boolean contains(BlockPos pos) {
@@ -419,9 +445,23 @@ final class SectionScanSession {
     }
 
     void close() {
+        if (this.closed) {
+            return;
+        }
+        this.closed = true;
+        this.scanHandle.close();
         this.distanceCursor.close();
         this.dirtyPositions.clear();
         this.dirtyPositionKeys.clear();
+    }
+
+    private ScanHandle createScanHandle() {
+        return new ScanHandle(new ScanGeneration(
+                this.epoch,
+                this.sourceRevision,
+                this.snapshotRevision.getAsLong(),
+                this.generationSequence.getAsLong()
+        ));
     }
 
     record Candidate(BlockPos pos, byte flags) {

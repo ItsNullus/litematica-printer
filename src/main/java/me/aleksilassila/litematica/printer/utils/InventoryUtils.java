@@ -5,9 +5,10 @@ import fi.dy.masa.malilib.gui.Message;
 import fi.dy.masa.malilib.util.InfoUtils;
 import me.aleksilassila.litematica.printer.mixin.printer.litematica.EasyPlaceUtilsAccessor;
 import me.aleksilassila.litematica.printer.mixin.printer.litematica.InventoryUtilsAccessor;
+import me.aleksilassila.litematica.printer.integration.inventory.MaterialRequest;
+import me.aleksilassila.litematica.printer.integration.litematica.LitematicaPickSlotAdapter;
 import me.aleksilassila.litematica.printer.utils.minecraft.PlayerUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.ToolSelectionUtils;
-import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
@@ -103,7 +104,7 @@ public class InventoryUtils {
             }
         }
         for (Item item : items) {
-            QuickShulkerBridge.requestItem(item);
+            QuickShulkerBridge.requestItem(item, MaterialRequest.Source.PRINT);
         }
         return false;
     }
@@ -152,7 +153,7 @@ public class InventoryUtils {
             hotbarSlot = InventoryUtilsAccessor.getEmptyPickBlockableHotbarSlot(inventory);
         }
         if (hotbarSlot == -1) {
-            hotbarSlot = InventoryUtilsAccessor.getPickBlockTargetSlot(player);
+            hotbarSlot = LitematicaPickSlotAdapter.selectNextAvailable(player);
         }
         // 无可用槽位 → 精准失败类型；否则成功
         return hotbarSlot != -1 ? PickResult.SUCCESS : PickResult.FAIL_NO_SUITABLE_SLOT_FOUND;
@@ -178,7 +179,7 @@ public class InventoryUtils {
         }
         // 如果没有空槽位，则寻找一个可拾取方块的热键栏槽位
         if (hotbarSlot == -1) {
-            hotbarSlot = InventoryUtilsAccessor.getPickBlockTargetSlot(player);
+            hotbarSlot = LitematicaPickSlotAdapter.selectNextAvailable(player);
         }
         if (hotbarSlot != -1) {
             setHotbarSlot(hotbarSlot, inventory);
@@ -414,12 +415,7 @@ public class InventoryUtils {
         }
         // 背包里所有后备物品都不存在后，再按优先级请求外部取货。
         for (Item item : items) {
-            if (TakeItOutUtils.tryRequestItem(item)) {
-                return false;
-            }
-        }
-        for (Item item : items) {
-            QuickShulkerBridge.requestItem(item);
+            QuickShulkerBridge.requestItem(item, MaterialRequest.Source.PRINT);
         }
         return false;
     }

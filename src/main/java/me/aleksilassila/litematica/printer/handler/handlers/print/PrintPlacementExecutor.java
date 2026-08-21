@@ -2,6 +2,7 @@ package me.aleksilassila.litematica.printer.handler.handlers.print;
 
 import me.aleksilassila.litematica.printer.I18n;
 import me.aleksilassila.litematica.printer.config.Configs;
+import me.aleksilassila.litematica.printer.core.action.ResourceLease;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.handler.handlers.PrintHandler;
 import me.aleksilassila.litematica.printer.interfaces.Implementation;
@@ -19,8 +20,6 @@ import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
 import me.aleksilassila.litematica.printer.utils.minecraft.DirectionUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.MessageUtils;
 import me.aleksilassila.litematica.printer.utils.mods.LitematicaUtils;
-import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
-import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.item.Item;
@@ -82,8 +81,7 @@ public final class PrintPlacementExecutor {
         if (!itemReady) {
             boolean retrievalPending =
                     InventorySwitchGuard.isWaiting()
-                            || QuickShulkerBridge.shouldPause()
-                            || TakeItOutUtils.isAwaitingStack();
+                            || ActionBroker.INSTANCE.isResourceHeld(ResourceLease.INVENTORY);
             ItemStack reserveBlockedStack = reserveItems
                     ? InventoryUtils.findReserveBlockedStack(
                             context.client.player,

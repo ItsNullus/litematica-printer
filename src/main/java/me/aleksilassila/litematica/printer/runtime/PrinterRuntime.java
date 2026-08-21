@@ -9,7 +9,12 @@ import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
+import me.aleksilassila.litematica.printer.integration.inventory.MaterialRequestCoordinator;
+import me.aleksilassila.litematica.printer.integration.inventory.PlayerInventoryProvider;
+import me.aleksilassila.litematica.printer.integration.inventory.TakeItOutAdapter;
+import me.aleksilassila.litematica.printer.integration.quickshulker.QuickShulkerAdapter;
 import net.minecraft.client.Minecraft;
+import java.util.List;
 
 /**
  * Owns the active client runtime and is the only platform tick entry point.
@@ -24,8 +29,13 @@ public final class PrinterRuntime {
     private Object levelIdentity;
     private Object connectionIdentity;
     private boolean resetting;
+    private MaterialRequestCoordinator materialRequests;
 
     private PrinterRuntime() {
+        Minecraft client = Minecraft.getInstance();
+        this.scope.register(new MinecraftInteractionRuntime(client));
+        this.scope.register(new InventorySwitchRuntime());
+        this.scope.register(new BedrockRuntime());
     }
 
     public static PrinterRuntime get() {
@@ -44,6 +54,18 @@ public final class PrinterRuntime {
         return this.scope.register(component);
     }
 
+    public MaterialRequestCoordinator materialRequests() {
+        if (this.materialRequests == null) {
+            this.materialRequests = new MaterialRequestCoordinator(List.of(
+                    new PlayerInventoryProvider(Minecraft.getInstance()),
+                    QuickShulkerAdapter.INSTANCE,
+                    new TakeItOutAdapter()
+            ));
+            this.scope.register(this.materialRequests);
+        }
+        return this.materialRequests;
+    }
+
     public void tick(Minecraft client) {
         Object currentLevel = client.level;
         Object currentConnection = client.getConnection();
@@ -55,6 +77,9 @@ public final class PrinterRuntime {
 
         CooldownUtils.INSTANCE.tick();
         QuickShulkerBridge.onTick();
+        if (this.materialRequests != null) {
+            this.materialRequests.tick();
+        }
         InteractionUtils.INSTANCE.preprocess();
         InteractionUtils.INSTANCE.onTick();
         ClientPlayerTickManager.tickLegacyRuntime();
@@ -68,7 +93,6 @@ public final class PrinterRuntime {
         try {
             RuntimeEpoch previous = this.epoch;
             this.epoch = previous.next();
-            ClientPlayerTickManager.resetComponentsForEpoch(reason);
             RuntimeEvent.EpochChanged event = new RuntimeEvent.EpochChanged(previous, this.epoch, reason);
             this.scope.changeEpoch(event);
             this.events.publish(event);

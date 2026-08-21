@@ -1,6 +1,7 @@
 package me.aleksilassila.litematica.printer.handler.handlers;
 
 import me.aleksilassila.litematica.printer.config.Configs;
+import me.aleksilassila.litematica.printer.core.action.ResourceLease;
 import me.aleksilassila.litematica.printer.enums.PrintModeType;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.handler.FeatureModuleBase;
@@ -14,7 +15,6 @@ import me.aleksilassila.litematica.printer.printer.PrinterUtils;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.RegistryFilterResolver;
-import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
 import me.aleksilassila.litematica.printer.utils.minecraft.BlockUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -182,8 +182,7 @@ public class FluidHandler extends FeatureModuleBase {
                     level.getGameTime()
             );
             setIterationConsumedEffectiveExecution(false);
-            if (QuickShulkerBridge.shouldPause()
-                    || me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils.isAwaitingStack()) {
+            if (ActionBroker.INSTANCE.isResourceHeld(ResourceLease.INVENTORY)) {
                 skipIteration.set(true);
             }
             return;

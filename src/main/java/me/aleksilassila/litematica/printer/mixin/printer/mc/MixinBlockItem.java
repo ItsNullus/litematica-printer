@@ -14,6 +14,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+// Priority rationale: placement protocol state must be finalized after the normal BlockItem
+// context has been assembled, while still winning over Litematica's default-priority hook.
 @Mixin(value = BlockItem.class, priority = 1020)
 public abstract class MixinBlockItem extends Item {
     private MixinBlockItem(Item.Properties builder) {

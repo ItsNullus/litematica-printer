@@ -4,6 +4,7 @@ import fi.dy.masa.litematica.world.WorldSchematic;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import me.aleksilassila.litematica.printer.config.Configs;
+import me.aleksilassila.litematica.printer.core.runtime.RuntimeEpoch;
 import me.aleksilassila.litematica.printer.handler.scan.SectionScanSession.Candidate;
 import me.aleksilassila.litematica.printer.handler.scan.SectionScanSession.MutableMetrics;
 import me.aleksilassila.litematica.printer.handler.scan.SectionScanSession.Region;
@@ -38,6 +39,9 @@ public final class ScanCache {
 
     private Object levelIdentity;
     private Object schematicIdentity;
+    private RuntimeEpoch runtimeEpoch = RuntimeEpoch.INITIAL;
+    private long snapshotRevision;
+    private long generationSequence;
     private long tickTime = Long.MIN_VALUE;
     private long scanBudgetTickTime = Long.MIN_VALUE;
     private long globalScanBudgetUsedNanos;
@@ -50,6 +54,7 @@ public final class ScanCache {
         this.scanMetrics.clear();
         this.levelIdentity = null;
         this.schematicIdentity = null;
+        this.snapshotRevision = 0L;
         this.tickTime = Long.MIN_VALUE;
         this.scanBudgetTickTime = Long.MIN_VALUE;
         this.globalScanBudgetUsedNanos = 0L;
@@ -88,16 +93,19 @@ public final class ScanCache {
                 | ((long) y & 0xFFFL);
     }
 
-    public void beginTick(ClientLevel level, WorldSchematic schematic, long tickTime) {
-        if (this.levelIdentity == level && this.schematicIdentity == schematic && this.tickTime == tickTime) {
+    public void beginTick(ClientLevel level, WorldSchematic schematic, long tickTime, RuntimeEpoch epoch) {
+        if (this.levelIdentity == level && this.schematicIdentity == schematic
+                && this.tickTime == tickTime && this.runtimeEpoch.equals(epoch)) {
             return;
         }
-        if (this.levelIdentity != level || this.schematicIdentity != schematic) {
+        if (!this.runtimeEpoch.equals(epoch) || this.levelIdentity != level || this.schematicIdentity != schematic) {
             this.closeSessions();
             this.scanMetrics.clear();
             DirtyRegionTracker.INSTANCE.clear();
             this.levelIdentity = level;
             this.schematicIdentity = schematic;
+            this.runtimeEpoch = epoch;
+            this.snapshotRevision++;
         }
         if (this.tickTime != tickTime) {
             for (MutableMetrics metrics : this.scanMetrics.values()) {
@@ -120,6 +128,7 @@ public final class ScanCache {
         if (pos == null) {
             return;
         }
+        this.snapshotRevision++;
         for (SectionScanSession session : this.sessions.values()) {
             session.invalidate(pos);
         }
@@ -319,6 +328,9 @@ public final class ScanCache {
                                 preFilter,
                                 unbounded,
                                 restartCompletedPass);
+                        if (!session.belongsTo(runtimeEpoch)) {
+                            break;
+                        }
                         if (candidate == null) {
                             if (session.wasPaused()) {
                                 budgetHit = true;
@@ -412,7 +424,10 @@ public final class ScanCache {
                     intent,
                     metrics,
                     this.asyncScheduler,
-                    asynchronous
+                    asynchronous,
+                    this.runtimeEpoch,
+                    () -> this.snapshotRevision,
+                    () -> ++this.generationSequence
             );
             this.sessions.put(key, session);
         } else {

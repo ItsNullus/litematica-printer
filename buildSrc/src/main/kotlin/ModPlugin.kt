@@ -158,6 +158,22 @@ abstract class ModPlugin : Plugin<Project> {
                                     violations += "$relative: async traversal must not access live client state"
                                 }
 
+                                if (relative.contains("/handler/handlers/")
+                                    && (text.contains("QuickShulker") || text.contains("TakeItOut"))) {
+                                    violations += "$relative: feature handler depends on a concrete inventory integration"
+                                }
+
+                                if (relative.endsWith("/mixin/printer/litematica/MixinInventoryUtils.java")
+                                    && text.contains("getPickBlockTargetSlot")) {
+                                    violations += "$relative: must not replace Litematica's global pick-slot policy"
+                                }
+
+                                if (relative.contains("/mixin/")
+                                    && Regex("priority\\s*=\\s*(?!1000\\b)\\d+").containsMatchIn(text)
+                                    && !text.contains("Priority rationale:")) {
+                                    violations += "$relative: non-default Mixin priority has no documented rationale"
+                                }
+
                             }
                     }
 

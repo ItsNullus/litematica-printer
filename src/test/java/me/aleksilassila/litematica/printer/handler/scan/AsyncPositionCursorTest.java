@@ -1,6 +1,9 @@
 package me.aleksilassila.litematica.printer.handler.scan;
 
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
+import me.aleksilassila.litematica.printer.core.runtime.RuntimeEpoch;
+import me.aleksilassila.litematica.printer.core.scan.ScanGeneration;
+import me.aleksilassila.litematica.printer.core.scan.ScanHandle;
 import net.minecraft.core.BlockPos;
 import org.junit.jupiter.api.Test;
 
@@ -39,6 +42,20 @@ class AsyncPositionCursorTest {
                 0, 0, 0, 8
         )) {
             assertEquals(PositionCursor.PollResult.FAILED, cursor.poll(new BlockPos.MutableBlockPos()));
+        }
+    }
+
+    @Test
+    void cancelledGenerationCannotEmitQueuedCoordinates() {
+        ScanHandle handle = new ScanHandle(new ScanGeneration(RuntimeEpoch.INITIAL, 1L, 2L, 3L));
+        try (AsyncPositionCursorScheduler scheduler = new AsyncPositionCursorScheduler();
+             AsyncPositionCursor cursor = new AsyncPositionCursor(
+                     scheduler,
+                     List.of(new PrinterBox(-16, 0, -16, 16, 2, 16)),
+                     0, 1, 0, 32, handle
+             )) {
+            handle.close();
+            assertEquals(PositionCursor.PollResult.COMPLETE, cursor.poll(new BlockPos.MutableBlockPos()));
         }
     }
 

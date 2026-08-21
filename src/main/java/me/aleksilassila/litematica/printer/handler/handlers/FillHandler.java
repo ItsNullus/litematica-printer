@@ -2,6 +2,7 @@ package me.aleksilassila.litematica.printer.handler.handlers;
 
 import lombok.Getter;
 import me.aleksilassila.litematica.printer.config.Configs;
+import me.aleksilassila.litematica.printer.core.action.ResourceLease;
 import me.aleksilassila.litematica.printer.enums.FillBlockModeType;
 import me.aleksilassila.litematica.printer.enums.PrintModeType;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
@@ -19,7 +20,6 @@ import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.FilterUtils;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.RegistryFilterResolver;
-import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
 import me.aleksilassila.litematica.printer.utils.minecraft.BlockUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.MessageUtils;
 import net.minecraft.core.BlockPos;
@@ -313,8 +313,7 @@ public class FillHandler extends FeatureModuleBase {
         }
         if (!handheld && !InventoryUtils.switchToItems(player, this.fillModeItemList)) {
             boolean retrievalPending =
-                    QuickShulkerBridge.shouldPause()
-                            || me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils.isAwaitingStack();
+                    ActionBroker.INSTANCE.isResourceHeld(ResourceLease.INVENTORY);
             if (retrievalPending) {
                 HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "等待取货");
                 MissingMaterialTracker.INSTANCE.resolve(this.fillModeItemList, null);

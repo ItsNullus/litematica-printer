@@ -8,6 +8,8 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 
+// Priority rationale: a short-lived printer look lease must be the final packet rotation while
+// leaving every packet byte-identical when no scoped/action look override exists.
 @Mixin(value = ServerboundMovePlayerPacket.class, priority = 1010)
 public class MixinServerboundMovePlayerPacket {
     //#if MC > 12101

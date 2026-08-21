@@ -1,6 +1,9 @@
 package me.aleksilassila.litematica.printer.utils.mods;
 
 import me.aleksilassila.litematica.printer.integration.quickshulker.QuickShulkerAdapter;
+import me.aleksilassila.litematica.printer.integration.inventory.MaterialRequest;
+import me.aleksilassila.litematica.printer.integration.inventory.MaterialReservation;
+import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.item.Item;
 
@@ -18,8 +21,15 @@ public final class QuickShulkerBridge {
 
     public static void requestItem(Item item) {
         if (item != null) {
-            ADAPTER.requestItem(item);
+            requestItem(item, MaterialRequest.Source.OTHER);
         }
+    }
+
+    public static MaterialReservation requestItem(Item item, MaterialRequest.Source source) {
+        if (item == null) {
+            return new MaterialReservation(0L, MaterialReservation.State.UNAVAILABLE);
+        }
+        return PrinterRuntime.get().materialRequests().request(item, source);
     }
 
     public static boolean switchItem() {

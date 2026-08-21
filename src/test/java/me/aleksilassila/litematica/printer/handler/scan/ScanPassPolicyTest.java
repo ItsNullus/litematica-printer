@@ -31,6 +31,17 @@ class ScanPassPolicyTest {
         assertTrue(session.canScan(21L, true));
     }
 
+    @Test
+    void closedSessionCannotBeRevivedByAnOldIterator() {
+        SectionScanSession session = session();
+
+        session.close();
+        session.invalidate(new BlockPos(0, 0, 0));
+
+        assertFalse(session.canScan(30L, true));
+        assertFalse(session.hasPendingSource(30L, true));
+    }
+
     private static SectionScanSession session() {
         PrinterBox box = new PrinterBox(-1, -1, -1, 1, 1, 1);
         SectionScanSession.Region region = SectionScanSession.Region.from(box, null);

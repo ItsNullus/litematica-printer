@@ -9,8 +9,7 @@ import me.aleksilassila.litematica.printer.handler.handlers.MineDebugLog;
 import me.aleksilassila.litematica.printer.printer.MissingMaterialTracker;
 import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
-import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
-import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
+import me.aleksilassila.litematica.printer.core.action.ResourceLease;
 import net.minecraft.client.Minecraft;
 import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 
@@ -132,14 +131,11 @@ final class TickScheduler implements RuntimeComponent {
     }
 
     private boolean pauseForInventoryState(String reasonPrefix) {
-        boolean switchingItem = QuickShulkerBridge.switchItem();
-        boolean pendingSwitch = QuickShulkerBridge.hasPendingRequest();
-        boolean takeItOutPending = TakeItOutUtils.isAwaitingStack();
+        boolean inventoryLease = ActionBroker.INSTANCE.isResourceHeld(ResourceLease.INVENTORY);
         boolean inventorySwitchPending = InventorySwitchGuard.isWaiting();
-        boolean openHandler = QuickShulkerBridge.isOpenHandler();
-        if (pendingSwitch || switchingItem || takeItOutPending || inventorySwitchPending) {
-            ActionBroker.INSTANCE.cancelQueue();
-            this.pause(reasonPrefix + " openHandler=" + openHandler + " pendingSwitch=" + pendingSwitch + " switchingItem=" + switchingItem + " takeItOutPending=" + takeItOutPending + " inventorySwitchPending=" + inventorySwitchPending);
+        if (inventoryLease || inventorySwitchPending) {
+            this.pause(reasonPrefix + " inventoryLease=" + inventoryLease
+                    + " inventorySwitchPending=" + inventorySwitchPending);
             return true;
         }
         return false;

@@ -8,14 +8,17 @@ import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
 import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
+import me.aleksilassila.litematica.printer.config.Configs;
+import me.aleksilassila.litematica.printer.utils.InventoryUtils;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.world.item.Item;
 
 /** Public adapter around the Quick Shulker request and ordered-restore controllers. */
 public final class QuickShulkerAdapter implements InventoryProvider, RuntimeComponent {
     public static final QuickShulkerAdapter INSTANCE = new QuickShulkerAdapter();
     private static final String LEASE_OWNER = "quick_shulker";
     private boolean resourcesAcquired;
+    private long attemptedToken;
 
     private QuickShulkerAdapter() {
         PrinterRuntime.get().register(this);
@@ -28,17 +31,34 @@ public final class QuickShulkerAdapter implements InventoryProvider, RuntimeComp
 
     @Override
     public MaterialReservation request(MaterialRequest request) {
+        if (!Configs.Placement.QUICK_SHULKER.getBooleanValue()) {
+            return new MaterialReservation(request.token(), MaterialReservation.State.UNAVAILABLE);
+        }
         if (!this.acquireResources()) {
             return new MaterialReservation(request.token(), MaterialReservation.State.PENDING);
         }
         QuickShulkerRequestController.requestItem(request.item());
+        this.attemptedToken = request.token();
         MaterialReservation.State state = QuickShulkerRequestController.hasPendingSwitchRequest()
                 ? MaterialReservation.State.PENDING : MaterialReservation.State.UNAVAILABLE;
         return new MaterialReservation(request.token(), state);
     }
 
-    public void requestItem(Item item) {
-        if (item != null && this.acquireResources()) QuickShulkerRequestController.requestItem(item);
+    @Override
+    public MaterialReservation status(MaterialRequest request) {
+        if (InventoryUtils.playerHasItemInInventory(Minecraft.getInstance().player, request.item())) {
+            this.releaseResources();
+            return new MaterialReservation(request.token(), MaterialReservation.State.AVAILABLE);
+        }
+        if (!this.resourcesAcquired && this.attemptedToken != request.token()) {
+            return this.request(request);
+        }
+        MaterialReservation.State state = QuickShulkerRequestController.hasPendingSwitchRequest()
+                ? MaterialReservation.State.PENDING : MaterialReservation.State.UNAVAILABLE;
+        if (state == MaterialReservation.State.UNAVAILABLE) {
+            this.releaseResources();
+        }
+        return new MaterialReservation(request.token(), state);
     }
 
     public boolean switchItem() {
@@ -64,6 +84,7 @@ public final class QuickShulkerAdapter implements InventoryProvider, RuntimeComp
     @Override
     public void tick() {
         QuickShulkerRequestController.tick();
+        QuickShulkerRequestController.switchItem();
         this.synchronizeResources();
     }
 
@@ -84,6 +105,7 @@ public final class QuickShulkerAdapter implements InventoryProvider, RuntimeComp
     public void reset() {
         OrderedStorageController.reSet();
         QuickShulkerRequestController.resetRuntime();
+        this.attemptedToken = 0L;
         this.releaseResources();
     }
 
