@@ -28,16 +28,17 @@ import java.util.function.Predicate;
  * it. A successful retrieval removes the entry on the next tick.</p>
  */
 public final class MissingMaterialTracker implements RuntimeComponent {
-    public static final MissingMaterialTracker INSTANCE = new MissingMaterialTracker();
-
     private static final long STALE_AFTER_TICKS = 100L;
 
     private final Map<Item, TrackedRequirement> requirements = new LinkedHashMap<>();
     private List<Entry> snapshot = List.of();
     private long lastTick = Long.MIN_VALUE;
 
-    private MissingMaterialTracker() {
-        PrinterRuntime.get().register(this);
+    public MissingMaterialTracker() {
+    }
+
+    public static MissingMaterialTracker getRuntime() {
+        return PrinterRuntime.get().missingMaterials();
     }
 
     public void tick(@Nullable LocalPlayer player, long currentTick) {

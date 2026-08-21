@@ -319,10 +319,10 @@ public class FillHandler extends FeatureModuleBase {
                     this.actionBroker.isResourceHeld(ResourceLease.INVENTORY);
             if (retrievalPending) {
                 HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "等待取货");
-                MissingMaterialTracker.INSTANCE.resolve(this.fillModeItemList, null);
+                MissingMaterialTracker.getRuntime().resolve(this.fillModeItemList, null);
             } else {
                 HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "缺少填充材料");
-                MissingMaterialTracker.INSTANCE.recordMissing(
+                MissingMaterialTracker.getRuntime().recordMissing(
                         this.fillModeItemList,
                         null,
                         null,
@@ -336,7 +336,7 @@ public class FillHandler extends FeatureModuleBase {
             return;
         }
         if (!handheld) {
-            MissingMaterialTracker.INSTANCE.resolve(this.fillModeItemList, null);
+            MissingMaterialTracker.getRuntime().resolve(this.fillModeItemList, null);
         }
         Direction side = this.getFillPlacementSide(blockPos);
         if (side == null) {

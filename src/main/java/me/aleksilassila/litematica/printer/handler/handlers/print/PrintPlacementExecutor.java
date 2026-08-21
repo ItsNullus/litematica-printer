@@ -96,10 +96,10 @@ public final class PrintPlacementExecutor {
                     : ItemStack.EMPTY;
             if (retrievalPending) {
                 HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "等待取货");
-                MissingMaterialTracker.INSTANCE.resolve(requiredItems, requiredStackPredicate);
+                MissingMaterialTracker.getRuntime().resolve(requiredItems, requiredStackPredicate);
             } else if (reserveBlockedStack.isEmpty()) {
                 HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "缺少材料");
-                MissingMaterialTracker.INSTANCE.recordMissing(
+                MissingMaterialTracker.getRuntime().recordMissing(
                         requiredItems,
                         requiredStackPredicate,
                         action.getRequiredCreativeStack(),
@@ -117,7 +117,7 @@ public final class PrintPlacementExecutor {
             // 真正缺少材料属于无效放置，不应消耗每 tick 的有效放置预算。
             return PrintPlacementResult.failure(false, shouldStopAfterTaskAction(taskAction));
         }
-        MissingMaterialTracker.INSTANCE.resolve(requiredItems, requiredStackPredicate);
+        MissingMaterialTracker.getRuntime().resolve(requiredItems, requiredStackPredicate);
         if (!InventoryUtils.isHoldingAnyItem(context.client.player, requiredItems)
                 || requiredStackPredicate != null
                 && !requiredStackPredicate.test(context.client.player.getMainHandItem())) {

@@ -179,7 +179,7 @@ public class FluidHandler extends FeatureModuleBase {
         }
         if (!InventoryUtils.switchToItems(player, fillItemArray)) {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "缺少流体填充方块");
-            MissingMaterialTracker.INSTANCE.recordMissing(
+            MissingMaterialTracker.getRuntime().recordMissing(
                     fillItemArray,
                     null,
                     null,
@@ -191,7 +191,7 @@ public class FluidHandler extends FeatureModuleBase {
             }
             return;
         }
-        MissingMaterialTracker.INSTANCE.resolve(fillItemArray, null);
+        MissingMaterialTracker.getRuntime().resolve(fillItemArray, null);
         BlockPos clickTarget = blockPos;
         Direction clickSide = Direction.DOWN;
         if (!Configs.Print.PLACE_IN_AIR.getBooleanValue()) {

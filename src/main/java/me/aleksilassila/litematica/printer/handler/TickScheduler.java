@@ -6,7 +6,6 @@ import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
 import me.aleksilassila.litematica.printer.handler.handlers.GuiHandler;
 import me.aleksilassila.litematica.printer.handler.handlers.MineDebugLog;
-import me.aleksilassila.litematica.printer.printer.MissingMaterialTracker;
 import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
 import me.aleksilassila.litematica.printer.core.action.ResourceLease;
 import net.minecraft.client.Minecraft;
@@ -31,7 +30,7 @@ final class TickScheduler implements RuntimeComponent {
         Minecraft mc = this.runtime.client();
         this.runtime.inventoryAvailability().tick(mc.player);
         HudStatsManager.INSTANCE.tick();
-        MissingMaterialTracker.INSTANCE.tick(
+        this.runtime.missingMaterials().tick(
                 mc.player,
                 mc.level != null ? mc.level.getGameTime() : 0L
         );

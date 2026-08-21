@@ -38,7 +38,7 @@ public final class MissingMaterialHudRenderer {
             float scale,
             int minimumWidth
     ) {
-        List<MissingMaterialTracker.Entry> entries = MissingMaterialTracker.INSTANCE.snapshot();
+        List<MissingMaterialTracker.Entry> entries = MissingMaterialTracker.getRuntime().snapshot();
         if (entries.isEmpty()) {
             return;
         }
