@@ -3,6 +3,7 @@ package me.aleksilassila.litematica.printer.handler;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
+import me.aleksilassila.litematica.printer.printer.RttReplayController;
 import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -12,12 +13,16 @@ import java.util.EnumMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.LongSupplier;
 
 public final class HudStatsManager implements RuntimeComponent {
     private static final long RATE_WINDOW_NANOS = 1_000_000_000L;
     private static final int PRINT_CONFIRM_TIMEOUT_TICKS = 80;
     private static final int FALLBACK_CONFIRM_CHECKS_PER_MODE = 8;
 
+    private final Minecraft client;
+    private final LongSupplier tickClock;
+    private final RttReplayController rttReplayController;
     private final EnumMap<Mode, ModeStats> stats = new EnumMap<>(Mode.class);
     private final Map<BlockPos, PendingBlockState> pendingPrintStates = new LinkedHashMap<>();
     private final Map<BlockPos, Long> pendingMineTargets = new LinkedHashMap<>();
@@ -25,7 +30,14 @@ public final class HudStatsManager implements RuntimeComponent {
     private final Map<BlockPos, PendingStateChange> pendingFluidTargets = new LinkedHashMap<>();
     private long lastFallbackFlushTick = Long.MIN_VALUE;
 
-    public HudStatsManager() {
+    public HudStatsManager(
+            Minecraft client,
+            LongSupplier tickClock,
+            RttReplayController rttReplayController
+    ) {
+        this.client = client;
+        this.tickClock = tickClock;
+        this.rttReplayController = rttReplayController;
         for (Mode mode : Mode.values()) {
             this.stats.put(mode, new ModeStats());
         }
@@ -82,7 +94,7 @@ public final class HudStatsManager implements RuntimeComponent {
         if (mode != Mode.PRINT || pos == null || expectedState == null) {
             return;
         }
-        long now = ClientPlayerTickManager.getCurrentHandlerTime();
+        long now = this.tickClock.getAsLong();
         this.pendingPrintStates.put(
                 pos.immutable(),
                 new PendingBlockState(expectedState, now, now + PRINT_CONFIRM_TIMEOUT_TICKS)
@@ -97,7 +109,7 @@ public final class HudStatsManager implements RuntimeComponent {
         if (pending == null) {
             return false;
         }
-        if (ClientPlayerTickManager.getCurrentHandlerTime() > pending.expireTick()) {
+        if (this.tickClock.getAsLong() > pending.expireTick()) {
             this.pendingPrintStates.remove(pos);
             return false;
         }
@@ -108,7 +120,7 @@ public final class HudStatsManager implements RuntimeComponent {
         if (mode != Mode.MINE || pos == null) {
             return;
         }
-        long now = ClientPlayerTickManager.getCurrentHandlerTime();
+        long now = this.tickClock.getAsLong();
         this.pendingMineTargets.put(pos.immutable(), now + PRINT_CONFIRM_TIMEOUT_TICKS);
     }
 
@@ -116,7 +128,7 @@ public final class HudStatsManager implements RuntimeComponent {
         if (pos == null || originalState == null) {
             return;
         }
-        long now = ClientPlayerTickManager.getCurrentHandlerTime();
+        long now = this.tickClock.getAsLong();
         PendingStateChange pending = new PendingStateChange(originalState, now + PRINT_CONFIRM_TIMEOUT_TICKS);
         if (mode == Mode.FILL) {
             this.pendingFillTargets.put(pos.immutable(), pending);
@@ -126,7 +138,7 @@ public final class HudStatsManager implements RuntimeComponent {
     }
 
     public void tick() {
-        long now = ClientPlayerTickManager.getCurrentHandlerTime();
+        long now = this.tickClock.getAsLong();
         if (this.lastFallbackFlushTick == now) {
             return;
         }
@@ -138,12 +150,11 @@ public final class HudStatsManager implements RuntimeComponent {
         if (pos == null) {
             return;
         }
-        Minecraft client = Minecraft.getInstance();
-        if (client.level == null) {
+        if (this.client.level == null) {
             return;
         }
-        long now = ClientPlayerTickManager.getCurrentHandlerTime();
-        BlockState currentState = client.level.getBlockState(pos);
+        long now = this.tickClock.getAsLong();
+        BlockState currentState = this.client.level.getBlockState(pos);
 
         PendingBlockState printPending = this.pendingPrintStates.remove(pos);
         if (printPending != null && currentState.equals(printPending.expectedState())) {
@@ -159,7 +170,7 @@ public final class HudStatsManager implements RuntimeComponent {
     }
 
     public Snapshot snapshot(Mode mode) {
-        long now = ClientPlayerTickManager.getCurrentHandlerTime();
+        long now = this.tickClock.getAsLong();
         return this.stats.get(mode).snapshot(now);
     }
 
@@ -178,14 +189,13 @@ public final class HudStatsManager implements RuntimeComponent {
     }
 
     private void flushConfirmedActions(long now, int maxChecksPerMode) {
-        Minecraft client = Minecraft.getInstance();
-        if (client.level == null) {
+        if (this.client.level == null) {
             return;
         }
-        flushConfirmedPrintPlacements(client, now, maxChecksPerMode);
-        flushConfirmedMineClears(client, now, maxChecksPerMode);
-        flushConfirmedBlockChanges(client, now, Mode.FILL, this.pendingFillTargets, maxChecksPerMode);
-        flushConfirmedBlockChanges(client, now, Mode.FLUID, this.pendingFluidTargets, maxChecksPerMode);
+        flushConfirmedPrintPlacements(this.client, now, maxChecksPerMode);
+        flushConfirmedMineClears(this.client, now, maxChecksPerMode);
+        flushConfirmedBlockChanges(this.client, now, Mode.FILL, this.pendingFillTargets, maxChecksPerMode);
+        flushConfirmedBlockChanges(this.client, now, Mode.FLUID, this.pendingFluidTargets, maxChecksPerMode);
     }
 
     private void flushConfirmedPrintPlacements(Minecraft client, long now, int maxChecks) {
@@ -215,7 +225,7 @@ public final class HudStatsManager implements RuntimeComponent {
                 : 100;
         return Math.max(
                 2,
-                PrinterRuntime.get().rttReplayController().getExtraIntervalTicks(safetyPercent)
+                this.rttReplayController.getExtraIntervalTicks(safetyPercent)
         );
     }
 

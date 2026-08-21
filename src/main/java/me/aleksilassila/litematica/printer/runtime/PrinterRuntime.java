@@ -74,7 +74,7 @@ public final class PrinterRuntime {
         this.scope.register(this.rttReplayController);
         this.missingMaterials = new MissingMaterialTracker();
         this.scope.register(this.missingMaterials);
-        this.hudStats = new HudStatsManager();
+        this.hudStats = new HudStatsManager(client, this::currentTick, this.rttReplayController);
         this.scope.register(this.hudStats);
         this.quickShulkerAdapter = new QuickShulkerAdapter(this.actionBroker);
         this.scope.register(this.quickShulkerAdapter);
