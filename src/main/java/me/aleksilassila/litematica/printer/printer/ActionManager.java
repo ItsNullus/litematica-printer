@@ -24,8 +24,6 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import net.minecraft.world.item.ItemStack;
@@ -42,18 +40,8 @@ public class ActionManager {
     public static final ActionManager INSTANCE = new ActionManager();
     private static final float LOOK_SETTLED_EPSILON_DEGREES = 1.0F;
     private static final double STALE_WAIT_MOVE_DISTANCE_SQR = 0.75D * 0.75D;
-    private static final long PRINT_SIGN_EDIT_ARM_TIMEOUT_NANOS = 30_000_000_000L;
-    private static final long PRINT_SIGN_EDIT_RESPONSE_TIMEOUT_NANOS = 5_000_000_000L;
-    private static final long PRINT_SIGN_EDIT_PRUNE_INTERVAL_NANOS = 1_000_000_000L;
-    private static final long TASK_ANVIL_SCREEN_RESPONSE_TIMEOUT_NANOS = 5_000_000_000L;
-    private static final int MAX_PENDING_TASK_ANVIL_SCREENS = 64;
-
     private QueuedClick queuedClick;
-    private final Map<Long, Long> pendingPrintSignEdits = new HashMap<>();
-    private long nextPrintSignEditPruneNanos;
-    private int pendingTaskAnvilScreens;
-    private long taskAnvilScreenSuppressionDeadlineNanos;
-    private long manualAnvilScreenAllowanceDeadlineNanos;
+    private final InteractionScreenSessions screenSessions = new InteractionScreenSessions();
     @Setter
     @Nullable
     public PlayerLook look;
@@ -249,62 +237,24 @@ public class ActionManager {
     }
 
     private void armTaskAnvilScreenSuppression(QueuedClick click) {
-        if (!this.hasManualAnvilScreenAllowance()
+        if (!this.screenSessions.hasManualAnvilScreenAllowance(System.nanoTime())
                 && (click.source == ActionSource.PRINT || click.source == ActionSource.FILL)
                 && Reference.MINECRAFT.level != null
                 && Reference.MINECRAFT.level.getBlockState(click.target).getBlock() instanceof AnvilBlock) {
-            this.pendingTaskAnvilScreens = Math.min(
-                    MAX_PENDING_TASK_ANVIL_SCREENS,
-                    this.pendingTaskAnvilScreens + 1
-            );
-            this.taskAnvilScreenSuppressionDeadlineNanos =
-                    System.nanoTime() + TASK_ANVIL_SCREEN_RESPONSE_TIMEOUT_NANOS;
+            this.screenSessions.armTaskAnvilScreen(System.nanoTime());
         }
     }
 
     public boolean consumeTaskAnvilScreenSuppression() {
-        if (this.pendingTaskAnvilScreens <= 0) {
-            return false;
-        }
-        if (this.taskAnvilScreenSuppressionDeadlineNanos < System.nanoTime()) {
-            this.clearTaskAnvilScreenSuppressions();
-            return false;
-        }
-        this.pendingTaskAnvilScreens--;
-        if (this.pendingTaskAnvilScreens == 0) {
-            this.taskAnvilScreenSuppressionDeadlineNanos = 0L;
-        }
-        return true;
+        return this.screenSessions.consumeTaskAnvilScreenSuppression(System.nanoTime());
     }
 
     public void prioritizeManualAnvilScreen() {
-        this.clearTaskAnvilScreenSuppressions();
-        this.manualAnvilScreenAllowanceDeadlineNanos =
-                System.nanoTime() + TASK_ANVIL_SCREEN_RESPONSE_TIMEOUT_NANOS;
+        this.screenSessions.prioritizeManualAnvilScreen(System.nanoTime());
     }
 
     public boolean consumeManualAnvilScreenAllowance() {
-        if (!this.hasManualAnvilScreenAllowance()) {
-            return false;
-        }
-        this.manualAnvilScreenAllowanceDeadlineNanos = 0L;
-        return true;
-    }
-
-    public void clearTaskAnvilScreenSuppressions() {
-        this.pendingTaskAnvilScreens = 0;
-        this.taskAnvilScreenSuppressionDeadlineNanos = 0L;
-    }
-
-    private boolean hasManualAnvilScreenAllowance() {
-        if (this.manualAnvilScreenAllowanceDeadlineNanos == 0L) {
-            return false;
-        }
-        if (this.manualAnvilScreenAllowanceDeadlineNanos < System.nanoTime()) {
-            this.manualAnvilScreenAllowanceDeadlineNanos = 0L;
-            return false;
-        }
-        return true;
+        return this.screenSessions.consumeManualAnvilScreenAllowance(System.nanoTime());
     }
 
     private static int getReserveAllowance(LocalPlayer player, QueuedClick click) {
@@ -370,33 +320,19 @@ public class ActionManager {
 
     public void armPrintSignEdit(BlockPos blockPos) {
         long now = System.nanoTime();
-        this.pruneExpiredPrintSignEdits(now);
-        this.pendingPrintSignEdits.put(blockPos.asLong(), now + PRINT_SIGN_EDIT_ARM_TIMEOUT_NANOS);
+        this.screenSessions.armPrintSignEdit(blockPos.asLong(), now);
     }
 
     public void confirmPrintSignEditSent(BlockPos blockPos) {
-        this.pendingPrintSignEdits.replace(
-                blockPos.asLong(),
-                System.nanoTime() + PRINT_SIGN_EDIT_RESPONSE_TIMEOUT_NANOS
-        );
+        this.screenSessions.confirmPrintSignEditSent(blockPos.asLong(), System.nanoTime());
     }
 
     public void cancelPrintSignEdit(BlockPos blockPos) {
-        this.pendingPrintSignEdits.remove(blockPos.asLong());
+        this.screenSessions.cancelPrintSignEdit(blockPos.asLong());
     }
 
     public boolean consumePrintSignEdit(BlockPos blockPos) {
-        long now = System.nanoTime();
-        Long deadline = this.pendingPrintSignEdits.remove(blockPos.asLong());
-        return deadline != null && deadline >= now;
-    }
-
-    private void pruneExpiredPrintSignEdits(long now) {
-        if (now < this.nextPrintSignEditPruneNanos) {
-            return;
-        }
-        this.nextPrintSignEditPruneNanos = now + PRINT_SIGN_EDIT_PRUNE_INTERVAL_NANOS;
-        this.pendingPrintSignEdits.entrySet().removeIf(entry -> entry.getValue() < now);
+        return this.screenSessions.consumePrintSignEdit(blockPos.asLong(), System.nanoTime());
     }
 
     public void setShift(LocalPlayer player, boolean shift) {
@@ -491,9 +427,6 @@ public class ActionManager {
 
     public void resetRuntime() {
         this.clearQueue();
-        this.pendingPrintSignEdits.clear();
-        this.nextPrintSignEditPruneNanos = 0L;
-        this.clearTaskAnvilScreenSuppressions();
-        this.manualAnvilScreenAllowanceDeadlineNanos = 0L;
+        this.screenSessions.reset();
     }
 }

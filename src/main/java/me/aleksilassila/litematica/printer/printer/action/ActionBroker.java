@@ -2,7 +2,7 @@ package me.aleksilassila.litematica.printer.printer.action;
 
 import me.aleksilassila.litematica.printer.core.action.ActionCoordinator;
 import me.aleksilassila.litematica.printer.core.action.ActionRequest;
-import me.aleksilassila.litematica.printer.core.action.ActionTicket;
+import me.aleksilassila.litematica.printer.core.action.ActionTransaction;
 import me.aleksilassila.litematica.printer.core.action.ConfirmationPolicy;
 import me.aleksilassila.litematica.printer.core.action.ResourceLease;
 import me.aleksilassila.litematica.printer.core.action.RetryPolicy;
@@ -39,7 +39,7 @@ public final class ActionBroker implements RuntimeComponent {
 
     private final ActionManager delegate;
     private final ActionCoordinator coordinator = new ActionCoordinator();
-    private ActionTicket activeTicket;
+    private ActionTransaction activeTransaction;
 
     private ActionBroker(ActionManager delegate) {
         this.delegate = delegate;
@@ -55,27 +55,28 @@ public final class ActionBroker implements RuntimeComponent {
             @Nullable Item[] expectedItems,
             @NotNull ActionManager.ActionSource source
     ) {
-        if (this.activeTicket != null) {
+        if (this.activeTransaction != null) {
             return false;
         }
         long now = System.nanoTime();
         ActionRequest request = new ActionRequest(
                 source.name().toLowerCase(),
+                PrinterRuntime.get().epoch(),
                 EnumSet.of(ResourceLease.LOOK, ResourceLease.MAIN_HAND, ResourceLease.INTERACTION),
                 now + ACTION_LEASE_TIMEOUT_NANOS,
                 ConfirmationPolicy.CLIENT_STATE,
                 RetryPolicy.NONE
         );
-        Optional<ActionTicket> admitted = this.coordinator.tryAdmit(request, now);
+        Optional<ActionTransaction> admitted = this.coordinator.tryBegin(request, now);
         if (admitted.isEmpty()) {
             return false;
         }
-        ActionTicket ticket = admitted.get();
+        ActionTransaction transaction = admitted.get();
         if (!this.delegate.queueClick(target, side, hitModifier, useShift, clickRepeatCount, expectedItems, source)) {
-            this.coordinator.release(ticket);
+            this.coordinator.release(transaction.ticket());
             return false;
         }
-        this.activeTicket = ticket;
+        this.activeTransaction = transaction;
         return true;
     }
 
@@ -94,6 +95,7 @@ public final class ActionBroker implements RuntimeComponent {
     public ActionManager.SendResult sendQueue(@Nullable LocalPlayer player) {
         ActionManager.SendResult result = this.delegate.sendQueue(player);
         if (!result.isWaiting()) {
+            this.completeActiveTransaction(result);
             this.releaseActiveTicket();
         }
         return result;
@@ -167,7 +169,10 @@ public final class ActionBroker implements RuntimeComponent {
 
     public void resetRuntime(String reason) {
         this.delegate.resetRuntime();
-        this.activeTicket = null;
+        if (this.activeTransaction != null) {
+            this.activeTransaction.stale();
+        }
+        this.activeTransaction = null;
         this.coordinator.reset();
     }
 
@@ -184,6 +189,7 @@ public final class ActionBroker implements RuntimeComponent {
         long now = System.nanoTime();
         ActionRequest request = new ActionRequest(
                 owner,
+                PrinterRuntime.get().epoch(),
                 resources,
                 timeoutNanos <= 0L ? 0L : now + timeoutNanos,
                 ConfirmationPolicy.NONE,
@@ -201,9 +207,24 @@ public final class ActionBroker implements RuntimeComponent {
     }
 
     private void releaseActiveTicket() {
-        if (this.activeTicket != null) {
-            this.coordinator.release(this.activeTicket);
-            this.activeTicket = null;
+        if (this.activeTransaction != null) {
+            this.coordinator.release(this.activeTransaction.ticket());
+            this.activeTransaction = null;
+        }
+    }
+
+    private void completeActiveTransaction(ActionManager.SendResult result) {
+        if (this.activeTransaction == null) {
+            return;
+        }
+        if (result.isSent()) {
+            this.activeTransaction.markSent(PrinterRuntime.get().epoch());
+            this.activeTransaction.confirm(PrinterRuntime.get().epoch());
+        } else {
+            this.activeTransaction.reject(
+                    PrinterRuntime.get().epoch(),
+                    me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager.getCurrentHandlerTime()
+            );
         }
     }
 }

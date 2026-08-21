@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CoreContractsTest {
     @Test
     void actionContractValuesAndValidationAreStable() {
-        assertEquals(7, ActionResult.values().length);
+        assertEquals(8, ActionResult.values().length);
         assertEquals(4, ConfirmationPolicy.values().length);
         assertEquals(5, ResourceLease.values().length);
         assertEquals(new RetryPolicy(1, 0), RetryPolicy.NONE);
@@ -30,22 +30,24 @@ class CoreContractsTest {
         assertThrows(IllegalArgumentException.class, () -> new RetryPolicy(1, -1));
 
         ActionRequest empty = new ActionRequest(
-                "scan", Set.of(), 0L, ConfirmationPolicy.NONE, RetryPolicy.NONE);
+                "scan", RuntimeEpoch.INITIAL, Set.of(), 0L, ConfirmationPolicy.NONE, RetryPolicy.NONE);
         assertTrue(empty.resources().isEmpty());
         assertThrows(IllegalArgumentException.class, () -> new ActionRequest(
-                " ", Set.of(), 0L, ConfirmationPolicy.NONE, RetryPolicy.NONE));
+                " ", RuntimeEpoch.INITIAL, Set.of(), 0L, ConfirmationPolicy.NONE, RetryPolicy.NONE));
         assertThrows(NullPointerException.class, () -> new ActionRequest(
-                null, Set.of(), 0L, ConfirmationPolicy.NONE, RetryPolicy.NONE));
+                null, RuntimeEpoch.INITIAL, Set.of(), 0L, ConfirmationPolicy.NONE, RetryPolicy.NONE));
         assertThrows(NullPointerException.class, () -> new ActionRequest(
-                "scan", null, 0L, ConfirmationPolicy.NONE, RetryPolicy.NONE));
+                "scan", null, Set.of(), 0L, ConfirmationPolicy.NONE, RetryPolicy.NONE));
         assertThrows(NullPointerException.class, () -> new ActionRequest(
-                "scan", Set.of(), 0L, null, RetryPolicy.NONE));
+                "scan", RuntimeEpoch.INITIAL, null, 0L, ConfirmationPolicy.NONE, RetryPolicy.NONE));
         assertThrows(NullPointerException.class, () -> new ActionRequest(
-                "scan", Set.of(), 0L, ConfirmationPolicy.NONE, null));
+                "scan", RuntimeEpoch.INITIAL, Set.of(), 0L, null, RetryPolicy.NONE));
+        assertThrows(NullPointerException.class, () -> new ActionRequest(
+                "scan", RuntimeEpoch.INITIAL, Set.of(), 0L, ConfirmationPolicy.NONE, null));
 
         EnumSet<ResourceLease> mutable = EnumSet.of(ResourceLease.LOOK);
         ActionRequest copied = new ActionRequest(
-                "print", mutable, 0L, ConfirmationPolicy.CLIENT_STATE, RetryPolicy.NONE);
+                "print", RuntimeEpoch.INITIAL, mutable, 0L, ConfirmationPolicy.CLIENT_STATE, RetryPolicy.NONE);
         mutable.add(ResourceLease.MAIN_HAND);
         assertEquals(Set.of(ResourceLease.LOOK), copied.resources());
     }

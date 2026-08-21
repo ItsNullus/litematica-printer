@@ -1,5 +1,6 @@
 package me.aleksilassila.litematica.printer.core.action;
 
+import me.aleksilassila.litematica.printer.core.runtime.RuntimeEpoch;
 import org.junit.jupiter.api.Test;
 
 import java.util.EnumSet;
@@ -65,6 +66,7 @@ class ActionCoordinatorTest {
     private static ActionRequest request(String owner, long deadline) {
         return new ActionRequest(
                 owner,
+                RuntimeEpoch.INITIAL,
                 EnumSet.of(ResourceLease.LOOK, ResourceLease.MAIN_HAND, ResourceLease.INTERACTION),
                 deadline,
                 ConfirmationPolicy.CLIENT_STATE,
