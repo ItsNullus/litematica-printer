@@ -7,9 +7,16 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.function.LongSupplier;
+
 public class PrintTaskController {
+    private final LongSupplier tickClock;
     @Nullable
     private PrintTask activeTask;
+
+    public PrintTaskController(LongSupplier tickClock) {
+        this.tickClock = tickClock;
+    }
 
     public boolean hasActiveTask() {
         return this.activeTask != null;
@@ -46,7 +53,7 @@ public class PrintTaskController {
                 }
                 // 世界状态同步期间允许普通打印继续，但不启动第二个多阶段任务，
                 // 避免多个破冰流程争用同一个客户端挖掘状态。
-                return PrintTasks.tryCreate(context) == null
+                return PrintTasks.tryCreate(context, this.tickClock) == null
                         ? PrintTaskBuildResult.PASS
                         : PrintTaskBuildResult.SKIP;
             }
@@ -55,7 +62,7 @@ public class PrintTaskController {
             return result;
         }
 
-        PrintTask task = PrintTasks.tryCreate(context);
+        PrintTask task = PrintTasks.tryCreate(context, this.tickClock);
         if (task == null) {
             return PrintTaskBuildResult.PASS;
         }

@@ -2,7 +2,6 @@ package me.aleksilassila.litematica.printer.handler.handlers.print;
 
 import fi.dy.masa.litematica.world.WorldSchematic;
 import me.aleksilassila.litematica.printer.config.Configs;
-import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
 import me.aleksilassila.litematica.printer.mixin_extension.BlockBreakResult;
 import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
 import me.aleksilassila.litematica.printer.printer.action.Action;
@@ -20,12 +19,15 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.function.LongSupplier;
+
 public class WaterPrintTask implements PrintTask {
     private static final int STALL_PADDING_TICKS = 8;
     private static final int MIN_STALL_TICKS = 12;
     private static final int MAX_STALL_TICKS = 40;
 
     private final BlockPos pos;
+    private final LongSupplier tickClock;
     @Nullable
     private BlockState lastState;
     private int stateTicks;
@@ -36,16 +38,17 @@ public class WaterPrintTask implements PrintTask {
     private boolean complete;
     private boolean aborted;
 
-    private WaterPrintTask(BlockPos pos) {
+    private WaterPrintTask(BlockPos pos, LongSupplier tickClock) {
         this.pos = pos.immutable();
+        this.tickClock = tickClock;
     }
 
     @Nullable
-    public static WaterPrintTask tryCreate(SchematicBlockContext context) {
+    public static WaterPrintTask tryCreate(SchematicBlockContext context, LongSupplier tickClock) {
         if (!isCandidate(context)) {
             return null;
         }
-        return new WaterPrintTask(context.blockPos);
+        return new WaterPrintTask(context.blockPos, tickClock);
     }
 
     @Override
@@ -224,7 +227,7 @@ public class WaterPrintTask implements PrintTask {
     }
 
     private void refreshState(BlockState currentState) {
-        long currentTick = ClientPlayerTickManager.getCurrentHandlerTime();
+        long currentTick = this.tickClock.getAsLong();
         if (currentTick == this.stateTickTime) {
             return;
         }

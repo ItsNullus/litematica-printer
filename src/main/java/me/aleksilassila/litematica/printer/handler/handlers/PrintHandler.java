@@ -36,7 +36,7 @@ public class PrintHandler extends FeatureModuleBase {
     private PrintTaskAction printTaskAction;
 
     private SchematicBlockContext ctx;
-    private final PrintTaskController printTasks = new PrintTaskController();
+    private final PrintTaskController printTasks;
     private final SortedSchematicTargetQueue sortedTargets;
     private final PrintPlacementExecutor placementExecutor;
 
@@ -46,6 +46,7 @@ public class PrintHandler extends FeatureModuleBase {
 
     public PrintHandler(PrinterRuntime runtime) {
         super(runtime, NAME, PrintModeType.PRINTER, Configs.Core.PRINT, Configs.Print.PRINT_SELECTION_TYPE, true);
+        this.printTasks = new PrintTaskController(runtime::currentTick);
         this.sortedTargets = new SortedSchematicTargetQueue(this.scanEngine);
         this.placementExecutor = new PrintPlacementExecutor(
                 this.actionBroker, this.cooldownUtils, runtime.inventorySwitchGuard());
