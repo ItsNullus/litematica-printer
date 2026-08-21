@@ -156,7 +156,7 @@ public class PrintHandler extends FeatureModuleBase {
         if (HudStatsManager.INSTANCE.isPrintPlacementPending(blockPos)) {
             return false;
         }
-        if (InteractionUtils.INSTANCE.isRecentlyBroken(blockPos) && !this.printTasks.isActiveTaskPos(blockPos)) {
+        if (InteractionUtils.getRuntime().isRecentlyBroken(blockPos) && !this.printTasks.isActiveTaskPos(blockPos)) {
             return false;
         }
         this.ctx = new SchematicBlockContext(client, level, schematic, blockPos);

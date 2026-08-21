@@ -60,7 +60,7 @@ public class CauldronGuide extends Guide {
         }
         if (Configs.Print.BREAK_WRONG_BLOCK.getBooleanValue()
                 && InteractionUtils.canBreakBlock(blockPos)) {
-            InteractionUtils.INSTANCE.add(context);
+                InteractionUtils.getRuntime().add(context);
         }
         return Result.SKIP;
     }

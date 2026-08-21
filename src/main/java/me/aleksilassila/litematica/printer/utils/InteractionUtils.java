@@ -35,7 +35,6 @@ import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 @Environment(EnvType.CLIENT)
 public final class InteractionUtils implements RuntimeComponent {
     public static final Minecraft client = Minecraft.getInstance();
-    public static final InteractionUtils INSTANCE = new InteractionUtils();
     private static final UsageRestrictionCache BREAK_RESTRICTION_CACHE = new UsageRestrictionCache();
 
     private final Queue<BlockPos> breakQueue = new LinkedList<>();
@@ -46,8 +45,11 @@ public final class InteractionUtils implements RuntimeComponent {
     private boolean forceDelayedDestroy;
     private int externalDestroyLockTicks;
 
-    private InteractionUtils() {
-        PrinterRuntime.get().register(this);
+    public InteractionUtils() {
+    }
+
+    public static InteractionUtils getRuntime() {
+        return PrinterRuntime.get().interactionUtils();
     }
 
     public static boolean canBreakBlock(BlockPos pos) {

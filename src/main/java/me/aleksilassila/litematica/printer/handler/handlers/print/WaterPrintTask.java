@@ -77,7 +77,7 @@ public class WaterPrintTask implements PrintTask {
             }
             return isWaterloggedTarget(requiredState);
         }
-        if (this.iceBreakSent || InteractionUtils.INSTANCE.isPendingDelayedDestroy(this.pos)) {
+        if (this.iceBreakSent || InteractionUtils.getRuntime().isPendingDelayedDestroy(this.pos)) {
             this.refreshState(currentState);
             return !this.isStateStalled(level, currentState);
         }
@@ -108,11 +108,11 @@ public class WaterPrintTask implements PrintTask {
             return false;
         }
         if (currentState.getBlock() instanceof IceBlock) {
-            return this.iceBreakSent || InteractionUtils.INSTANCE.isPendingDelayedDestroy(this.pos);
+            return this.iceBreakSent || InteractionUtils.getRuntime().isPendingDelayedDestroy(this.pos);
         }
         return this.icePlacementSent
                 || this.iceBreakSent
-                || InteractionUtils.INSTANCE.isPendingDelayedDestroy(this.pos);
+                || InteractionUtils.getRuntime().isPendingDelayedDestroy(this.pos);
     }
 
     @Override
@@ -135,7 +135,7 @@ public class WaterPrintTask implements PrintTask {
             this.complete = true;
             return PrintTaskBuildResult.SKIP;
         }
-        if (this.iceBreakSent || InteractionUtils.INSTANCE.isPendingDelayedDestroy(this.pos)) {
+        if (this.iceBreakSent || InteractionUtils.getRuntime().isPendingDelayedDestroy(this.pos)) {
             if (this.isStateStalled(context.level, context.currentState)) {
                 this.aborted = true;
                 return PrintTaskBuildResult.PASS;
@@ -197,10 +197,10 @@ public class WaterPrintTask implements PrintTask {
             return PrintTaskBuildResult.PASS;
         }
 
-        InteractionUtils.INSTANCE.suppressQueuedBreaks(2);
+        InteractionUtils.getRuntime().suppressQueuedBreaks(2);
         BlockBreakResult result = ice
-                ? InteractionUtils.INSTANCE.continueDestroyBlockWithoutToolSwitch(context.blockPos, Direction.DOWN, false)
-                : InteractionUtils.INSTANCE.continueDestroyBlockWithoutTracking(context.blockPos, Direction.DOWN);
+                ? InteractionUtils.getRuntime().continueDestroyBlockWithoutToolSwitch(context.blockPos, Direction.DOWN, false)
+                : InteractionUtils.getRuntime().continueDestroyBlockWithoutTracking(context.blockPos, Direction.DOWN);
         if (result == BlockBreakResult.COMPLETED || result == BlockBreakResult.COMPLETED_WAIT) {
             if (ice) {
                 this.markIceBreakSent(context.currentState);

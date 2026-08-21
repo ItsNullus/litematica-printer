@@ -41,6 +41,7 @@ public final class PrinterRuntime {
     private final ScanEngine scanEngine;
     private final InventoryAvailabilityTracker inventoryAvailability;
     private final CooldownUtils cooldownUtils;
+    private final InteractionUtils interactionUtils;
 
     private PrinterRuntime() {
         Minecraft client = Minecraft.getInstance();
@@ -56,6 +57,8 @@ public final class PrinterRuntime {
         this.scope.register(this.inventoryAvailability);
         this.cooldownUtils = new CooldownUtils();
         this.scope.register(this.cooldownUtils);
+        this.interactionUtils = new InteractionUtils();
+        this.scope.register(this.interactionUtils);
         this.modules = new FeatureModuleSet(this);
     }
 
@@ -95,6 +98,10 @@ public final class PrinterRuntime {
         return this.cooldownUtils;
     }
 
+    public InteractionUtils interactionUtils() {
+        return this.interactionUtils;
+    }
+
     public Minecraft client() {
         return Minecraft.getInstance();
     }
@@ -129,8 +136,8 @@ public final class PrinterRuntime {
         if (this.materialRequests != null) {
             this.materialRequests.tick();
         }
-        InteractionUtils.INSTANCE.preprocess();
-        InteractionUtils.INSTANCE.onTick();
+        this.interactionUtils.preprocess();
+        this.interactionUtils.onTick();
         this.modules.tick();
     }
 

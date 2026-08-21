@@ -13,14 +13,14 @@ final class MineResultReporter {
     static void record(BlockPos blockPos, BlockBreakResult result) {
         switch (result) {
             case COMPLETED -> {
-                InteractionUtils.INSTANCE.markRecentlyBroken(blockPos);
+                InteractionUtils.getRuntime().markRecentlyBroken(blockPos);
                 HudStatsManager.INSTANCE.trackExpectedMineClear(HudStatsManager.Mode.MINE, blockPos);
                 HudStatsManager.INSTANCE.recordRateUnit(HudStatsManager.Mode.MINE, 1);
                 HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.MINE, "运行中");
             }
             case COMPLETED_WAIT -> {
-                InteractionUtils.INSTANCE.markRecentlyBroken(blockPos);
-                InteractionUtils.INSTANCE.markPendingBroken(blockPos, ConfigUtils.getBreakCooldown());
+                InteractionUtils.getRuntime().markRecentlyBroken(blockPos);
+                InteractionUtils.getRuntime().markPendingBroken(blockPos, ConfigUtils.getBreakCooldown());
                 HudStatsManager.INSTANCE.trackExpectedMineClear(HudStatsManager.Mode.MINE, blockPos);
                 HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.MINE, "等待服务端确认");
             }

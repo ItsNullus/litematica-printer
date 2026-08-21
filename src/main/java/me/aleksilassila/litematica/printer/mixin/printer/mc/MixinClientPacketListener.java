@@ -36,7 +36,7 @@ public abstract class MixinClientPacketListener {
     @Inject(method = "handleBlockUpdate", at = @At("RETURN"))
     private void invalidateScanCacheBlock(ClientboundBlockUpdatePacket packet, CallbackInfo ci) {
         PrinterRuntime.get().scanEngine().invalidate(packet.getPos());
-        InteractionUtils.INSTANCE.confirmServerBlockUpdate(packet.getPos());
+        InteractionUtils.getRuntime().confirmServerBlockUpdate(packet.getPos());
         HudStatsManager.INSTANCE.confirmBlockUpdate(packet.getPos());
     }
 
@@ -44,7 +44,7 @@ public abstract class MixinClientPacketListener {
     private void invalidateScanCacheSection(ClientboundSectionBlocksUpdatePacket packet, CallbackInfo ci) {
         packet.runUpdates((pos, state) -> {
             PrinterRuntime.get().scanEngine().invalidate(pos);
-            InteractionUtils.INSTANCE.confirmServerBlockUpdate(pos);
+            InteractionUtils.getRuntime().confirmServerBlockUpdate(pos);
             HudStatsManager.INSTANCE.confirmBlockUpdate(pos);
         });
     }

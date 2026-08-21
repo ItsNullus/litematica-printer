@@ -120,9 +120,9 @@ public class DefaultGuide extends Guide {
         if (printBreakWrongBlock || printBreakExtraBlock) {
             if (InteractionUtils.canBreakBlock(blockPos) && InteractionUtils.breakRestriction(currentState)) {
                 if (printBreakWrongBlock && !requiredState.isAir()) {
-                    InteractionUtils.INSTANCE.add(context);
+                    InteractionUtils.getRuntime().add(context);
                 } else if (printBreakExtraBlock && requiredState.isAir()) {
-                    InteractionUtils.INSTANCE.add(context);
+                    InteractionUtils.getRuntime().add(context);
                 }
             }
         }
@@ -135,7 +135,7 @@ public class DefaultGuide extends Guide {
             return Result.PASS;
         }
         if (InteractionUtils.canBreakBlock(blockPos) && InteractionUtils.breakRestriction(currentState)) {
-            InteractionUtils.INSTANCE.add(context);
+            InteractionUtils.getRuntime().add(context);
         }
         return Result.PASS;
     }

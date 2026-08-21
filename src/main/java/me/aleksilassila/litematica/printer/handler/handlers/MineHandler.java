@@ -140,7 +140,7 @@ public class MineHandler extends FeatureModuleBase {
 
     @Override
     protected boolean canIterate() {
-        return this.activeMinePos == null && !InteractionUtils.INSTANCE.hasActiveDestroyTarget();
+        return this.activeMinePos == null && !InteractionUtils.getRuntime().hasActiveDestroyTarget();
     }
 
     @Override
@@ -194,7 +194,7 @@ public class MineHandler extends FeatureModuleBase {
             this.activeMinePos = null;
             return;
         }
-        BlockBreakResult result = InteractionUtils.INSTANCE.continueDestroyBlockForMine(pos, Direction.DOWN, true);
+        BlockBreakResult result = InteractionUtils.getRuntime().continueDestroyBlockForMine(pos, Direction.DOWN, true);
         MineResultReporter.record(pos, result);
         if (result == BlockBreakResult.IN_PROGRESS
                 || result == BlockBreakResult.COMPLETED
@@ -220,8 +220,8 @@ public class MineHandler extends FeatureModuleBase {
             return false;
         }
 
-        if (InteractionUtils.INSTANCE.isRecentlyBroken(pos)
-                || InteractionUtils.INSTANCE.isPendingDelayedDestroy(pos)) {
+        if (InteractionUtils.getRuntime().isRecentlyBroken(pos)
+                || InteractionUtils.getRuntime().isPendingDelayedDestroy(pos)) {
             return false;
         }
 
@@ -292,7 +292,7 @@ public class MineHandler extends FeatureModuleBase {
     }
 
     private BlockBreakResult executeMineTarget(MineBreakExecutor.Target target, boolean allowToolSwitch) {
-        BlockBreakResult result = InteractionUtils.INSTANCE.continueDestroyBlockForMine(target.pos(), Direction.DOWN, allowToolSwitch);
+        BlockBreakResult result = InteractionUtils.getRuntime().continueDestroyBlockForMine(target.pos(), Direction.DOWN, allowToolSwitch);
         if (result == BlockBreakResult.IN_PROGRESS) {
             this.activeMinePos = target.pos();
         }

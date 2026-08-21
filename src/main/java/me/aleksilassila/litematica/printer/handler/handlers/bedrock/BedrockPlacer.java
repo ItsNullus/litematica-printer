@@ -114,7 +114,7 @@ public final class BedrockPlacer {
             PrinterRuntime.get().actionBroker().setShift(player, true);
         }
         try {
-            InteractionUtils.INSTANCE.useItemOn(false, InteractionHand.OFF_HAND, hitResult);
+            InteractionUtils.getRuntime().useItemOn(false, InteractionHand.OFF_HAND, hitResult);
             if (allowLocalUseFallback) {
                 ItemStack offhand = player.getOffhandItem();
                 if (!offhand.isEmpty()) {
