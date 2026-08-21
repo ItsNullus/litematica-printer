@@ -13,6 +13,7 @@ import me.aleksilassila.litematica.printer.integration.inventory.MaterialRequest
 import me.aleksilassila.litematica.printer.integration.inventory.PlayerInventoryProvider;
 import me.aleksilassila.litematica.printer.integration.inventory.TakeItOutAdapter;
 import me.aleksilassila.litematica.printer.integration.quickshulker.QuickShulkerAdapter;
+import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockEngine;
 import net.minecraft.client.Minecraft;
 import java.util.List;
 
@@ -30,12 +31,14 @@ public final class PrinterRuntime {
     private Object connectionIdentity;
     private boolean resetting;
     private MaterialRequestCoordinator materialRequests;
+    private final BedrockEngine bedrockEngine;
 
     private PrinterRuntime() {
         Minecraft client = Minecraft.getInstance();
+        this.bedrockEngine = new BedrockEngine(client);
         this.scope.register(new MinecraftInteractionRuntime(client));
         this.scope.register(new InventorySwitchRuntime());
-        this.scope.register(new BedrockRuntime());
+        this.scope.register(this.bedrockEngine);
     }
 
     public static PrinterRuntime get() {
@@ -48,6 +51,10 @@ public final class PrinterRuntime {
 
     public RuntimeEventBus events() {
         return this.events;
+    }
+
+    public BedrockEngine bedrockEngine() {
+        return this.bedrockEngine;
     }
 
     public AutoCloseable register(RuntimeComponent component) {

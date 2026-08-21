@@ -191,6 +191,17 @@ abstract class ModPlugin : Plugin<Project> {
                                     && lineCount > 400) {
                                     violations += "$relative: ordered-storage orchestrator has $lineCount lines (maximum 400)"
                                 }
+                                if (relative.contains("/handler/handlers/bedrock/")
+                                    && listOf(
+                                        "BedrockEngine.java",
+                                        "BedrockAdmissionController.java",
+                                        "BedrockCleanupCoordinator.java",
+                                        "BedrockTargetRegistry.java",
+                                        "BedrockTargetExecutor.java"
+                                    ).any(relative::endsWith)
+                                    && lineCount > 400) {
+                                    violations += "$relative: bedrock component has $lineCount lines (maximum 400)"
+                                }
 
                                 if (relative.contains("/printer/zxy/")
                                     || text.contains(".printer.zxy.")) {

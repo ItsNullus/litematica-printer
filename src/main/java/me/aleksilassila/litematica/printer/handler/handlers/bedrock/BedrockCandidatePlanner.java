@@ -232,7 +232,7 @@ public final class BedrockCandidatePlanner {
 
     private int getCandidateScanLimit(int scanGuardLimit) {
         int baseScanLimit = scanGuardLimit > 0 ? scanGuardLimit : UNLIMITED_SCAN_SLICE;
-        BedrockController.HudSnapshot snapshot = BedrockController.getHudSnapshot();
+        BedrockEngine.HudSnapshot snapshot = BedrockController.getHudSnapshot();
         int activeDeficit = Math.max(1, snapshot.activeCap() - snapshot.activeTargets());
         long expandedScanLimit = (long) baseScanLimit * activeDeficit;
         return (int) Math.max(1L, Math.min(MAX_SCAN_SLICE, expandedScanLimit));

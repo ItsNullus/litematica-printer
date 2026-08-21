@@ -8,6 +8,7 @@ import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
 import me.aleksilassila.litematica.printer.handler.FeatureModuleBase;
 import me.aleksilassila.litematica.printer.handler.Modules;
 import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockController;
+import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockEngine;
 import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.render.Render2DUtils;
@@ -302,7 +303,7 @@ public class Render2D {
             return;
         }
         HudStatsManager.Snapshot snapshot = HudStatsManager.INSTANCE.snapshot(HudStatsManager.Mode.BEDROCK);
-        BedrockController.HudSnapshot bedrock = BedrockController.getHudSnapshot();
+        BedrockEngine.HudSnapshot bedrock = BedrockController.getHudSnapshot();
         String progressText = formatProgress(
                 bedrock.confirmedSuccesses(),
                 bedrock.submittedTargets(),
