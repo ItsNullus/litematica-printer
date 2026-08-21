@@ -197,7 +197,8 @@ abstract class ModPlugin : Plugin<Project> {
                                         "BedrockAdmissionController.java",
                                         "BedrockCleanupCoordinator.java",
                                         "BedrockTargetRegistry.java",
-                                        "BedrockTargetExecutor.java"
+                                        "BedrockTargetExecutor.java",
+                                        "BedrockTarget.java"
                                     ).any(relative::endsWith)
                                     && lineCount > 400) {
                                     violations += "$relative: bedrock component has $lineCount lines (maximum 400)"
