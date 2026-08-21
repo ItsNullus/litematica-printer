@@ -14,7 +14,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 public final class HudStatsManager implements RuntimeComponent {
-    public static final HudStatsManager INSTANCE = new HudStatsManager();
     private static final long RATE_WINDOW_NANOS = 1_000_000_000L;
     private static final int PRINT_CONFIRM_TIMEOUT_TICKS = 80;
     private static final int FALLBACK_CONFIRM_CHECKS_PER_MODE = 8;
@@ -26,11 +25,14 @@ public final class HudStatsManager implements RuntimeComponent {
     private final Map<BlockPos, PendingStateChange> pendingFluidTargets = new LinkedHashMap<>();
     private long lastFallbackFlushTick = Long.MIN_VALUE;
 
-    private HudStatsManager() {
-        PrinterRuntime.get().register(this);
+    public HudStatsManager() {
         for (Mode mode : Mode.values()) {
             this.stats.put(mode, new ModeStats());
         }
+    }
+
+    public static HudStatsManager getRuntime() {
+        return PrinterRuntime.get().hudStats();
     }
 
     public void resetAll() {

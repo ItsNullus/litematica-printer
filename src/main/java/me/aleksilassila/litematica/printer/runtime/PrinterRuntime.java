@@ -7,6 +7,7 @@ import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeScope;
 import me.aleksilassila.litematica.printer.handler.FeatureModuleSet;
 import me.aleksilassila.litematica.printer.handler.InventoryAvailabilityTracker;
+import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.printer.ActionManager;
 import me.aleksilassila.litematica.printer.printer.RttReplayController;
@@ -46,6 +47,7 @@ public final class PrinterRuntime {
     private final InteractionUtils interactionUtils;
     private final RttReplayController rttReplayController;
     private final MissingMaterialTracker missingMaterials;
+    private final HudStatsManager hudStats;
 
     private PrinterRuntime() {
         Minecraft client = Minecraft.getInstance();
@@ -67,6 +69,8 @@ public final class PrinterRuntime {
         this.scope.register(this.rttReplayController);
         this.missingMaterials = new MissingMaterialTracker();
         this.scope.register(this.missingMaterials);
+        this.hudStats = new HudStatsManager();
+        this.scope.register(this.hudStats);
         this.modules = new FeatureModuleSet(this);
     }
 
@@ -116,6 +120,10 @@ public final class PrinterRuntime {
 
     public MissingMaterialTracker missingMaterials() {
         return this.missingMaterials;
+    }
+
+    public HudStatsManager hudStats() {
+        return this.hudStats;
     }
 
     public Minecraft client() {

@@ -153,7 +153,7 @@ public class PrintHandler extends FeatureModuleBase {
         this.printTaskAction = null;
         WorldSchematic schematic = SchematicWorldHandler.getSchematicWorld();
         if (schematic == null) return false;
-        if (HudStatsManager.INSTANCE.isPrintPlacementPending(blockPos)) {
+        if (HudStatsManager.getRuntime().isPrintPlacementPending(blockPos)) {
             return false;
         }
         if (InteractionUtils.getRuntime().isRecentlyBroken(blockPos) && !this.printTasks.isActiveTaskPos(blockPos)) {

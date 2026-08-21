@@ -29,7 +29,7 @@ final class TickScheduler implements RuntimeComponent {
     void tick() {
         Minecraft mc = this.runtime.client();
         this.runtime.inventoryAvailability().tick(mc.player);
-        HudStatsManager.INSTANCE.tick();
+        this.runtime.hudStats().tick();
         this.runtime.missingMaterials().tick(
                 mc.player,
                 mc.level != null ? mc.level.getGameTime() : 0L
@@ -39,7 +39,7 @@ final class TickScheduler implements RuntimeComponent {
                 this.runtime.reset("work_switch_disabled");
             }
             this.runtimeActive = false;
-            HudStatsManager.INSTANCE.resetAll();
+            this.runtime.hudStats().resetAll();
             this.lastPauseReason = null;
             return;
         }

@@ -48,7 +48,7 @@ public final class BedrockEngine implements RuntimeComponent {
         BedrockCriticalExecutor.reset();
         this.throughputScheduler.reset();
         this.lastProcessedTick = Long.MIN_VALUE;
-        HudStatsManager.INSTANCE.resetMode(HudStatsManager.Mode.BEDROCK);
+        HudStatsManager.getRuntime().resetMode(HudStatsManager.Mode.BEDROCK);
     }
 
     public void clearHorizontalLookState() {
@@ -209,4 +209,3 @@ public final class BedrockEngine implements RuntimeComponent {
     ) {
     }
 }
-

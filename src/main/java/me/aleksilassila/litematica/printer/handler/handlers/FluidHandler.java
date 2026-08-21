@@ -95,11 +95,11 @@ public class FluidHandler extends FeatureModuleBase {
             fluids = fluidBlocks.isEmpty() ? Set.of() : RegistryFilterResolver.resolveFluids(this.fluidBlocks);
         }
         if (fillItems.isEmpty()) {
-            HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.FLUID, "无流体填充方块");
+            HudStatsManager.getRuntime().recordStatus(HudStatsManager.Mode.FLUID, "无流体填充方块");
         } else if (this.fluidBlocks.isEmpty()) {
-            HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.FLUID, "无目标流体配置");
+            HudStatsManager.getRuntime().recordStatus(HudStatsManager.Mode.FLUID, "无目标流体配置");
         } else {
-            HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.FLUID, "运行中");
+            HudStatsManager.getRuntime().recordStatus(HudStatsManager.Mode.FLUID, "运行中");
         }
         int scanConfigHash = this.getScanConfigHash();
         if (this.observedScanConfigHash != Integer.MIN_VALUE
@@ -178,7 +178,7 @@ public class FluidHandler extends FeatureModuleBase {
             return;
         }
         if (!InventoryUtils.switchToItems(player, fillItemArray)) {
-            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "缺少流体填充方块");
+            HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.FLUID, "缺少流体填充方块");
             MissingMaterialTracker.getRuntime().recordMissing(
                     fillItemArray,
                     null,
@@ -197,7 +197,7 @@ public class FluidHandler extends FeatureModuleBase {
         if (!Configs.Print.PLACE_IN_AIR.getBooleanValue()) {
             Direction placementSide = this.findPlacementSide(blockPos);
             if (placementSide == null) {
-                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "无有效放置面");
+                HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.FLUID, "无有效放置面");
                 // This was ready when scanned but its support disappeared before execution.
                 // A server block update (or the next full pass after the queue drains) will
                 // rediscover it; keeping it hot here would create an endless retry loop.
@@ -216,7 +216,7 @@ public class FluidHandler extends FeatureModuleBase {
                 fillItemArray,
                 ActionBroker.ActionSource.FLUID
         )) {
-            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "动作队列占用");
+            HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.FLUID, "动作队列占用");
             setIterationConsumedEffectiveExecution(false);
             skipIteration.set(true);
             return;
@@ -224,12 +224,12 @@ public class FluidHandler extends FeatureModuleBase {
         BlockState previousState = level.getBlockState(blockPos);
         ActionBroker.SendResult sendResult = this.actionBroker.sendQueue(player);
         if (sendResult.isWaiting()) {
-            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "等待转头");
+            HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.FLUID, "等待转头");
             skipIteration.set(true);
             return;
         }
         if (!sendResult.isSent()) {
-            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FLUID, "放置动作未发送");
+            HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.FLUID, "放置动作未发送");
             // A rejected interaction means this cell is momentarily unplaceable. The common cause
             // is a falling fill-block entity (sand) currently occupying the cell: every placement
             // of sand into water spawns a FallingBlockEntity (blocksBuilding=true) that blocks
@@ -241,9 +241,9 @@ public class FluidHandler extends FeatureModuleBase {
             this.setBlockPosCooldown(blockPos, REJECT_RETRY_COOLDOWN_TICKS);
             return;
         }
-        HudStatsManager.INSTANCE.trackExpectedBlockChange(HudStatsManager.Mode.FLUID, blockPos, previousState);
-        HudStatsManager.INSTANCE.recordRateUnit(HudStatsManager.Mode.FLUID, 1);
-        HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.FLUID, "运行中");
+        HudStatsManager.getRuntime().trackExpectedBlockChange(HudStatsManager.Mode.FLUID, blockPos, previousState);
+        HudStatsManager.getRuntime().recordRateUnit(HudStatsManager.Mode.FLUID, 1);
+        HudStatsManager.getRuntime().recordStatus(HudStatsManager.Mode.FLUID, "运行中");
         this.setBlockPosCooldown(blockPos, ConfigUtils.getPlaceCooldown());
     }
 

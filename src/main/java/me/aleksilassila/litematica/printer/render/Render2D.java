@@ -281,7 +281,7 @@ public class Render2D {
         if (!active) {
             return;
         }
-        HudStatsManager.Snapshot snapshot = HudStatsManager.INSTANCE.snapshot(mode);
+        HudStatsManager.Snapshot snapshot = HudStatsManager.getRuntime().snapshot(mode);
         double actualRate = getDisplayedModeRate(mode, snapshot);
         String status = humanizeCommonModeReason(mode, snapshot, actualRate);
         StringBuilder text = new StringBuilder("[").append(label).append("] ");
@@ -301,7 +301,7 @@ public class Render2D {
         if (!active) {
             return;
         }
-        HudStatsManager.Snapshot snapshot = HudStatsManager.INSTANCE.snapshot(HudStatsManager.Mode.BEDROCK);
+        HudStatsManager.Snapshot snapshot = HudStatsManager.getRuntime().snapshot(HudStatsManager.Mode.BEDROCK);
         BedrockEngine.HudSnapshot bedrock = BedrockController.getHudSnapshot();
         String progressText = formatProgress(
                 bedrock.confirmedSuccesses(),

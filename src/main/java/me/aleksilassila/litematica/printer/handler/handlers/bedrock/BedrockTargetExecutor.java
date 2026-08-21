@@ -114,7 +114,7 @@ final class BedrockTargetExecutor {
         if (reason == null && !BedrockTargetBlocks.isTargetBlock(level.getBlockState(target.getBedrockPos()))) {
             this.stats.confirmedSuccesses++;
             this.stats.lastReason = "running";
-            HudStatsManager.INSTANCE.recordRateUnit(HudStatsManager.Mode.BEDROCK, 1);
+            HudStatsManager.getRuntime().recordRateUnit(HudStatsManager.Mode.BEDROCK, 1);
         }
         if (target.getStatus() == BedrockTarget.Status.FAILED) {
             this.stats.failedTargets++;

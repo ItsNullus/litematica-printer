@@ -14,25 +14,25 @@ final class MineResultReporter {
         switch (result) {
             case COMPLETED -> {
                 InteractionUtils.getRuntime().markRecentlyBroken(blockPos);
-                HudStatsManager.INSTANCE.trackExpectedMineClear(HudStatsManager.Mode.MINE, blockPos);
-                HudStatsManager.INSTANCE.recordRateUnit(HudStatsManager.Mode.MINE, 1);
-                HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.MINE, "运行中");
+                HudStatsManager.getRuntime().trackExpectedMineClear(HudStatsManager.Mode.MINE, blockPos);
+                HudStatsManager.getRuntime().recordRateUnit(HudStatsManager.Mode.MINE, 1);
+                HudStatsManager.getRuntime().recordStatus(HudStatsManager.Mode.MINE, "运行中");
             }
             case COMPLETED_WAIT -> {
                 InteractionUtils.getRuntime().markRecentlyBroken(blockPos);
                 InteractionUtils.getRuntime().markPendingBroken(blockPos, ConfigUtils.getBreakCooldown());
-                HudStatsManager.INSTANCE.trackExpectedMineClear(HudStatsManager.Mode.MINE, blockPos);
-                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.MINE, "等待服务端确认");
+                HudStatsManager.getRuntime().trackExpectedMineClear(HudStatsManager.Mode.MINE, blockPos);
+                HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.MINE, "等待服务端确认");
             }
             case IN_PROGRESS -> {
-                HudStatsManager.INSTANCE.trackExpectedMineClear(HudStatsManager.Mode.MINE, blockPos);
-                HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.MINE, "破坏中");
+                HudStatsManager.getRuntime().trackExpectedMineClear(HudStatsManager.Mode.MINE, blockPos);
+                HudStatsManager.getRuntime().recordStatus(HudStatsManager.Mode.MINE, "破坏中");
             }
             case ABORTED -> {
-                HudStatsManager.INSTANCE.trackExpectedMineClear(HudStatsManager.Mode.MINE, blockPos);
-                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.MINE, "挖掘中断");
+                HudStatsManager.getRuntime().trackExpectedMineClear(HudStatsManager.Mode.MINE, blockPos);
+                HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.MINE, "挖掘中断");
             }
-            case FAILED -> HudStatsManager.INSTANCE.recordFailure(HudStatsManager.Mode.MINE, "破坏失败");
+            case FAILED -> HudStatsManager.getRuntime().recordFailure(HudStatsManager.Mode.MINE, "破坏失败");
         }
     }
 }

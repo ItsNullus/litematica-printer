@@ -47,7 +47,7 @@ public final class PrintPlacementExecutor {
         if (Configs.Placement.FALLING_CHECK.getBooleanValue() && context.requiredState.getBlock() instanceof FallingBlock) {
             BlockPos downPos = blockPos.below();
             if (FallingBlock.isFree(context.level.getBlockState(downPos))) {
-                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "下落方块无支撑");
+                HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.PRINT, "下落方块无支撑");
                 MessageUtils.setOverlayMessage(I18n.FALLING_BLOCK_NO_SUPPORT.getName(context.requiredBlockName().getString()));
                 return PrintPlacementResult.failure(false, shouldStopAfterTaskAction(taskAction));
             }
@@ -55,7 +55,7 @@ public final class PrintPlacementExecutor {
 
         Direction side = action.getValidSide(context.level, blockPos);
         if (side == null) {
-            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "无有效放置面");
+            HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.PRINT, "无有效放置面");
             return PrintPlacementResult.failure(false, shouldStopAfterTaskAction(taskAction));
         }
 
@@ -95,10 +95,10 @@ public final class PrintPlacementExecutor {
                     )
                     : ItemStack.EMPTY;
             if (retrievalPending) {
-                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "等待取货");
+                HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.PRINT, "等待取货");
                 MissingMaterialTracker.getRuntime().resolve(requiredItems, requiredStackPredicate);
             } else if (reserveBlockedStack.isEmpty()) {
-                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "缺少材料");
+                HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.PRINT, "缺少材料");
                 MissingMaterialTracker.getRuntime().recordMissing(
                         requiredItems,
                         requiredStackPredicate,
@@ -106,7 +106,7 @@ public final class PrintPlacementExecutor {
                         context.level.getGameTime()
                 );
             } else {
-                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "达到保留数量");
+                HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.PRINT, "达到保留数量");
                 showReserveNotice(context, reserveBlockedStack);
             }
             if (retrievalPending) {
@@ -121,13 +121,13 @@ public final class PrintPlacementExecutor {
         if (!InventoryUtils.isHoldingAnyItem(context.client.player, requiredItems)
                 || requiredStackPredicate != null
                 && !requiredStackPredicate.test(context.client.player.getMainHandItem())) {
-            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "等待物品同步");
+            HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.PRINT, "等待物品同步");
             return PrintPlacementResult.deferred(true);
         }
 
         boolean useShift = getUseShift(context, action, side);
         if (!action.queueAction(this.actionBroker, blockPos, side, useShift, context.client.player, requiredItems)) {
-            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "动作队列占用");
+            HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.PRINT, "动作队列占用");
             return PrintPlacementResult.cancelled(true);
         }
         this.actionBroker.setExpectedStackPredicate(requiredStackPredicate);
@@ -170,7 +170,7 @@ public final class PrintPlacementExecutor {
                 if (sendResult == ActionBroker.SendResult.RESERVE_LIMIT) {
                     showReserveNotice(context, context.client.player.getMainHandItem());
                 }
-                HudStatsManager.INSTANCE.recordDeferred(
+                HudStatsManager.getRuntime().recordDeferred(
                         HudStatsManager.Mode.PRINT,
                         describeSendFailure(sendResult)
                 );
@@ -183,7 +183,7 @@ public final class PrintPlacementExecutor {
         ActionBroker.SendResult sendResult = this.actionBroker.sendQueue(context.client.player);
         if (sendResult.isWaiting()) {
             deferred.set(true);
-            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "等待转头");
+            HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.PRINT, "等待转头");
             return new PrintPlacementResult(
                     consumedEffectiveExecution,
                     true,
@@ -198,7 +198,7 @@ public final class PrintPlacementExecutor {
             if (sendResult == ActionBroker.SendResult.RESERVE_LIMIT) {
                 showReserveNotice(context, context.client.player.getMainHandItem());
             }
-            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, describeSendFailure(sendResult));
+            HudStatsManager.getRuntime().recordDeferred(HudStatsManager.Mode.PRINT, describeSendFailure(sendResult));
             return PrintPlacementResult.cancelled(true);
         }
 
@@ -216,13 +216,13 @@ public final class PrintPlacementExecutor {
         if (context.requiredState.getBlock() instanceof SignBlock) {
             this.actionBroker.confirmPrintSignEditSent(context.blockPos);
         }
-        HudStatsManager.INSTANCE.trackExpectedBlockState(
+        HudStatsManager.getRuntime().trackExpectedBlockState(
                 HudStatsManager.Mode.PRINT,
                 context.blockPos,
                 context.requiredState
         );
-        HudStatsManager.INSTANCE.recordRateUnit(HudStatsManager.Mode.PRINT, 1);
-        HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.PRINT, "运行中");
+        HudStatsManager.getRuntime().recordRateUnit(HudStatsManager.Mode.PRINT, 1);
+        HudStatsManager.getRuntime().recordStatus(HudStatsManager.Mode.PRINT, "运行中");
     }
 
     private static String describeSendFailure(ActionBroker.SendResult result) {
