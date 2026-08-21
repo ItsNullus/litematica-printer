@@ -52,7 +52,9 @@ public final class PrinterRuntime {
 
     private PrinterRuntime() {
         Minecraft client = Minecraft.getInstance();
-        this.bedrockEngine = new BedrockEngine(client);
+        this.cooldownUtils = new CooldownUtils();
+        this.scope.register(this.cooldownUtils);
+        this.bedrockEngine = new BedrockEngine(client, this.cooldownUtils);
         this.scope.register(new MinecraftInteractionRuntime(client));
         this.scope.register(new InventorySwitchRuntime());
         this.scope.register(this.bedrockEngine);
@@ -62,8 +64,6 @@ public final class PrinterRuntime {
         this.scope.register(this.scanEngine);
         this.inventoryAvailability = new InventoryAvailabilityTracker();
         this.scope.register(this.inventoryAvailability);
-        this.cooldownUtils = new CooldownUtils();
-        this.scope.register(this.cooldownUtils);
         this.interactionUtils = new InteractionUtils();
         this.scope.register(this.interactionUtils);
         this.rttReplayController = new RttReplayController();

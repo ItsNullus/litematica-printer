@@ -4,6 +4,7 @@ import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
 import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
+import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
@@ -22,10 +23,11 @@ public final class BedrockEngine implements RuntimeComponent {
     private final BedrockThroughputScheduler throughputScheduler = new BedrockThroughputScheduler();
     private long lastProcessedTick = Long.MIN_VALUE;
 
-    public BedrockEngine(Minecraft client) {
+    public BedrockEngine(Minecraft client, CooldownUtils cooldownUtils) {
         this.client = client;
-        this.cleanup = new BedrockCleanupCoordinator(client);
-        this.admission = new BedrockAdmissionController(client, this.targets, this.cleanup, this.stats);
+        this.cleanup = new BedrockCleanupCoordinator(client, cooldownUtils);
+        this.admission = new BedrockAdmissionController(
+                client, this.targets, this.cleanup, this.stats, cooldownUtils);
         this.targetExecutor = new BedrockTargetExecutor(
                 this.targets,
                 this.cleanup,

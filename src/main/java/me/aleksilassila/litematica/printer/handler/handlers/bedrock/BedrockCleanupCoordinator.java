@@ -1,6 +1,6 @@
 package me.aleksilassila.litematica.printer.handler.handlers.bedrock;
 
-import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
+import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
@@ -19,12 +19,14 @@ final class BedrockCleanupCoordinator {
     private static final String RETRY_COOLDOWN_KEY = "cleanup_retry";
 
     private final Minecraft client;
+    private final CooldownUtils cooldownUtils;
     private final Set<BlockPos> queue = new LinkedHashSet<>();
     private final Set<BlockPos> conservative = new LinkedHashSet<>();
     private final Set<BlockPos> blocked = new LinkedHashSet<>();
 
-    BedrockCleanupCoordinator(Minecraft client) {
+    BedrockCleanupCoordinator(Minecraft client, CooldownUtils cooldownUtils) {
         this.client = client;
+        this.cooldownUtils = cooldownUtils;
     }
 
     void reset() {
@@ -95,10 +97,10 @@ final class BedrockCleanupCoordinator {
                 continue;
             }
             int retryDelay = retryDelay(state);
-            if (!PrinterRuntime.get().cooldownUtils().isOnCooldown(level, RETRY_COOLDOWN_KEY, pos)) {
+            if (!this.cooldownUtils.isOnCooldown(level, RETRY_COOLDOWN_KEY, pos)) {
                 boolean predictRemoval = !this.conservative.contains(pos);
                 if (BedrockBreaker.breakBlock(pos, predictRemoval)) {
-                    PrinterRuntime.get().cooldownUtils().setCooldown(level, RETRY_COOLDOWN_KEY, pos, retryDelay);
+                    this.cooldownUtils.setCooldown(level, RETRY_COOLDOWN_KEY, pos, retryDelay);
                     count++;
                 }
             }
@@ -116,7 +118,7 @@ final class BedrockCleanupCoordinator {
         }
         BlockState state = level.getBlockState(pos);
         if (BedrockTargetBlocks.isCleanupResidue(state) && BedrockBreaker.breakBlock(pos, predictRemoval)) {
-            PrinterRuntime.get().cooldownUtils().setCooldown(level, RETRY_COOLDOWN_KEY, pos, retryDelay(state));
+            this.cooldownUtils.setCooldown(level, RETRY_COOLDOWN_KEY, pos, retryDelay(state));
         }
     }
 
@@ -128,12 +130,12 @@ final class BedrockCleanupCoordinator {
         if (!BedrockTargetBlocks.isCleanupResidue(state) || reserved.test(pos)) {
             return;
         }
-        if (PrinterRuntime.get().cooldownUtils().isOnCooldown(level, RETRY_COOLDOWN_KEY, pos)) {
+        if (this.cooldownUtils.isOnCooldown(level, RETRY_COOLDOWN_KEY, pos)) {
             return;
         }
         int retryDelay = retryDelay(state);
         if (BedrockBreaker.breakBlock(pos, false)) {
-            PrinterRuntime.get().cooldownUtils().setCooldown(level, RETRY_COOLDOWN_KEY, pos, retryDelay);
+            this.cooldownUtils.setCooldown(level, RETRY_COOLDOWN_KEY, pos, retryDelay);
         }
     }
 
