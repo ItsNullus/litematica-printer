@@ -38,7 +38,7 @@ public final class PrintPlacementExecutor {
     private final InventorySwitchGuard inventorySwitchGuard;
     private static final Item[] EMPTY_HAND_ITEMS = {Items.AIR};
     private static final long RESERVE_NOTICE_COOLDOWN_TICKS = 100L;
-    private static long lastReserveNoticeTick = Long.MIN_VALUE;
+    private long lastReserveNoticeTick = Long.MIN_VALUE;
 
     public PrintPlacementExecutor(
             ActionBroker actionBroker,
@@ -277,17 +277,17 @@ public final class PrintPlacementExecutor {
         return taskAction != null && taskAction.stopIterationAfterAction();
     }
 
-    private static void showReserveNotice(SchematicBlockContext context, ItemStack stack) {
+    private void showReserveNotice(SchematicBlockContext context, ItemStack stack) {
         if (stack.isEmpty()) {
             return;
         }
         long currentTick = context.level.getGameTime();
-        if (lastReserveNoticeTick != Long.MIN_VALUE
-                && currentTick >= lastReserveNoticeTick
-                && currentTick - lastReserveNoticeTick < RESERVE_NOTICE_COOLDOWN_TICKS) {
+        if (this.lastReserveNoticeTick != Long.MIN_VALUE
+                && currentTick >= this.lastReserveNoticeTick
+                && currentTick - this.lastReserveNoticeTick < RESERVE_NOTICE_COOLDOWN_TICKS) {
             return;
         }
-        lastReserveNoticeTick = currentTick;
+        this.lastReserveNoticeTick = currentTick;
         MessageUtils.setOverlayMessage(I18n.RESERVE_ITEM_SKIP.getName(
                 stack.getHoverName(),
                 Configs.Print.PRINT_RESERVE_ITEM_COUNT.getIntegerValue()
