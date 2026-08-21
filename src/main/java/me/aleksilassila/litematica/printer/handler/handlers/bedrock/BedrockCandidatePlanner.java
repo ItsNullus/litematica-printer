@@ -25,14 +25,25 @@ public final class BedrockCandidatePlanner {
     /**
      * 单 tick 内允许执行的"重型建模"(buildCandidate:layout 查找 + 双火把探测 + 13 格调度惩罚 + 6 邻居检测)次数上限。
      * 廉价过滤(空气/非基岩/冷却)不计入此预算。大交互距离下命中的基岩极多,若不设上限会在单 tick 内对成百上千个基岩
-     * 做重型建模,卡满一帧后再爆发,表现为"一阵一阵"。入口扫描器会在下一 tick 续扫剩余位置,因此把建模成本摊到多 tick
-     * 即可消除卡顿,同时仍能凑足候选池供优先级筛选。
      */
     private static final int MODELING_BUDGET_PER_TICK = 128;
+    private final BedrockCandidateBacklog<CandidateInfo> candidateBacklog =
+            new BedrockCandidateBacklog<>(CANDIDATE_COLLECT_CAP);
 
     public Iterable<BlockPos> iterable(PrinterBox sourceBox, ClientLevel level, LocalPlayer player, int maxEffectiveExecutions, int scanGuardLimit) {
-        CandidateShard shard = this.collectCandidateShard(sourceBox, level, player, scanGuardLimit);
-        List<CandidateInfo> candidates = shard.candidates();
+        this.pruneCandidateBacklog(sourceBox, level);
+        CandidateShard shard = this.collectCandidateShard(
+                sourceBox,
+                level,
+                player,
+                scanGuardLimit,
+                this.candidateBacklog.remainingCapacity()
+        );
+        for (CandidateInfo candidate : shard.candidates()) {
+            this.candidateBacklog.offer(candidate.pos(), candidate);
+        }
+
+        List<CandidateInfo> candidates = this.getEligibleCandidates();
 
         List<CandidateInfo> selectedCandidates;
         if (candidates.size() <= 1) {
@@ -42,22 +53,93 @@ public final class BedrockCandidatePlanner {
                     .comparingInt(CandidateInfo::priority)
                     .thenComparingInt(CandidateInfo::neighborTargetCount));
 
-            int limit = Math.min(candidates.size(), this.getCandidateSelectionLimit(maxEffectiveExecutions));
-            selectedCandidates = selectNonConflictingCandidates(candidates, limit);
+            selectedCandidates = candidates;
         }
 
-        List<BlockPos> filtered = new ArrayList<>(selectedCandidates.size() + (shard.hasMoreSource() ? 1 : 0));
-        for (CandidateInfo candidate : selectedCandidates) {
+        int selectionLimit = Math.min(selectedCandidates.size(), this.getCandidateSelectionLimit(maxEffectiveExecutions));
+        List<CandidateInfo> liveSelection = new ArrayList<>(selectionLimit);
+        for (CandidateInfo cachedCandidate : selectedCandidates) {
+            if (liveSelection.size() >= selectionLimit) {
+                break;
+            }
+            CandidateInfo candidate = this.buildModeledCandidate(level, cachedCandidate.pos(), Configs.Bedrock.BEDROCK_ALLOW_SIDE.getBooleanValue());
+            if (candidate == null) {
+                this.candidateBacklog.remove(cachedCandidate.pos());
+                continue;
+            }
+            this.candidateBacklog.offer(candidate.pos(), candidate);
+            if (conflictsWithSelected(candidate, liveSelection)) {
+                continue;
+            }
+            liveSelection.add(candidate);
+        }
+
+        List<BlockPos> filtered = new ArrayList<>(liveSelection.size() + 1);
+        for (CandidateInfo candidate : liveSelection) {
             BedrockController.primeSubmissionPlan(candidate.pos(), candidate.layout(), candidate.placement(), candidate.slimePos());
             filtered.add(candidate.pos());
         }
-        if (shard.hasMoreSource()) {
+        if (shard.hasMoreSource() || !this.candidateBacklog.isEmpty()) {
             filtered.add(null);
         }
         return filtered;
     }
 
-    private CandidateShard collectCandidateShard(PrinterBox sourceBox, ClientLevel level, LocalPlayer player, int scanGuardLimit) {
+    public void recordSubmissionResult(BlockPos pos, boolean submitted) {
+        if (submitted) {
+            this.candidateBacklog.remove(pos);
+        }
+    }
+
+    public void discard(BlockPos pos) {
+        this.candidateBacklog.remove(pos);
+    }
+
+    public boolean hasPendingCandidates() {
+        return !this.candidateBacklog.isEmpty();
+    }
+
+    public int getPendingCandidateCount() {
+        return this.candidateBacklog.size();
+    }
+
+    public void reset() {
+        this.candidateBacklog.clear();
+    }
+
+    private List<CandidateInfo> getEligibleCandidates() {
+        List<CandidateInfo> verticalCandidates = new ArrayList<>();
+        List<CandidateInfo> sideCandidates = new ArrayList<>();
+        for (CandidateInfo candidate : this.candidateBacklog.snapshot()) {
+            if (BedrockController.isPositionOnRetryCooldown(candidate.pos())) {
+                continue;
+            }
+            if (candidate.layout().isHorizontal()) {
+                sideCandidates.add(candidate);
+            } else {
+                verticalCandidates.add(candidate);
+            }
+        }
+        return verticalCandidates.isEmpty() ? sideCandidates : verticalCandidates;
+    }
+
+    private void pruneCandidateBacklog(PrinterBox sourceBox, ClientLevel level) {
+        this.candidateBacklog.removeIf((pos, ignored) -> !sourceBox.contains(pos)
+                || !BedrockEnvironment.canInteract(pos)
+                || !LitematicaUtils.isWithinSelection1ModeRange(pos)
+                || !BedrockTargetBlocks.isTargetBlock(level.getBlockState(pos)));
+    }
+
+    private CandidateShard collectCandidateShard(
+            PrinterBox sourceBox,
+            ClientLevel level,
+            LocalPlayer player,
+            int scanGuardLimit,
+            int collectCapacity
+    ) {
+        if (collectCapacity <= 0) {
+            return new CandidateShard(List.of(), true);
+        }
         int scanLimit = this.getCandidateScanLimit(scanGuardLimit);
         Iterator<BlockPos> iterator = ScanCache.INSTANCE.iterable(
                 "bedrock",
@@ -67,7 +149,7 @@ public final class BedrockCandidatePlanner {
                 player,
                 scanLimit,
                 ScanIntent.MINE,
-                pos -> this.passesCheapFilters(level, pos)
+                pos -> this.passesCheapFilters(level, pos) && !this.candidateBacklog.contains(pos)
         ).iterator();
         List<CandidateInfo> verticalCandidates = new ArrayList<>();
         List<CandidateInfo> sideCandidates = new ArrayList<>();
@@ -76,13 +158,15 @@ public final class BedrockCandidatePlanner {
         int modeled = 0;
         boolean hasMoreSource = false;
 
-        while (iterator.hasNext()
-                && scanned < scanLimit
-                && verticalCandidates.size() + sideCandidates.size() < CANDIDATE_COLLECT_CAP) {
+        while (scanned < scanLimit
+                && verticalCandidates.size() + sideCandidates.size() < collectCapacity) {
             // 单 tick 重型建模预算用尽时停止本 tick 扫描,剩余位置由入口扫描会话在下一 tick 续扫,
             // 避免大 box 下一次性建模成百上千个基岩造成的卡顿"一阵一阵"。
             if (modeled >= MODELING_BUDGET_PER_TICK) {
                 hasMoreSource = true;
+                break;
+            }
+            if (!iterator.hasNext()) {
                 break;
             }
             BlockPos pos = iterator.next();
@@ -102,8 +186,14 @@ public final class BedrockCandidatePlanner {
             }
         }
 
-        List<CandidateInfo> candidates = verticalCandidates.isEmpty() ? sideCandidates : verticalCandidates;
-        return new CandidateShard(candidates, hasMoreSource || iterator.hasNext());
+        if (scanned >= scanLimit
+                || verticalCandidates.size() + sideCandidates.size() >= collectCapacity) {
+            hasMoreSource = true;
+        }
+        List<CandidateInfo> candidates = new ArrayList<>(verticalCandidates.size() + sideCandidates.size());
+        candidates.addAll(verticalCandidates);
+        candidates.addAll(sideCandidates);
+        return new CandidateShard(candidates, hasMoreSource);
     }
 
     /**
@@ -187,23 +277,6 @@ public final class BedrockCandidatePlanner {
             return controllerPenalty + 1_000;
         }
         return controllerPenalty + 10_000;
-    }
-
-    private static List<CandidateInfo> selectNonConflictingCandidates(List<CandidateInfo> candidates, int limit) {
-        if (limit <= 0 || candidates.isEmpty()) {
-            return List.of();
-        }
-        List<CandidateInfo> selected = new ArrayList<>(limit);
-        for (CandidateInfo candidate : candidates) {
-            if (selected.size() >= limit) {
-                break;
-            }
-            if (conflictsWithSelected(candidate, selected)) {
-                continue;
-            }
-            selected.add(candidate);
-        }
-        return selected;
     }
 
     private static boolean conflictsWithSelected(CandidateInfo candidate, List<CandidateInfo> selected) {

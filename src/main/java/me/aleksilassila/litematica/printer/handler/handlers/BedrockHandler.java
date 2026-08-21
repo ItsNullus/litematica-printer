@@ -59,16 +59,17 @@ public class BedrockHandler extends Module {
 
     @Override
     protected boolean hasPendingIterationWork() {
-        return BedrockController.hasPendingScanWork();
+        return BedrockController.hasPendingScanWork() || this.candidatePlanner.hasPendingCandidates();
     }
 
     @Override
     public int getPendingIterationWorkCount() {
-        return BedrockController.getPendingScanWorkCount();
+        return BedrockController.getPendingScanWorkCount() + this.candidatePlanner.getPendingCandidateCount();
     }
 
     @Override
     protected void onRuntimeReset() {
+        this.candidatePlanner.reset();
         BedrockController.reset();
     }
 
@@ -109,10 +110,12 @@ public class BedrockHandler extends Module {
     @Override
     protected void executeIteration(BlockPos blockPos, AtomicReference<Boolean> skipIteration) {
         if (level == null || !BedrockTargetBlocks.isTargetBlock(level.getBlockState(blockPos))) {
+            this.candidatePlanner.discard(blockPos);
             setIterationConsumedEffectiveExecution(false);
             return;
         }
         boolean submitted = BedrockController.submit(blockPos);
+        this.candidatePlanner.recordSubmissionResult(blockPos, submitted);
         setIterationConsumedEffectiveExecution(submitted);
         if (submitted) {
             // Allow a second same-tick submit when the controller still has safe capacity.
