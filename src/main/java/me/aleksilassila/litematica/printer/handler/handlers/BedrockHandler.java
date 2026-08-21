@@ -58,6 +58,16 @@ public class BedrockHandler extends Module {
     }
 
     @Override
+    protected boolean hasPendingIterationWork() {
+        return BedrockController.hasPendingScanWork();
+    }
+
+    @Override
+    public int getPendingIterationWorkCount() {
+        return BedrockController.getPendingScanWorkCount();
+    }
+
+    @Override
     protected void onRuntimeReset() {
         BedrockController.reset();
     }

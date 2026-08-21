@@ -466,11 +466,6 @@ public class BedrockTarget {
     }
 
     private void updateStatus() {
-        if (this.tickTimes > 40) {
-            this.status = Status.FAILED;
-            return;
-        }
-
         if (isTargetCompleted()) {
             this.status = Status.RETRACTED;
             return;

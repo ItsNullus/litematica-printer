@@ -46,6 +46,7 @@ public final class BedrockController {
             new BedrockExposureGate<>(MAX_VERTICAL_EXPOSURE_DEFERS);
     private static final Map<BlockPos, SubmissionPlan> SUBMISSION_PLANS = new HashMap<>();
     private static final BedrockThroughputScheduler THROUGHPUT_SCHEDULER = new BedrockThroughputScheduler();
+    private static final BedrockScanActivityPolicy SCAN_ACTIVITY_POLICY = new BedrockScanActivityPolicy();
     private static long nextAcceptTick = 0L;
     private static long lastProcessedTick = Long.MIN_VALUE;
     private static int acceptedThisTick = 0;
@@ -70,6 +71,7 @@ public final class BedrockController {
         BedrockPlacer.clearHorizontalLookState();
         BedrockCriticalExecutor.reset();
         THROUGHPUT_SCHEDULER.reset();
+        SCAN_ACTIVITY_POLICY.reset();
         nextAcceptTick = 0L;
         lastProcessedTick = Long.MIN_VALUE;
         acceptedThisTick = 0;
@@ -132,6 +134,20 @@ public final class BedrockController {
 
     public static boolean hasActiveWork() {
         return !TARGETS.isEmpty() || !CLEANUP_QUEUE.isEmpty();
+    }
+
+    public static boolean hasPendingScanWork() {
+        return SCAN_ACTIVITY_POLICY.hasPendingWork(
+                ClientPlayerTickManager.getCurrentHandlerTime(),
+                TARGETS.size()
+        );
+    }
+
+    public static int getPendingScanWorkCount() {
+        return SCAN_ACTIVITY_POLICY.getPendingWorkCount(
+                ClientPlayerTickManager.getCurrentHandlerTime(),
+                TARGETS.size()
+        );
     }
 
     public static boolean canScanForTargets() {
@@ -928,6 +944,7 @@ public final class BedrockController {
     private static void setRetryCooldown(BlockPos pos, int ticks) {
         if (CLIENT.level != null && pos != null && ticks > 0) {
             CooldownUtils.INSTANCE.setCooldown(CLIENT.level, RETRY_COOLDOWN_KEY, pos, ticks);
+            SCAN_ACTIVITY_POLICY.recordRetry(ClientPlayerTickManager.getCurrentHandlerTime(), ticks);
         }
     }
 

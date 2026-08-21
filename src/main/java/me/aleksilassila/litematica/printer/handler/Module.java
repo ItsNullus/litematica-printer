@@ -316,6 +316,11 @@ public abstract class Module extends ConfigUtils {
     }
 
     private boolean runLazyIteration(PrinterBox playerInteractionBox) {
+        if (this.scanIdlePolicy.shouldWakeForPendingWork(this.hasPendingIterationWork())) {
+            this.scanState = ScanState.FULL;
+            this.clearDirtyScanQueue();
+            return this.runFullIteration(playerInteractionBox);
+        }
         if (this.usesDirtyRegionWakeup() && this.scanState == ScanState.LAZY) {
             this.refreshDirtyScanQueue(playerInteractionBox);
         }
@@ -414,6 +419,7 @@ public abstract class Module extends ConfigUtils {
                 this.currentIterationDidWork,
                 this.currentIterationFoundCandidate,
                 this.currentIterationCompletedPass,
+                this.hasPendingIterationWork(),
                 lazyThreshold
         )) {
             this.scanState = ScanState.LAZY;
