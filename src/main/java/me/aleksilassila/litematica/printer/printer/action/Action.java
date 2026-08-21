@@ -245,8 +245,19 @@ public class Action {
     }
 
     public boolean queueAction(@NotNull BlockPos blockPos, @NotNull Direction side, boolean useShift, @NotNull LocalPlayer player, @Nullable Item[] expectedItems) {
+        return this.queueAction(ActionBroker.INSTANCE, blockPos, side, useShift, player, expectedItems);
+    }
+
+    public boolean queueAction(
+            @NotNull ActionBroker actionBroker,
+            @NotNull BlockPos blockPos,
+            @NotNull Direction side,
+            boolean useShift,
+            @NotNull LocalPlayer player,
+            @Nullable Item[] expectedItems
+    ) {
         if (Configs.Print.PLACE_IN_AIR.getBooleanValue() && !this.requiresSupport) {
-            return ActionBroker.INSTANCE.queueClick(
+            return actionBroker.queueClick(
                     blockPos,
                     side.getOpposite(),
                     getSides().get(side),
@@ -256,7 +267,7 @@ public class Action {
                     ActionManager.ActionSource.PRINT
             );
         } else {
-            return ActionBroker.INSTANCE.queueClick(
+            return actionBroker.queueClick(
                     blockPos.relative(side),
                     side.getOpposite(),
                     getSides().get(side),

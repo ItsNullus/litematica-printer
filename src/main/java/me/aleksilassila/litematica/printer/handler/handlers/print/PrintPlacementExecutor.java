@@ -127,7 +127,7 @@ public final class PrintPlacementExecutor {
         }
 
         boolean useShift = getUseShift(context, action, side);
-        if (!action.queueAction(blockPos, side, useShift, context.client.player, requiredItems)) {
+        if (!action.queueAction(this.actionBroker, blockPos, side, useShift, context.client.player, requiredItems)) {
             HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "动作队列占用");
             return PrintPlacementResult.cancelled(true);
         }
