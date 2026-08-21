@@ -25,14 +25,16 @@ public final class ScanEngine implements RuntimeComponent {
         INVALIDATIONS_ONLY
     }
 
+    private final PrinterRuntime runtime;
     private final ScanCache cache;
 
-    public ScanEngine(ScanCache cache) {
+    public ScanEngine(PrinterRuntime runtime, ScanCache cache) {
+        this.runtime = runtime;
         this.cache = cache;
     }
 
-    public ScanEngine() {
-        this(new ScanCache());
+    public ScanEngine(PrinterRuntime runtime) {
+        this(runtime, new ScanCache());
     }
 
     public void clear() {
@@ -45,7 +47,7 @@ public final class ScanEngine implements RuntimeComponent {
     }
 
     public void beginTick(ClientLevel level, WorldSchematic schematic, long tickTime) {
-        this.cache.beginTick(level, schematic, tickTime, PrinterRuntime.get().epoch());
+        this.cache.beginTick(level, schematic, tickTime, this.runtime.epoch());
     }
 
     public void invalidate(BlockPos pos) {

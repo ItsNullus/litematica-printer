@@ -36,6 +36,7 @@ import java.util.Optional;
 public final class ActionBroker implements RuntimeComponent {
     private static final long ACTION_LEASE_TIMEOUT_NANOS = 10_000_000_000L;
 
+    private final PrinterRuntime runtime;
     private final ActionManager delegate;
     private final ActionCoordinator coordinator = new ActionCoordinator();
     private ActionTransaction activeTransaction;
@@ -71,7 +72,8 @@ public final class ActionBroker implements RuntimeComponent {
         }
     }
 
-    public ActionBroker(ActionManager delegate) {
+    public ActionBroker(PrinterRuntime runtime, ActionManager delegate) {
+        this.runtime = runtime;
         this.delegate = delegate;
     }
 
@@ -90,7 +92,7 @@ public final class ActionBroker implements RuntimeComponent {
         long now = System.nanoTime();
         ActionRequest request = new ActionRequest(
                 source.name().toLowerCase(),
-                PrinterRuntime.get().epoch(),
+                this.runtime.epoch(),
                 EnumSet.of(ResourceLease.LOOK, ResourceLease.MAIN_HAND, ResourceLease.INTERACTION),
                 now + ACTION_LEASE_TIMEOUT_NANOS,
                 ConfirmationPolicy.CLIENT_STATE,
@@ -229,7 +231,7 @@ public final class ActionBroker implements RuntimeComponent {
         long now = System.nanoTime();
         ActionRequest request = new ActionRequest(
                 owner,
-                PrinterRuntime.get().epoch(),
+                this.runtime.epoch(),
                 resources,
                 timeoutNanos <= 0L ? 0L : now + timeoutNanos,
                 ConfirmationPolicy.NONE,
@@ -258,11 +260,11 @@ public final class ActionBroker implements RuntimeComponent {
             return;
         }
         if (result.isSent()) {
-            this.activeTransaction.markSent(PrinterRuntime.get().epoch());
-            this.activeTransaction.confirm(PrinterRuntime.get().epoch());
+            this.activeTransaction.markSent(this.runtime.epoch());
+            this.activeTransaction.confirm(this.runtime.epoch());
         } else {
             this.activeTransaction.reject(
-                    PrinterRuntime.get().epoch(),
+                    this.runtime.epoch(),
                     me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager.getCurrentHandlerTime()
             );
         }
