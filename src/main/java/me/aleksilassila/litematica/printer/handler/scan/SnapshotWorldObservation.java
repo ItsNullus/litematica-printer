@@ -14,14 +14,6 @@ final class SnapshotWorldObservation implements WorldObservationPort {
         this.source = source;
     }
 
-    SectionSnapshotStore snapshots() {
-        return this.snapshots;
-    }
-
-    WorldObservationPort source() {
-        return this.source;
-    }
-
     @Override
     public boolean hasChunk(int chunkX, int chunkZ) {
         return this.source.hasChunk(chunkX, chunkZ);

@@ -27,6 +27,11 @@ public final class TweakerooAdapter implements TweakerooToolSwitchPort {
     }
 
     @Override
+    public boolean isNearlyBrokenToolSwapEnabled() {
+        return this.isLoaded() && TweakerooUtils.isSwapAlmostBrokenToolsEnabled();
+    }
+
+    @Override
     public void switchToEffectiveTool(BlockPos pos) {
         if (this.isEffectiveToolSwitchEnabled()) {
             TweakerooUtils.trySwitchToEffectiveTool(pos);
@@ -35,7 +40,7 @@ public final class TweakerooAdapter implements TweakerooToolSwitchPort {
 
     @Override
     public void swapNearlyBrokenTool() {
-        if (this.isLoaded()) {
+        if (this.isNearlyBrokenToolSwapEnabled()) {
             TweakerooUtils.trySwapCurrentToolIfNearlyBroken();
         }
     }

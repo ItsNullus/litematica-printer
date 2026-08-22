@@ -11,6 +11,7 @@ import java.util.List;
 
 public class TweakerooUtils {
     private static @Nullable Object tweakToolSwitchEnum;
+    private static @Nullable Object tweakSwapAlmostBrokenToolsEnum;
     private static @Nullable Object disableBlockBreakCooldownConfig;
     private static @Nullable Method trySwitchToEffectiveToolMethod;
     private static @Nullable Method trySwapCurrentToolIfNearlyBrokenMethod;
@@ -27,6 +28,7 @@ public class TweakerooUtils {
             Class<?> featureToggleClass = loadClass("fi.dy.masa.tweakeroo.config.FeatureToggle");
             if (featureToggleClass != null) {
                 tweakToolSwitchEnum = loadField(featureToggleClass, "TWEAK_TOOL_SWITCH");
+                tweakSwapAlmostBrokenToolsEnum = loadField(featureToggleClass, "TWEAK_SWAP_ALMOST_BROKEN_TOOLS");
             }
 
             Class<?> disableConfigsClass = loadClass("fi.dy.masa.tweakeroo.config.Configs$Disable");
@@ -121,6 +123,10 @@ public class TweakerooUtils {
      */
     public static boolean isToolSwitchEnabled() {
         return readBoolean(tweakToolSwitchEnum);
+    }
+
+    public static boolean isSwapAlmostBrokenToolsEnabled() {
+        return readBoolean(tweakSwapAlmostBrokenToolsEnum);
     }
 
     public static boolean isDisableBlockBreakCooldownEnabled() {
