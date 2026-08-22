@@ -44,12 +44,12 @@ class ScanPassPolicyTest {
 
     private static SectionScanSession session() {
         PrinterBox box = new PrinterBox(-1, -1, -1, 1, 1, 1);
-        SectionScanSession.Region region = SectionScanSession.Region.from(box, null);
+        ScanRegion region = ScanRegion.from(box, null);
         return new SectionScanSession(
                 region,
                 List.of(box),
                 ScanIntent.FLUID,
-                new SectionScanSession.MutableMetrics()
+                new ScanMetricsAccumulator()
         );
     }
 }

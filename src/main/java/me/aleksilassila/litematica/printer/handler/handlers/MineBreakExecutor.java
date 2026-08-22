@@ -1,12 +1,11 @@
 package me.aleksilassila.litematica.printer.handler.handlers;
 
 import me.aleksilassila.litematica.printer.config.Configs;
+import me.aleksilassila.litematica.printer.integration.tweakeroo.TweakerooAdapter;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.PlayerUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.ToolSelectionUtils;
-import me.aleksilassila.litematica.printer.utils.mods.ModLoadUtils;
-import me.aleksilassila.litematica.printer.utils.mods.TweakerooUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -21,19 +20,25 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 
 final class MineBreakExecutor {
-    private static final Minecraft CLIENT = Minecraft.getInstance();
     private static final float FAST_FINISH_PROGRESS = 0.5F;
     private static final float CURRENT_TOOL_MIN_EFFICIENCY_RATIO = 0.75F;
 
+    private final Minecraft client;
+    private final TweakerooAdapter tweakeroo;
     private final Map<BlockState, Float> currentProgressCache = new IdentityHashMap<>();
     private final Map<BlockState, ToolChoice> bestToolCache = new IdentityHashMap<>();
     private boolean resolveBestTool;
+
+    MineBreakExecutor(Minecraft client, TweakerooAdapter tweakeroo) {
+        this.client = client;
+        this.tweakeroo = tweakeroo;
+    }
 
     public void beginTick() {
         this.currentProgressCache.clear();
         this.bestToolCache.clear();
         this.resolveBestTool = Configs.Break.BREAK_AUTO_TOOL.getBooleanValue()
-                || ModLoadUtils.isTweakerooLoaded() && TweakerooUtils.isToolSwitchEnabled();
+                || this.tweakeroo.isToolSwitchEnabled();
     }
 
     public void reset() {
@@ -44,8 +49,8 @@ final class MineBreakExecutor {
 
     @Nullable
     public Target analyze(BlockPos pos) {
-        LocalPlayer player = CLIENT.player;
-        ClientLevel level = CLIENT.level;
+        LocalPlayer player = this.client.player;
+        ClientLevel level = this.client.level;
         if (player == null || level == null || pos == null) {
             return null;
         }
@@ -85,12 +90,12 @@ final class MineBreakExecutor {
     }
 
     public boolean isInstantWithCurrentTool(Target target) {
-        LocalPlayer player = CLIENT.player;
+        LocalPlayer player = this.client.player;
         return player != null && (player.getAbilities().instabuild || target.currentProgress > FAST_FINISH_PROGRESS);
     }
 
     public boolean isInstantWithBestTool(Target target) {
-        LocalPlayer player = CLIENT.player;
+        LocalPlayer player = this.client.player;
         return player != null && (player.getAbilities().instabuild || target.bestProgress > FAST_FINISH_PROGRESS);
     }
 
@@ -104,7 +109,7 @@ final class MineBreakExecutor {
     }
 
     public boolean isCurrentToolEffective(Target target) {
-        LocalPlayer player = CLIENT.player;
+        LocalPlayer player = this.client.player;
         if (player == null || !this.shouldResolveBestTool()) {
             return true;
         }

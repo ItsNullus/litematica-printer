@@ -1,0 +1,17 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "me.aleksilassila.litematica.printer.mixin",
+  "compatibilityLevel": "${compatibility_level}",
+  "mixins": [
+    "printer.litematica.EasyPlaceUtilsAccessor",
+    "printer.litematica.InventoryUtilsAccessor",
+    "printer.litematica.MixinInventoryUtils"
+  ],
+  "client": [
+    "printer.litematica.gui.MixinLitematicaGuiMainMenu"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

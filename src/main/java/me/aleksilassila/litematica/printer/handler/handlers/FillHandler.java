@@ -8,6 +8,7 @@ import me.aleksilassila.litematica.printer.enums.PrintModeType;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.I18n;
 import me.aleksilassila.litematica.printer.handler.FeatureModuleBase;
+import me.aleksilassila.litematica.printer.handler.PrefetchedCandidateIterable;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
 import me.aleksilassila.litematica.printer.printer.PlayerLook;
 import me.aleksilassila.litematica.printer.printer.PrinterUtils;
@@ -35,7 +36,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
-import java.util.NoSuchElementException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
@@ -186,42 +186,9 @@ public class FillHandler extends FeatureModuleBase {
 
         Predicate<BlockPos> selectionPredicate = this.createSelectionRangePredicate();
         Predicate<BlockPos> reachPredicate = this.createScanReachPredicate();
-        return () -> new Iterator<>() {
-            private final Iterator<BlockPos> sourceIterator =
-                    createSourceIterator(scanSourceBoxes, reachPredicate, selectionPredicate);
-            private BlockPos next;
-            private boolean prepared;
-            private boolean nextAvailable;
-
-            private void prepare() {
-                if (this.prepared) {
-                    return;
-                }
-                this.prepared = true;
-                if (this.sourceIterator.hasNext()) {
-                    this.next = this.sourceIterator.next();
-                    this.nextAvailable = true;
-                }
-            }
-
-            @Override
-            public boolean hasNext() {
-                this.prepare();
-                return this.nextAvailable;
-            }
-
-            @Override
-            public BlockPos next() {
-                if (!this.hasNext()) {
-                    throw new NoSuchElementException();
-                }
-                BlockPos result = this.next;
-                this.next = null;
-                this.prepared = false;
-                this.nextAvailable = false;
-                return result;
-            }
-        };
+        return new PrefetchedCandidateIterable(
+                () -> this.createSourceIterator(scanSourceBoxes, reachPredicate, selectionPredicate)
+        );
     }
 
     private Iterator<BlockPos> createSourceIterator(

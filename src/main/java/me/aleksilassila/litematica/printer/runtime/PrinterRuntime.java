@@ -16,10 +16,12 @@ import me.aleksilassila.litematica.printer.printer.action.ActionBroker;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
+import me.aleksilassila.litematica.printer.utils.InventoryMessageCooldown;
 import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
 import me.aleksilassila.litematica.printer.integration.inventory.MaterialRequestCoordinator;
 import me.aleksilassila.litematica.printer.integration.inventory.PlayerInventoryProvider;
 import me.aleksilassila.litematica.printer.integration.inventory.TakeItOutAdapter;
+import me.aleksilassila.litematica.printer.integration.litematica.LitematicaAdapter;
 import me.aleksilassila.litematica.printer.integration.quickshulker.QuickShulkerAdapter;
 import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockEngine;
 import net.minecraft.client.Minecraft;
@@ -30,8 +32,6 @@ import java.util.List;
  * Existing handlers remain behind the legacy facade while they are migrated.
  */
 public final class PrinterRuntime {
-    private static final PrinterRuntime INSTANCE = new PrinterRuntime();
-
     private final RuntimeEventBus events = new RuntimeEventBus();
     private final RuntimeScope scope = new RuntimeScope();
     private RuntimeEpoch epoch = RuntimeEpoch.INITIAL;
@@ -52,18 +52,23 @@ public final class PrinterRuntime {
     private final HudStatsManager hudStats;
     private final QuickShulkerAdapter quickShulkerAdapter;
     private final InventorySwitchGuard inventorySwitchGuard;
+    private final InventoryMessageCooldown inventoryMessageCooldown;
+    private final LitematicaAdapter litematica;
 
-    private PrinterRuntime() {
+    public PrinterRuntime() {
         Minecraft client = Minecraft.getInstance();
         this.cooldownUtils = new CooldownUtils();
         this.scope.register(this.cooldownUtils);
-        this.bedrockEngine = new BedrockEngine(client, this.cooldownUtils, this::currentTick);
+        this.litematica = new LitematicaAdapter();
+        this.bedrockEngine = new BedrockEngine(client, this.cooldownUtils, this::currentTick, this.litematica);
         this.scope.register(new MinecraftInteractionRuntime(client));
         this.scope.register(this.bedrockEngine);
         this.actionBroker = new ActionBroker(this, new ActionManager());
         this.scope.register(this.actionBroker);
-        this.inventorySwitchGuard = new InventorySwitchGuard(client, this.actionBroker, this::currentTick);
+        this.inventorySwitchGuard = new InventorySwitchGuard(client, this::currentTick);
         this.scope.register(new InventorySwitchRuntime(this.inventorySwitchGuard));
+        this.inventoryMessageCooldown = new InventoryMessageCooldown();
+        this.scope.register(this.inventoryMessageCooldown);
         this.scanEngine = new ScanEngine(this);
         this.scope.register(this.scanEngine);
         this.inventoryAvailability = new InventoryAvailabilityTracker();
@@ -79,10 +84,6 @@ public final class PrinterRuntime {
         this.quickShulkerAdapter = new QuickShulkerAdapter(this.actionBroker);
         this.scope.register(this.quickShulkerAdapter);
         this.modules = new FeatureModuleSet(this);
-    }
-
-    public static PrinterRuntime get() {
-        return INSTANCE;
     }
 
     public RuntimeEpoch epoch() {
@@ -143,6 +144,14 @@ public final class PrinterRuntime {
 
     public InventorySwitchGuard inventorySwitchGuard() {
         return this.inventorySwitchGuard;
+    }
+
+    public InventoryMessageCooldown inventoryMessageCooldown() {
+        return this.inventoryMessageCooldown;
+    }
+
+    public LitematicaAdapter litematica() {
+        return this.litematica;
     }
 
     public Minecraft client() {

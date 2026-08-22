@@ -3,8 +3,10 @@ package me.aleksilassila.litematica.printer.handler.handlers.bedrock;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
+import me.aleksilassila.litematica.printer.handler.scan.ScanAvailability;
+import me.aleksilassila.litematica.printer.handler.scan.ScanCandidateIterable;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
-import me.aleksilassila.litematica.printer.utils.mods.LitematicaUtils;
+import me.aleksilassila.litematica.printer.integration.litematica.LitematicaAdapter;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -22,17 +24,14 @@ public final class BedrockCandidatePlanner {
     private static final int CANDIDATE_COLLECT_CAP = CANDIDATE_SOFT_CAP * 4;
     private static final int UNLIMITED_SCAN_SLICE = 4096;
     private static final int MAX_SCAN_SLICE = 32768;
-    /**
-     * 单 tick 内允许执行的"重型建模"(buildCandidate:layout 查找 + 双火把探测 + 13 格调度惩罚 + 6 邻居检测)次数上限。
-     * 廉价过滤(空气/非基岩/冷却)不计入此预算。大交互距离下命中的基岩极多,若不设上限会在单 tick 内对成百上千个基岩
-     */
-    private static final int MODELING_BUDGET_PER_TICK = 128;
     private final ScanEngine scanEngine;
+    private final LitematicaAdapter litematica;
     private final BedrockCandidateBacklog<CandidateInfo> candidateBacklog =
             new BedrockCandidateBacklog<>(CANDIDATE_COLLECT_CAP);
 
-    public BedrockCandidatePlanner(ScanEngine scanEngine) {
+    public BedrockCandidatePlanner(ScanEngine scanEngine, LitematicaAdapter litematica) {
         this.scanEngine = scanEngine;
+        this.litematica = litematica;
     }
 
     public Iterable<BlockPos> iterable(PrinterBox sourceBox, ClientLevel level, LocalPlayer player, int maxEffectiveExecutions, int scanGuardLimit) {
@@ -131,7 +130,7 @@ public final class BedrockCandidatePlanner {
     private void pruneCandidateBacklog(PrinterBox sourceBox, ClientLevel level) {
         this.candidateBacklog.removeIf((pos, ignored) -> !sourceBox.contains(pos)
                 || !BedrockEnvironment.canInteract(pos)
-                || !LitematicaUtils.isWithinSelection1ModeRange(pos)
+                || !this.litematica.isWithinSelectionRange(pos)
                 || !BedrockTargetBlocks.isTargetBlock(level.getBlockState(pos)));
     }
 
@@ -146,7 +145,7 @@ public final class BedrockCandidatePlanner {
             return new CandidateShard(List.of(), true);
         }
         int scanLimit = this.getCandidateScanLimit(scanGuardLimit);
-        Iterator<BlockPos> iterator = this.scanEngine.iterable(
+        Iterable<BlockPos> source = this.scanEngine.iterable(
                 "bedrock",
                 sourceBox,
                 level,
@@ -155,30 +154,33 @@ public final class BedrockCandidatePlanner {
                 scanLimit,
                 ScanIntent.MINE,
                 pos -> this.passesCheapFilters(level, pos) && !this.candidateBacklog.contains(pos)
-        ).iterator();
+        );
+        Iterator<BlockPos> iterator = source.iterator();
         List<CandidateInfo> verticalCandidates = new ArrayList<>();
         List<CandidateInfo> sideCandidates = new ArrayList<>();
         boolean allowSide = Configs.Bedrock.BEDROCK_ALLOW_SIDE.getBooleanValue();
         int scanned = 0;
         int modeled = 0;
         boolean hasMoreSource = false;
+        long modelingStart = System.nanoTime();
+        long modelingBudgetNanos = Math.max(1L, Configs.Core.SCAN_TIME_BUDGET_MS.getIntegerValue()) * 1_000_000L;
 
         while (scanned < scanLimit
                 && verticalCandidates.size() + sideCandidates.size() < collectCapacity) {
-            // 单 tick 重型建模预算用尽时停止本 tick 扫描,剩余位置由入口扫描会话在下一 tick 续扫,
-            // 避免大 box 下一次性建模成百上千个基岩造成的卡顿"一阵一阵"。
-            if (modeled >= MODELING_BUDGET_PER_TICK) {
+            // Always model at least one candidate so a very small budget cannot
+            // deadlock progress. After that, yield cooperatively to the next tick.
+            if (modeled > 0 && System.nanoTime() - modelingStart >= modelingBudgetNanos) {
                 hasMoreSource = true;
                 break;
             }
             if (!iterator.hasNext()) {
+                if (source instanceof ScanCandidateIterable scanSource
+                        && scanSource.availability() == ScanAvailability.WAITING_FOR_BATCH) {
+                    hasMoreSource = true;
+                }
                 break;
             }
             BlockPos pos = iterator.next();
-            if (pos == null) {
-                hasMoreSource = true;
-                break;
-            }
             scanned++;
             modeled++;
             CandidateInfo candidate = this.buildModeledCandidate(level, pos, allowSide);
@@ -208,7 +210,7 @@ public final class BedrockCandidatePlanner {
         if (pos == null || !BedrockEnvironment.canInteract(pos)) {
             return false;
         }
-        if (!LitematicaUtils.isWithinSelection1ModeRange(pos)) {
+        if (!this.litematica.isWithinSelectionRange(pos)) {
             return false;
         }
         if (!BedrockTargetBlocks.isTargetBlock(level.getBlockState(pos))) {

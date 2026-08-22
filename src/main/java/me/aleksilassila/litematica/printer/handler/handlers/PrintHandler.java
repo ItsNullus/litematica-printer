@@ -1,7 +1,6 @@
 package me.aleksilassila.litematica.printer.handler.handlers;
 
 import com.google.common.collect.Iterables;
-import fi.dy.masa.litematica.world.SchematicWorldHandler;
 import fi.dy.masa.litematica.world.WorldSchematic;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.enums.PrintModeType;
@@ -53,7 +52,8 @@ public class PrintHandler extends FeatureModuleBase {
                 this.cooldownUtils,
                 runtime.inventorySwitchGuard(),
                 this.hudStats,
-                this.missingMaterials);
+                this.missingMaterials,
+                this.litematica);
     }
 
     public SchematicBlockContext getContext() {
@@ -62,7 +62,7 @@ public class PrintHandler extends FeatureModuleBase {
 
     @Override
     protected int getTickInterval() {
-        WorldSchematic schematic = SchematicWorldHandler.getSchematicWorld();
+        WorldSchematic schematic = this.litematica.schematicWorld();
         if (this.printTasks.hasActiveTask()
                 && !this.printTasks.isWaitingForWorldUpdate(level, schematic)) {
             return 0;
@@ -113,7 +113,7 @@ public class PrintHandler extends FeatureModuleBase {
 
     @Override
     protected Iterable<BlockPos> getIterationPositions(PrinterBox playerInteractionBox) {
-        WorldSchematic schematic = SchematicWorldHandler.getSchematicWorld();
+        WorldSchematic schematic = this.litematica.schematicWorld();
         BlockPos activeTaskPos = this.printTasks.getActiveTargetPos(level, schematic);
         boolean taskWaitingForWorld = activeTaskPos != null
                 && this.printTasks.isWaitingForWorldUpdate(level, schematic);
@@ -151,7 +151,7 @@ public class PrintHandler extends FeatureModuleBase {
     public boolean canIterationBlockPos(BlockPos blockPos) {
         this.action = null;
         this.printTaskAction = null;
-        WorldSchematic schematic = SchematicWorldHandler.getSchematicWorld();
+        WorldSchematic schematic = this.litematica.schematicWorld();
         if (schematic == null) return false;
         if (this.hudStats.isPrintPlacementPending(blockPos)) {
             return false;

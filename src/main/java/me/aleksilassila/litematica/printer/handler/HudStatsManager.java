@@ -4,7 +4,7 @@ import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
 import me.aleksilassila.litematica.printer.printer.RttReplayController;
-import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
+import me.aleksilassila.litematica.printer.runtime.RuntimeAccess;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.state.BlockState;
@@ -44,7 +44,7 @@ public final class HudStatsManager implements RuntimeComponent {
     }
 
     public static HudStatsManager getRuntime() {
-        return PrinterRuntime.get().hudStats();
+        return RuntimeAccess.get().hudStats();
     }
 
     public void resetAll() {

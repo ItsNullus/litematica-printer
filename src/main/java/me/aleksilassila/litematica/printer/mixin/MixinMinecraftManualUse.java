@@ -1,7 +1,7 @@
 package me.aleksilassila.litematica.printer.mixin;
 
 import me.aleksilassila.litematica.printer.config.Configs;
-import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
+import me.aleksilassila.litematica.printer.runtime.RuntimeAccess;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.level.block.AnvilBlock;
 import net.minecraft.world.phys.BlockHitResult;
@@ -22,7 +22,7 @@ public abstract class MixinMinecraftManualUse {
         if (client.level != null
                 && client.hitResult instanceof BlockHitResult blockHit
                 && client.level.getBlockState(blockHit.getBlockPos()).getBlock() instanceof AnvilBlock) {
-            PrinterRuntime.get().actionBroker().prioritizeManualAnvilScreen();
+            RuntimeAccess.get().actionBroker().prioritizeManualAnvilScreen();
         }
     }
 }

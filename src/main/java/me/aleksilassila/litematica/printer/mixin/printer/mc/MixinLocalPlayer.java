@@ -4,7 +4,7 @@ import com.mojang.authlib.GameProfile;
 import fi.dy.masa.litematica.world.SchematicWorldHandler;
 import fi.dy.masa.litematica.world.WorldSchematic;
 import me.aleksilassila.litematica.printer.config.Configs;
-import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
+import me.aleksilassila.litematica.printer.runtime.RuntimeAccess;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
@@ -49,7 +49,7 @@ public class MixinLocalPlayer extends AbstractClientPlayer {
     @Inject(at = @At("HEAD"), method = "resetPos")
     public void init(CallbackInfo ci) {
         if (!this.litematica_printer$runtimeResetDone) {
-            PrinterRuntime.get().reset("local_player_init");
+            RuntimeAccess.get().reset("local_player_init");
             this.litematica_printer$runtimeResetDone = true;
         }
     }
@@ -71,7 +71,7 @@ public class MixinLocalPlayer extends AbstractClientPlayer {
             return;
         }
         getTargetSignEntity(sign)
-                .filter(signBlockEntity -> PrinterRuntime.get().actionBroker().consumePrintSignEdit(sign.getBlockPos()))
+                .filter(signBlockEntity -> RuntimeAccess.get().actionBroker().consumePrintSignEdit(sign.getBlockPos()))
                 .ifPresent(signBlockEntity ->
         {
             //#if MC > 11904

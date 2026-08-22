@@ -1,6 +1,7 @@
 package me.aleksilassila.litematica.printer.printer.action;
 
 import me.aleksilassila.litematica.printer.core.action.ActionCoordinator;
+import me.aleksilassila.litematica.printer.core.action.ActionResult;
 import me.aleksilassila.litematica.printer.core.action.ActionRequest;
 import me.aleksilassila.litematica.printer.core.action.ActionTransaction;
 import me.aleksilassila.litematica.printer.core.action.ConfirmationPolicy;
@@ -107,6 +108,18 @@ public final class ActionBroker implements RuntimeComponent, ActionPort {
     }
 
     public SendResult sendQueue(@Nullable LocalPlayer player) {
+        if (this.activeTransaction != null) {
+            ActionResult state = this.activeTransaction.poll(
+                    this.runtime.epoch(),
+                    this.runtime.currentTick(),
+                    System.nanoTime()
+            );
+            if (state == ActionResult.FAILED || state == ActionResult.STALE) {
+                this.delegate.cancelQueue();
+                this.releaseActiveTicket();
+                return SendResult.NO_QUEUED_ACTION;
+            }
+        }
         ActionManager.SendResult delegateResult = this.delegate.sendQueue(player);
         SendResult result = from(delegateResult);
         if (!result.isWaiting()) {

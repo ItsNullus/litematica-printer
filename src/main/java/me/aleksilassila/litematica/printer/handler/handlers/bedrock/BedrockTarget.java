@@ -30,15 +30,52 @@ public class BedrockTarget implements BedrockTargetStatusResolver.Host, BedrockT
     private final BedrockTargetMachine machine;
     private final BedrockTargetActionExecutor actionExecutor;
     private final BedrockTargetLifecycle lifecycle;
+    private final BedrockCriticalExecutor criticalExecutor;
+    private final BedrockPlacer placer;
     private final BedrockTargetState state = new BedrockTargetState();
 
     public BedrockTarget(BlockPos bedrockPos, ClientLevel level) {
-        this(bedrockPos, level, null, null, null);
+        this(bedrockPos, level, new BedrockPlacer(net.minecraft.client.Minecraft.getInstance()));
     }
 
     public BedrockTarget(BlockPos bedrockPos, ClientLevel level, BedrockMachineLayout precomputedLayout, BedrockTorchPlacement precomputedPlacement, BlockPos precomputedSlimePos) {
+        this(bedrockPos, level, precomputedLayout, precomputedPlacement, precomputedSlimePos,
+                new BedrockPlacer(net.minecraft.client.Minecraft.getInstance()));
+    }
+
+    BedrockTarget(BlockPos bedrockPos, ClientLevel level, BedrockCriticalExecutor criticalExecutor, BedrockPlacer placer) {
+        this(bedrockPos, level, null, null, null, criticalExecutor, placer);
+    }
+
+    private BedrockTarget(BlockPos bedrockPos, ClientLevel level, BedrockPlacer placer) {
+        this(bedrockPos, level, null, null, null, new BedrockCriticalExecutor(placer), placer);
+    }
+
+    private BedrockTarget(
+            BlockPos bedrockPos,
+            ClientLevel level,
+            BedrockMachineLayout precomputedLayout,
+            BedrockTorchPlacement precomputedPlacement,
+            BlockPos precomputedSlimePos,
+            BedrockPlacer placer
+    ) {
+        this(bedrockPos, level, precomputedLayout, precomputedPlacement, precomputedSlimePos,
+                new BedrockCriticalExecutor(placer), placer);
+    }
+
+    BedrockTarget(
+            BlockPos bedrockPos,
+            ClientLevel level,
+            BedrockMachineLayout precomputedLayout,
+            BedrockTorchPlacement precomputedPlacement,
+            BlockPos precomputedSlimePos,
+            BedrockCriticalExecutor criticalExecutor,
+            BedrockPlacer placer
+    ) {
         this.bedrockPos = bedrockPos;
         this.level = level;
+        this.criticalExecutor = criticalExecutor;
+        this.placer = placer;
         this.layout = precomputedLayout != null ? precomputedLayout : BedrockMachineLayout.find(level, bedrockPos);
         this.pistonPos = this.layout == null ? bedrockPos.above() : this.layout.getPistonPos();
         this.headPos = this.layout == null ? this.pistonPos.above() : this.layout.getHeadPos();
@@ -46,7 +83,7 @@ public class BedrockTarget implements BedrockTargetStatusResolver.Host, BedrockT
         this.footprint = new BedrockTargetFootprint(level, bedrockPos, this.pistonPos, this.headPos);
         this.machine = new BedrockTargetMachine(
                 level, this.layout, bedrockPos, this.pistonPos, this.headPos,
-                this.footprint, precomputedPlacement, precomputedSlimePos);
+                this.footprint, precomputedPlacement, precomputedSlimePos, placer);
         BedrockTargetStatusResolver statusResolver = new BedrockTargetStatusResolver(this);
         this.actionExecutor = new BedrockTargetActionExecutor(this);
         this.lifecycle = new BedrockTargetLifecycle(
@@ -108,6 +145,10 @@ public class BedrockTarget implements BedrockTargetStatusResolver.Host, BedrockT
         this.lifecycle.updateStatus();
         this.actionExecutor.execute(allowExecute, allowInitialize);
         return this.state.status();
+    }
+
+    boolean hasPendingHorizontalLook() {
+        return this.criticalExecutor.placer().hasPendingHorizontalLook(this.pistonPos);
     }
 
     public Status refreshStatusOnly() {
@@ -366,6 +407,16 @@ public class BedrockTarget implements BedrockTargetStatusResolver.Host, BedrockT
     @Override
     public boolean conservativeSync() {
         return this.conservativeSync;
+    }
+
+    @Override
+    public BedrockCriticalExecutor criticalExecutor() {
+        return this.criticalExecutor;
+    }
+
+    @Override
+    public BedrockPlacer placer() {
+        return this.placer;
     }
 
     @Override

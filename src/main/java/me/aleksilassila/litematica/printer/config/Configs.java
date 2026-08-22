@@ -22,7 +22,6 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.function.BooleanSupplier;
 
 public class Configs extends ConfigBuilders implements IConfigHandler {
     private static final Configs INSTANCE = new Configs();
@@ -31,21 +30,6 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
     private static final File CONFIG_DIR = new File("./config");
 
     private static final KeybindSettings GUI_NO_ORDER = KeybindSettings.create(KeybindSettings.Context.GUI, KeyAction.PRESS, false, false, false, true);
-
-    // 配置页面是否可视(函数式, 动态获取, 全局统一使用)
-    private static final BooleanSupplier isSingle = () -> Core.WORK_MODE.getOptionListValue().equals(WorkingModeType.SINGLE);
-    private static final BooleanSupplier isMulti = () -> Core.WORK_MODE.getOptionListValue().equals(WorkingModeType.MULTI);
-
-    private static final BooleanSupplier isBreakCustom = () -> Break.BREAK_LIMITER.getOptionListValue().equals(ExcavateListMode.CUSTOM);
-    private static final BooleanSupplier isBreakWhitelist = () -> isBreakCustom.getAsBoolean() && Break.BREAK_LIMIT.getOptionListValue().equals(UsageRestriction.ListType.WHITELIST);
-    private static final BooleanSupplier isBreakBlacklist = () -> isBreakCustom.getAsBoolean() && Break.BREAK_LIMIT.getOptionListValue().equals(UsageRestriction.ListType.BLACKLIST);
-
-
-    private static final BooleanSupplier isExcavateCustom = () -> Mine.EXCAVATE_LIMITER.getOptionListValue().equals(ExcavateListMode.CUSTOM);
-    private static final BooleanSupplier isExcavateWhitelist = () -> isExcavateCustom.getAsBoolean() && Mine.EXCAVATE_LIMIT.getOptionListValue().equals(UsageRestriction.ListType.WHITELIST);
-    private static final BooleanSupplier isExcavateBlacklist = () -> isExcavateCustom.getAsBoolean() && Mine.EXCAVATE_LIMIT.getOptionListValue().equals(UsageRestriction.ListType.BLACKLIST);
-    private static final BooleanSupplier isBlocklist = () -> Fill.FILL_BLOCK_MODE.getOptionListValue().equals(FillBlockModeType.BLOCKLIST);
-
 
     public static final ImmutableList<IConfigBase> OPTIONS;
     public static final ImmutableList<IHotkey> HOTKEYS;
@@ -75,6 +59,14 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
     }
 
     public static class Core {
+        private static boolean isSingleMode() {
+            return WORK_MODE.getOptionListValue().equals(WorkingModeType.SINGLE);
+        }
+
+        private static boolean isMultiMode() {
+            return WORK_MODE.getOptionListValue().equals(WorkingModeType.MULTI);
+        }
+
         // 打印状态
         public static final ConfigBooleanHotkeyed WORK_SWITCH = booleanHotkey("workingSwitch")
                 .defaultValue(false)
@@ -90,31 +82,31 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
         // 多模 - 打印
         public static final ConfigBooleanHotkeyed PRINT = booleanHotkey("print")
                 .defaultValue(false)
-                .setVisible(isMulti) // 仅多模式时显示
+                .setVisible(Core::isMultiMode) // 仅多模式时显示
                 .build();
 
         // 多模 - 挖掘
         public static final ConfigBooleanHotkeyed MINE = booleanHotkey("mine")
                 .defaultValue(false)
-                .setVisible(isMulti) // 仅多模式时显示
+                .setVisible(Core::isMultiMode) // 仅多模式时显示
                 .build();
 
         // 多模 - 填充
         public static final ConfigBooleanHotkeyed FILL = booleanHotkey("fill")
                 .defaultValue(false)
-                .setVisible(isMulti) // 仅多模式时显示
+                .setVisible(Core::isMultiMode) // 仅多模式时显示
                 .build();
 
         // 多模 - 排流体
         public static final ConfigBooleanHotkeyed FLUID = booleanHotkey("fluid")
                 .defaultValue(false)
-                .setVisible(isMulti) // 仅多模式时显示
+                .setVisible(Core::isMultiMode) // 仅多模式时显示
                 .build();
 
         // 核心 - 单模模式
         public static final ConfigOptionList WORK_MODE_TYPE = optionList("printerMode")
                 .defaultValue(PrintModeType.PRINTER)
-                .setVisible(isSingle) // 仅单模式时显示
+                .setVisible(Core::isSingleMode) // 仅单模式时显示
                 .build();
 
         // 核心 - 工作半径
@@ -311,6 +303,18 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
     }
 
     public static class Break {
+        private static boolean isCustom() {
+            return BREAK_LIMITER.getOptionListValue().equals(ExcavateListMode.CUSTOM);
+        }
+
+        private static boolean isWhitelist() {
+            return isCustom() && BREAK_LIMIT.getOptionListValue().equals(UsageRestriction.ListType.WHITELIST);
+        }
+
+        private static boolean isBlacklist() {
+            return isCustom() && BREAK_LIMIT.getOptionListValue().equals(UsageRestriction.ListType.BLACKLIST);
+        }
+
         public static final ConfigBoolean BREAK_USE_DELAYED_DESTROY = bool("breakUseDelayedDestroy")
                 .defaultValue(false)
                 .build();
@@ -351,17 +355,17 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
         // 模式限制
         public static final ConfigOptionList BREAK_LIMIT = optionList("breakLimit")
                 .defaultValue(UsageRestriction.ListType.NONE)
-                .setVisible(isBreakCustom)
+                .setVisible(Break::isCustom)
                 .build();
 
         // 白名单
         public static final ConfigStringList BREAK_WHITELIST = stringList("breakWhitelist")
-                .setVisible(isBreakWhitelist)
+                .setVisible(Break::isWhitelist)
                 .build();
 
         // 黑名单
         public static final ConfigStringList BREAK_BLACKLIST = stringList("breakBlacklist")
-                .setVisible(isBreakBlacklist)
+                .setVisible(Break::isBlacklist)
                 .build();
 
         public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
@@ -571,6 +575,18 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
     }
 
     public static class Mine {
+        private static boolean isCustom() {
+            return EXCAVATE_LIMITER.getOptionListValue().equals(ExcavateListMode.CUSTOM);
+        }
+
+        private static boolean isWhitelist() {
+            return isCustom() && EXCAVATE_LIMIT.getOptionListValue().equals(UsageRestriction.ListType.WHITELIST);
+        }
+
+        private static boolean isBlacklist() {
+            return isCustom() && EXCAVATE_LIMIT.getOptionListValue().equals(UsageRestriction.ListType.BLACKLIST);
+        }
+
         // 选区类型
         public static final ConfigOptionList MINE_SELECTION_TYPE = optionList("mineSelectionType")
                 .defaultValue(SelectionType.LITEMATICA_SELECTION)
@@ -584,17 +600,17 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
         // 挖掘模式限制
         public static final ConfigOptionList EXCAVATE_LIMIT = optionList("excavateLimit")
                 .defaultValue(UsageRestriction.ListType.NONE)
-                .setVisible(isExcavateCustom)
+                .setVisible(Mine::isCustom)
                 .build();
 
         // 挖掘白名单
         public static final ConfigStringList EXCAVATE_WHITELIST = stringList("excavateWhitelist")
-                .setVisible(isExcavateWhitelist)
+                .setVisible(Mine::isWhitelist)
                 .build();
 
         // 挖掘黑名单
         public static final ConfigStringList EXCAVATE_BLACKLIST = stringList("excavateBlacklist")
-                .setVisible(isExcavateBlacklist)
+                .setVisible(Mine::isBlacklist)
                 .build();
 
         public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
@@ -607,6 +623,10 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
     }
 
     public static class Fill {
+        private static boolean isBlocklist() {
+            return FILL_BLOCK_MODE.getOptionListValue().equals(FillBlockModeType.BLOCKLIST);
+        }
+
         // 选区类型
         public static final ConfigOptionList FILL_SELECTION_TYPE = optionList("fillSelectionType")
                 .defaultValue(SelectionType.LITEMATICA_SELECTION)
@@ -620,7 +640,7 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
         // 填充方块名单
         public static final ConfigStringList FILL_BLOCK_LIST = stringList("fillBlockList")
                 .defaultValue(Blocks.COBBLESTONE)
-                .setVisible(isBlocklist)
+                .setVisible(Fill::isBlocklist)
                 .build();
 
         // 模式朝向
@@ -680,13 +700,13 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
         // 切换模式
         public static final ConfigHotkey SWITCH_PRINTER_MODE = hotkey("switchPrinterMode")
                 .bindConfig(Core.WORK_MODE_TYPE)
-                .setVisible(isSingle) // 仅单模式时显示
+                .setVisible(Core::isSingleMode) // 仅单模式时显示
                 .build();
 
         // 破基岩
         public static final ConfigBooleanHotkeyed BEDROCK = booleanHotkey("bedrock")
                 .defaultValue(false)
-                .setVisible(isMulti) // 仅多模式时显示
+                .setVisible(Core::isMultiMode) // 仅多模式时显示
                 .build();
 
         public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(

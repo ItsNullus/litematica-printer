@@ -2,7 +2,7 @@ package me.aleksilassila.litematica.printer.handler.handlers.bedrock;
 
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
-import me.aleksilassila.litematica.printer.utils.mods.LitematicaUtils;
+import me.aleksilassila.litematica.printer.integration.litematica.LitematicaAdapter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
@@ -30,6 +30,9 @@ final class BedrockAdmissionController {
     private final BedrockRunStats stats;
     private final CooldownUtils cooldownUtils;
     private final LongSupplier tickClock;
+    private final BedrockCriticalExecutor criticalExecutor;
+    private final BedrockPlacer placer;
+    private final LitematicaAdapter litematica;
     private final BedrockExposureGate<BlockPos> exposureGate =
             new BedrockExposureGate<>(MAX_VERTICAL_EXPOSURE_DEFERS);
     private final BedrockScanActivityPolicy scanActivity = new BedrockScanActivityPolicy();
@@ -45,7 +48,10 @@ final class BedrockAdmissionController {
             BedrockCleanupCoordinator cleanup,
             BedrockRunStats stats,
             CooldownUtils cooldownUtils,
-            LongSupplier tickClock
+            LongSupplier tickClock,
+            BedrockCriticalExecutor criticalExecutor,
+            BedrockPlacer placer,
+            LitematicaAdapter litematica
     ) {
         this.client = client;
         this.targets = targets;
@@ -53,6 +59,9 @@ final class BedrockAdmissionController {
         this.stats = stats;
         this.cooldownUtils = cooldownUtils;
         this.tickClock = tickClock;
+        this.criticalExecutor = criticalExecutor;
+        this.placer = placer;
+        this.litematica = litematica;
         this.schedulingProbe = new BedrockSchedulingProbe(client, targets, cleanup);
     }
 
@@ -127,8 +136,8 @@ final class BedrockAdmissionController {
                 this.tickClock.getAsLong()
         );
         BedrockTarget target = plan != null
-                ? new BedrockTarget(stablePos, level, plan.layout(), plan.placement(), plan.slimePos())
-                : new BedrockTarget(stablePos, level);
+                ? new BedrockTarget(stablePos, level, plan.layout(), plan.placement(), plan.slimePos(), this.criticalExecutor, this.placer)
+                : new BedrockTarget(stablePos, level, this.criticalExecutor, this.placer);
         if (target.getStatus() == BedrockTarget.Status.FAILED) {
             this.stats.lastReason = "target_failed_on_create";
             this.setRetryCooldown(stablePos, SUBMIT_RETRY_COOLDOWN_TICKS);
@@ -251,7 +260,7 @@ final class BedrockAdmissionController {
     }
 
     void purgeTargetsOutsideSelection() {
-        this.targets.removeOutsideSelection(BedrockAdmissionController::isWithinActiveSelection, target -> {
+        this.targets.removeOutsideSelection(this::isWithinActiveSelection, target -> {
             for (BlockPos tempPos : target.getCleanupPositions()) {
                 this.cleanup.cleanupBlockOrQueue(tempPos, false, this.targets::isReserved);
             }
@@ -382,8 +391,8 @@ final class BedrockAdmissionController {
         return pos == null ? null : pos.immutable();
     }
 
-    private static boolean isWithinActiveSelection(BlockPos pos) {
-        return pos != null && LitematicaUtils.isWithinSelection1ModeRange(pos);
+    private boolean isWithinActiveSelection(BlockPos pos) {
+        return pos != null && this.litematica.isWithinSelectionRange(pos);
     }
 
     private record AcceptProbe(boolean accepted, String reason) {

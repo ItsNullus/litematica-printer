@@ -16,18 +16,21 @@ final class BedrockTargetExecutor {
     private final BedrockTargetRegistry targets;
     private final BedrockCleanupCoordinator cleanup;
     private final BedrockRunStats stats;
+    private final BedrockPlacer placer;
     private final BiConsumer<BlockPos, Integer> retryCooldown;
 
     BedrockTargetExecutor(
             BedrockTargetRegistry targets,
             BedrockCleanupCoordinator cleanup,
             BedrockRunStats stats,
-            BiConsumer<BlockPos, Integer> retryCooldown
+            BiConsumer<BlockPos, Integer> retryCooldown,
+            BedrockPlacer placer
     ) {
         this.targets = targets;
         this.cleanup = cleanup;
         this.stats = stats;
         this.retryCooldown = retryCooldown;
+        this.placer = placer;
     }
 
     int process(
@@ -83,7 +86,7 @@ final class BedrockTargetExecutor {
                     || retireOnSuccessfulRetracting) {
                 this.cleanupTarget(iterator, target, null, level);
             } else if (target.isHorizontalLayout()
-                    && BedrockPlacer.hasPendingHorizontalLook(target.getPistonPos())) {
+                    && target.hasPendingHorizontalLook()) {
                 processedTargets.add(target);
                 break;
             } else {
@@ -124,7 +127,7 @@ final class BedrockTargetExecutor {
             this.stats.lastReason = "stuck";
         }
         if (target.isHorizontalLayout()) {
-            BedrockPlacer.clearHorizontalLookState();
+            this.placer.clearHorizontalLookState();
         }
         iterator.remove();
         for (BlockPos tempPos : target.getCleanupPositions()) {

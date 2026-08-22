@@ -9,10 +9,13 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.function.Supplier;
 
 final class OrderedStorageController {
     private static final int RESTORE_TIMEOUT_TICKS = 40;
@@ -21,11 +24,17 @@ final class OrderedStorageController {
     private static final int EMERGENCY_FREE_SLOTS = 1;
     private static final int RECENT_USE_PROTECTION_TICKS = 40;
     private static final int IDLE_RESTORE_DELAY_TICKS = 100;
-    private static final Minecraft client = Minecraft.getInstance();
-    private static final List<OrderedStorageEntry> trackedItems = new ArrayList<>();
-    private static final RestoreSession<OrderedStorageEntry> RESTORE_SESSION = new RestoreSession<>();
+    private final Minecraft client;
+    private final Supplier<Set<Item>> neededItems;
+    private final List<OrderedStorageEntry> trackedItems = new ArrayList<>();
+    private final RestoreSession<OrderedStorageEntry> restoreSession = new RestoreSession<>();
 
-    public static void newItem(
+    OrderedStorageController(Minecraft client, Supplier<Set<Item>> neededItems) {
+        this.client = client;
+        this.neededItems = neededItems;
+    }
+
+    public void newItem(
             ItemStack itemStack,
             ItemStack sourceShulker,
             int sourceContainerSlot,
@@ -39,8 +48,8 @@ final class OrderedStorageController {
                 || playerInventorySlot >= 36) {
             return;
         }
-        trackedItems.removeIf(statistics -> statistics.playerInventorySlot == playerInventorySlot);
-        trackedItems.add(new OrderedStorageEntry(
+        this.trackedItems.removeIf(statistics -> statistics.playerInventorySlot == playerInventorySlot);
+        this.trackedItems.add(new OrderedStorageEntry(
                 itemStack,
                 sourceShulker,
                 sourceContainerSlot,
@@ -51,9 +60,9 @@ final class OrderedStorageController {
         markPrinterActivity();
     }
 
-    public static void moveTrackedItem(int oldPlayerSlot, int newPlayerSlot) {
+    public void moveTrackedItem(int oldPlayerSlot, int newPlayerSlot) {
         OrderedStorageEntry moved = null;
-        for (OrderedStorageEntry statistics : trackedItems) {
+        for (OrderedStorageEntry statistics : this.trackedItems) {
             if (statistics.playerInventorySlot == oldPlayerSlot) {
                 moved = statistics;
                 break;
@@ -63,31 +72,31 @@ final class OrderedStorageController {
             return;
         }
         if (newPlayerSlot < 0 || newPlayerSlot >= 36) {
-            trackedItems.remove(moved);
-            if (RESTORE_SESSION.pending() == moved) {
+            this.trackedItems.remove(moved);
+            if (this.restoreSession.pending() == moved) {
                 clearPendingRestore();
             }
             return;
         }
         OrderedStorageEntry movedRecord = moved;
-        trackedItems.removeIf(statistics -> statistics != movedRecord
+        this.trackedItems.removeIf(statistics -> statistics != movedRecord
                 && statistics.playerInventorySlot == newPlayerSlot);
         moved.playerInventorySlot = newPlayerSlot;
     }
 
-    public static void onMainHandUse(LocalPlayer player) {
+    public void onMainHandUse(LocalPlayer player) {
         if (player == null) {
             return;
         }
         long currentTick = currentGameTick();
-        RESTORE_SESSION.markActivity(currentTick);
+        this.restoreSession.markActivity(currentTick);
         int selectedSlot = me.aleksilassila.litematica.printer.utils.InventoryUtils
                 .getSelectedSlot(player.getInventory());
         ItemStack mainHandStack = player.getMainHandItem();
         OrderedStorageEntry statistics = OrderedStorageTracking.findAtSlot(
-                trackedItems, selectedSlot, mainHandStack);
+                this.trackedItems, selectedSlot, mainHandStack);
         if (statistics == null) {
-            for (OrderedStorageEntry candidate : trackedItems) {
+            for (OrderedStorageEntry candidate : this.trackedItems) {
                 if (!OrderedStorageTracking.isValid(player, candidate)
                         && OrderedStorageStacks.matches(candidate.itemStack, mainHandStack)) {
                     candidate.playerInventorySlot = selectedSlot;
@@ -105,7 +114,7 @@ final class OrderedStorageController {
      * Keep enough free inventory slots while printing, then return every
      * tracked stack after the printer has been idle for a short period.
      */
-    public static boolean maintainOrderlyStorage() {
+    public boolean maintainOrderlyStorage() {
         LocalPlayer player = client.player;
         if (player == null || client.level == null || client.gameMode == null
                 //#if MC > 260100
@@ -114,74 +123,73 @@ final class OrderedStorageController {
                 || client.screen != null
                 //#endif
                 || !player.containerMenu.equals(player.inventoryMenu)) {
-            return RESTORE_SESSION.hasPending();
+            return this.restoreSession.hasPending();
         }
-        if (RESTORE_SESSION.hasPending()) {
-            if (!RESTORE_SESSION.isWaitingForContainer()) {
+        if (this.restoreSession.hasPending()) {
+            if (!this.restoreSession.isWaitingForContainer()) {
                 openPendingShulker();
             }
             return true;
         }
 
-        OrderedStorageTracking.reconcile(trackedItems, player);
-        if (trackedItems.isEmpty()) {
-            RESTORE_SESSION.clearPressureRecovery();
-            RESTORE_SESSION.clearActivity();
+        OrderedStorageTracking.reconcile(this.trackedItems, player);
+        if (this.trackedItems.isEmpty()) {
+            this.restoreSession.clearPressureRecovery();
+            this.restoreSession.clearActivity();
             return false;
         }
 
         long currentTick = client.level.getGameTime();
-        OrderedStoragePolicy.normalizeActivityTicks(RESTORE_SESSION, trackedItems, currentTick);
+        OrderedStoragePolicy.normalizeActivityTicks(this.restoreSession, this.trackedItems, currentTick);
         int freeSlots = OrderedStoragePolicy.countEmptyInventorySlots(player);
         updatePressureRecovery(freeSlots);
-        if (RESTORE_SESSION.isPressureRecoveryActive()) {
+        if (this.restoreSession.isPressureRecoveryActive()) {
             boolean emergency = freeSlots <= EMERGENCY_FREE_SLOTS;
             return scheduleRestore(player, currentTick, emergency, false);
         }
-        if (!QuickShulkerRequestController
-                .lastNeedItemList.isEmpty()) {
+        if (!this.neededItems.get().isEmpty()) {
             return false;
         }
 
-        if (currentTick - RESTORE_SESSION.lastActivityTick() < IDLE_RESTORE_DELAY_TICKS) {
+        if (currentTick - this.restoreSession.lastActivityTick() < IDLE_RESTORE_DELAY_TICKS) {
             return false;
         }
 
         return scheduleRestore(player, currentTick, false, true);
     }
 
-    public static boolean tryRestoreForInventoryPressure() {
+    public boolean tryRestoreForInventoryPressure() {
         LocalPlayer player = client.player;
         if (player == null || client.level == null || client.gameMode == null
                 || !player.containerMenu.equals(player.inventoryMenu)) {
             return false;
         }
-        OrderedStorageTracking.reconcile(trackedItems, player);
-        if (trackedItems.isEmpty()) {
-            RESTORE_SESSION.clearPressureRecovery();
+        OrderedStorageTracking.reconcile(this.trackedItems, player);
+        if (this.trackedItems.isEmpty()) {
+            this.restoreSession.clearPressureRecovery();
             return false;
         }
         long currentTick = client.level.getGameTime();
-        OrderedStoragePolicy.normalizeActivityTicks(RESTORE_SESSION, trackedItems, currentTick);
+        OrderedStoragePolicy.normalizeActivityTicks(this.restoreSession, this.trackedItems, currentTick);
         int freeSlots = OrderedStoragePolicy.countEmptyInventorySlots(player);
         updatePressureRecovery(freeSlots);
-        return RESTORE_SESSION.isPressureRecoveryActive()
+        return this.restoreSession.isPressureRecoveryActive()
                 && scheduleRestore(player, currentTick, freeSlots <= EMERGENCY_FREE_SLOTS, false);
     }
 
-    public static boolean hasPendingRestore() {
-        return RESTORE_SESSION.hasPending();
+    public boolean hasPendingRestore() {
+        return this.restoreSession.hasPending();
     }
 
-    public static boolean isWaitingForRestoreContainer() {
-        return RESTORE_SESSION.isWaitingForContainer();
+    public boolean isWaitingForRestoreContainer() {
+        return this.restoreSession.isWaitingForContainer();
     }
 
     /**
      * Restore to the original inner slot first, then matching partial stacks, then empty slots.
      */
-    public static void restorePendingItem() {
-        if (!isWaitingForRestoreContainer() || client.player == null || client.gameMode == null) {
+    public void restorePendingItem() {
+        if (!this.isWaitingForRestoreContainer() || client.player == null || client.gameMode == null) {
             return;
         }
         LocalPlayer player = client.player;
@@ -190,8 +198,8 @@ final class OrderedStorageController {
             return;
         }
 
-        OrderedStorageEntry statistics = RESTORE_SESSION.pending();
-        RESTORE_SESSION.stopContainerWait();
+        OrderedStorageEntry statistics = this.restoreSession.pending();
+        this.restoreSession.stopContainerWait();
         int playerMenuSlot = OrderedStorageStacks.findPlayerInventoryMenuSlot(menu, statistics);
         if (playerMenuSlot < 0) {
             finishPendingRestore(false);
@@ -239,8 +247,8 @@ final class OrderedStorageController {
         player.closeContainer();
     }
 
-    public static void tick() {
-        if (!RESTORE_SESSION.tickContainerTimeout()) {
+    public void tick() {
+        if (!this.restoreSession.tickContainerTimeout()) {
             return;
         }
         LocalPlayer player = client.player;
@@ -250,43 +258,43 @@ final class OrderedStorageController {
         }
     }
 
-    public static void reSet() {
-        trackedItems.clear();
-        RESTORE_SESSION.reset();
+    public void reset() {
+        this.trackedItems.clear();
+        this.restoreSession.reset();
     }
 
-    private static long currentGameTick() {
+    private long currentGameTick() {
         return client.level == null ? 0L : client.level.getGameTime();
     }
 
-    private static void markPrinterActivity() {
-        RESTORE_SESSION.markActivity(currentGameTick());
+    private void markPrinterActivity() {
+        this.restoreSession.markActivity(currentGameTick());
     }
 
-    private static void updatePressureRecovery(int freeSlots) {
-        RESTORE_SESSION.updatePressureRecovery(
+    private void updatePressureRecovery(int freeSlots) {
+        this.restoreSession.updatePressureRecovery(
                 freeSlots,
                 PRESSURE_TRIGGER_FREE_SLOTS,
                 PRESSURE_TARGET_FREE_SLOTS
         );
     }
 
-    private static boolean scheduleRestore(
+    private boolean scheduleRestore(
             LocalPlayer player,
             long currentTick,
             boolean allowRecentlyUsed,
             boolean allowCurrentMainHand
     ) {
-        if (RESTORE_SESSION.hasPending()) {
-            if (!RESTORE_SESSION.isWaitingForContainer()) {
+        if (this.restoreSession.hasPending()) {
+            if (!this.restoreSession.isWaitingForContainer()) {
                 openPendingShulker();
             }
             return true;
         }
         OrderedStorageEntry selected = OrderedStoragePolicy.selectRestoreCandidate(
                 player,
-                trackedItems,
-                QuickShulkerRequestController.lastNeedItemList,
+                this.trackedItems,
+                this.neededItems.get(),
                 currentTick,
                 RECENT_USE_PROTECTION_TICKS,
                 allowRecentlyUsed,
@@ -295,30 +303,30 @@ final class OrderedStorageController {
         if (selected == null) {
             return false;
         }
-        RESTORE_SESSION.schedule(selected);
+        this.restoreSession.schedule(selected);
         openPendingShulker();
-        return RESTORE_SESSION.hasPending();
+        return this.restoreSession.hasPending();
     }
 
-    private static void clearPressureRecoveryIfSatisfied() {
+    private void clearPressureRecoveryIfSatisfied() {
         LocalPlayer player = client.player;
         if (player != null
                 && OrderedStoragePolicy.countEmptyInventorySlots(player) >= PRESSURE_TARGET_FREE_SLOTS) {
-            RESTORE_SESSION.clearPressureRecovery();
+            this.restoreSession.clearPressureRecovery();
         }
     }
 
-    private static void openPendingShulker() {
+    private void openPendingShulker() {
         LocalPlayer player = client.player;
-        OrderedStorageEntry pendingRestore = RESTORE_SESSION.pending();
+        OrderedStorageEntry pendingRestore = this.restoreSession.pending();
         if (player == null || client.gameMode == null || pendingRestore == null
-                || RESTORE_SESSION.isWaitingForContainer()
+                || this.restoreSession.isWaitingForContainer()
                 || ModLoadUtils.closeScreen > 0
                 || !player.containerMenu.equals(player.inventoryMenu)) {
             return;
         }
-        OrderedStorageTracking.reconcile(trackedItems, player);
-        if (!trackedItems.contains(pendingRestore)) {
+        OrderedStorageTracking.reconcile(this.trackedItems, player);
+        if (!this.trackedItems.contains(pendingRestore)) {
             clearPendingRestore();
             return;
         }
@@ -335,14 +343,14 @@ final class OrderedStorageController {
             return;
         }
         ModLoadUtils.closeScreen++;
-        RESTORE_SESSION.beginContainerWait(RESTORE_TIMEOUT_TICKS);
+        this.restoreSession.beginContainerWait(RESTORE_TIMEOUT_TICKS);
     }
 
-    private static void finishPendingRestore(boolean success) {
-        OrderedStorageEntry completed = RESTORE_SESSION.pending();
+    private void finishPendingRestore(boolean success) {
+        OrderedStorageEntry completed = this.restoreSession.pending();
         clearPendingRestore();
         if (completed != null) {
-            trackedItems.remove(completed);
+            this.trackedItems.remove(completed);
         }
         if (success) {
             clearPressureRecoveryIfSatisfied();
@@ -352,16 +360,16 @@ final class OrderedStorageController {
         }
     }
 
-    private static void retryPendingRestore() {
-        OrderedStorageEntry pendingRestore = RESTORE_SESSION.pending();
+    private void retryPendingRestore() {
+        OrderedStorageEntry pendingRestore = this.restoreSession.pending();
         if (pendingRestore != null && pendingRestore.shulkerInventoryMenuSlot >= 0) {
             pendingRestore.attemptedShulkerMenuSlots.add(pendingRestore.shulkerInventoryMenuSlot);
         }
-        RESTORE_SESSION.stopContainerWait();
+        this.restoreSession.stopContainerWait();
     }
 
-    private static void clearPendingRestore() {
-        RESTORE_SESSION.clearPending();
+    private void clearPendingRestore() {
+        this.restoreSession.clearPending();
     }
 
 }

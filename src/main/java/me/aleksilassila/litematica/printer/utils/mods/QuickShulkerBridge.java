@@ -2,15 +2,18 @@ package me.aleksilassila.litematica.printer.utils.mods;
 
 import me.aleksilassila.litematica.printer.integration.inventory.MaterialRequest;
 import me.aleksilassila.litematica.printer.integration.inventory.MaterialReservation;
-import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
+import me.aleksilassila.litematica.printer.config.Configs;
+import me.aleksilassila.litematica.printer.runtime.RuntimeAccess;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 /**
  * Compatibility boundary for the historical quick-shulker implementation.
  *
  * <p>The implementation remains unchanged for now. New code should use this
- * bridge instead of depending on the legacy {@code zxy} package directly.</p>
+ * bridge instead of depending on the legacy package directly.</p>
  */
 public final class QuickShulkerBridge {
     private QuickShulkerBridge() {
@@ -26,42 +29,66 @@ public final class QuickShulkerBridge {
         if (item == null) {
             return new MaterialReservation(0L, MaterialReservation.State.UNAVAILABLE);
         }
-        return PrinterRuntime.get().materialRequests().request(item, source);
+        return RuntimeAccess.get().materialRequests().request(item, source);
+    }
+
+    /** Handles the optional inventory fallback for both vanilla and Litematica pick-block hooks. */
+    public static boolean handlePickBlock(LocalPlayer player, Item item) {
+        if (player == null || item == null || item == Items.AIR
+                || !Configs.Core.WORK_SWITCH.getBooleanValue()
+                || player.getAbilities().instabuild
+                || player.isSpectator()
+                || (!Configs.Placement.QUICK_SHULKER.getBooleanValue()
+                    && !TakeItOutUtils.isAutoTakeoutEnabled())
+                || player.inventoryMenu.slots.stream().anyMatch(slot -> slot.getItem().is(item))) {
+            return false;
+        }
+        requestItem(item, MaterialRequest.Source.PICK_BLOCK);
+        switchItem();
+        return true;
+    }
+
+    public static boolean handlePickBlock(LocalPlayer player, ItemStack stack) {
+        if (player == null || stack == null || stack.isEmpty()
+                || ItemStack.isSameItemSameComponents(player.getMainHandItem(), stack)) {
+            return false;
+        }
+        return handlePickBlock(player, stack.getItem());
     }
 
     public static boolean switchItem() {
-        return PrinterRuntime.get().quickShulkerAdapter().switchItem();
+        return RuntimeAccess.get().quickShulkerAdapter().switchItem();
     }
 
     public static boolean hasPendingRequest() {
-        return PrinterRuntime.get().quickShulkerAdapter().hasPendingRequest();
+        return RuntimeAccess.get().quickShulkerAdapter().hasPendingRequest();
     }
 
     public static boolean isOpenHandler() {
-        return PrinterRuntime.get().quickShulkerAdapter().isOpenHandler();
+        return RuntimeAccess.get().quickShulkerAdapter().isOpenHandler();
     }
 
     public static boolean shouldPause() {
-        return PrinterRuntime.get().quickShulkerAdapter().shouldPause();
+        return RuntimeAccess.get().quickShulkerAdapter().shouldPause();
     }
 
     public static boolean shouldSuppressContainerScreen() {
-        return PrinterRuntime.get().quickShulkerAdapter().shouldSuppressContainerScreen();
+        return RuntimeAccess.get().quickShulkerAdapter().shouldSuppressContainerScreen();
     }
 
     public static void onTick() {
-        PrinterRuntime.get().quickShulkerAdapter().tick();
+        RuntimeAccess.get().quickShulkerAdapter().tick();
     }
 
     public static void onInventoryContent() {
-        PrinterRuntime.get().quickShulkerAdapter().onInventoryContent();
+        RuntimeAccess.get().quickShulkerAdapter().onInventoryContent();
     }
 
     public static void onMainHandUse(LocalPlayer player) {
-        PrinterRuntime.get().quickShulkerAdapter().onMainHandUse(player);
+        RuntimeAccess.get().quickShulkerAdapter().onMainHandUse(player);
     }
 
     public static void resetRuntime() {
-        PrinterRuntime.get().quickShulkerAdapter().reset();
+        RuntimeAccess.get().quickShulkerAdapter().reset();
     }
 }

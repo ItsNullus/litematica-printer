@@ -30,6 +30,9 @@ public interface MiningInteractionPort {
 
     boolean matchesDestroyTarget(BlockPos pos);
 
+    /** Whether a client-side inventory/tool switch must settle before mining continues. */
+    boolean isInventorySwitchPending();
+
     void ensureCarriedItemSent();
 
     ServerboundPlayerActionPacket actionPacket(

@@ -22,7 +22,7 @@ public class BedrockHandler extends FeatureModuleBase {
 
     public BedrockHandler(PrinterRuntime runtime) {
         super(runtime, "bedrock", PrintModeType.BEDROCK, Configs.Hotkeys.BEDROCK, null, true);
-        this.candidatePlanner = new BedrockCandidatePlanner(this.scanEngine);
+        this.candidatePlanner = new BedrockCandidatePlanner(this.scanEngine, this.litematica);
     }
 
     @Override

@@ -2,6 +2,7 @@ package me.aleksilassila.litematica.printer.utils.mods;
 
 import net.fabricmc.loader.api.FabricLoader;
 import fi.dy.masa.malilib.util.restrictions.UsageRestriction;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
@@ -25,6 +26,11 @@ public class TweakerooUtils {
     private static @Nullable Object blockTypeBreakRestrictionWhitelist;
     private static @Nullable Method getListTypeMethod;
     private static @Nullable Method getStringsMethod;
+    private static long configCacheTick = Long.MIN_VALUE;
+    private static boolean cachedToolSwitchEnabled;
+    private static boolean cachedSwapAlmostBrokenToolsEnabled;
+    private static boolean cachedDisableBlockBreakCooldownEnabled;
+    private static int cachedItemSwapDurabilityThreshold = FALLBACK_ITEM_SWAP_DURABILITY_THRESHOLD;
 
     static {
         if (FabricLoader.getInstance().isModLoaded("tweakeroo")) {
@@ -80,39 +86,18 @@ public class TweakerooUtils {
      * @return 如果 Tweakeroo 存在且选项启用，则返回 true，否则返回 false。
      */
     public static boolean isToolSwitchEnabled() {
-        if (getBooleanValueMethod == null || tweakToolSwitchEnum == null) {
-            return false;
-        }
-        try {
-            return (boolean) getBooleanValueMethod.invoke(tweakToolSwitchEnum);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return false;
-        }
+        refreshConfigCache();
+        return cachedToolSwitchEnabled;
     }
 
     public static boolean isDisableBlockBreakCooldownEnabled() {
-        if (getBooleanValueMethod == null || disableBlockBreakCooldownConfig == null) {
-            return false;
-        }
-        try {
-            return (boolean) getBooleanValueMethod.invoke(disableBlockBreakCooldownConfig);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return false;
-        }
+        refreshConfigCache();
+        return cachedDisableBlockBreakCooldownEnabled;
     }
 
     public static boolean isSwapAlmostBrokenToolsEnabled() {
-        if (getBooleanValueMethod == null || tweakSwapAlmostBrokenToolsEnum == null) {
-            return false;
-        }
-        try {
-            return (boolean) getBooleanValueMethod.invoke(tweakSwapAlmostBrokenToolsEnum);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return false;
-        }
+        refreshConfigCache();
+        return cachedSwapAlmostBrokenToolsEnabled;
     }
 
     /**
@@ -202,14 +187,51 @@ public class TweakerooUtils {
     }
 
     private static int getItemSwapDurabilityThreshold() {
-        if (getIntegerValueMethod == null || itemSwapDurabilityThresholdConfig == null) {
-            return FALLBACK_ITEM_SWAP_DURABILITY_THRESHOLD;
+        refreshConfigCache();
+        return cachedItemSwapDurabilityThreshold;
+    }
+
+    /**
+     * Tweakeroo exposes these values through reflection. They are configuration values, not
+     * per-block state, so resolving them once per client tick avoids repeated reflective calls
+     * while a large mining queue is analyzed.
+     */
+    private static void refreshConfigCache() {
+        long tick = Minecraft.getInstance().level == null
+                ? Long.MIN_VALUE
+                : Minecraft.getInstance().level.getGameTime();
+        if (configCacheTick == tick) {
+            return;
+        }
+        configCacheTick = tick;
+        cachedToolSwitchEnabled = readBoolean(tweakToolSwitchEnum);
+        cachedSwapAlmostBrokenToolsEnabled = readBoolean(tweakSwapAlmostBrokenToolsEnum);
+        cachedDisableBlockBreakCooldownEnabled = readBoolean(disableBlockBreakCooldownConfig);
+        cachedItemSwapDurabilityThreshold = readInteger(
+                itemSwapDurabilityThresholdConfig,
+                FALLBACK_ITEM_SWAP_DURABILITY_THRESHOLD
+        );
+    }
+
+    private static boolean readBoolean(@Nullable Object config) {
+        if (getBooleanValueMethod == null || config == null) {
+            return false;
         }
         try {
-            return (int) getIntegerValueMethod.invoke(itemSwapDurabilityThresholdConfig);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return FALLBACK_ITEM_SWAP_DURABILITY_THRESHOLD;
+            return (boolean) getBooleanValueMethod.invoke(config);
+        } catch (ReflectiveOperationException exception) {
+            return false;
+        }
+    }
+
+    private static int readInteger(@Nullable Object config, int fallback) {
+        if (getIntegerValueMethod == null || config == null) {
+            return fallback;
+        }
+        try {
+            return (int) getIntegerValueMethod.invoke(config);
+        } catch (ReflectiveOperationException exception) {
+            return fallback;
         }
     }
 }

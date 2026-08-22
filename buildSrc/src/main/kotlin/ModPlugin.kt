@@ -173,6 +173,16 @@ abstract class ModPlugin : Plugin<Project> {
                                     }
                                 }
 
+                                // The runtime bridge is the only permitted process-wide mutable
+                                // reference. Core/runtime services keep mutable collections and
+                                // lifecycle state on instances so epoch reset remains explicit.
+                                if ((relative.contains("/core/") || relative.contains("/runtime/"))
+                                    && !relative.endsWith("/runtime/RuntimeAccess.java")
+                                    && Regex("\\bstatic\\s+(?:volatile\\s+)?(?:Map|Set|List|Deque|Queue|Collection)\\b")
+                                        .containsMatchIn(text)) {
+                                    violations += "$relative: core/runtime must not own mutable static collections"
+                                }
+
                                 if (relative.contains("/feature/")) {
                                     val forbidden = listOf(".mixin.", ".printer.zxy.", ".utils.mods.")
                                     forbidden.filter(text::contains).forEach { dependency ->
@@ -180,7 +190,16 @@ abstract class ModPlugin : Plugin<Project> {
                                     }
                                 }
 
-                                val lineCount = text.lineSequence().count()
+                                if (relative.contains("/handler/handlers/")
+                                    && listOf(".mixin.", ".printer.zxy.", ".utils.mods.")
+                                        .any(text::contains)) {
+                                    violations += "$relative: feature handler must use an integration/interaction port"
+                                }
+
+                                // Blank lines are formatting, not orchestration complexity. Count
+                                // actual source lines so the size gate measures responsibilities
+                                // rather than whether a class uses generous spacing.
+                                val lineCount = text.lineSequence().count { it.isNotBlank() }
                                 if (relative.contains("/mixin/") && lineCount > 150) {
                                     violations += "$relative: mixin has $lineCount lines (maximum 150)"
                                 }
@@ -207,6 +226,10 @@ abstract class ModPlugin : Plugin<Project> {
                                 if (relative.contains("/printer/zxy/")
                                     || text.contains(".printer.zxy.")) {
                                     violations += "$relative: legacy zxy production dependency is forbidden"
+                                }
+
+                                if (text.contains("PrinterRuntime.get()")) {
+                                    violations += "$relative: business code must use an injected runtime or RuntimeAccess bridge"
                                 }
 
                                 if (relative.endsWith("MixinConfigBase.java")

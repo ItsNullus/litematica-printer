@@ -1,6 +1,5 @@
 package me.aleksilassila.litematica.printer.handler;
 
-import fi.dy.masa.litematica.world.SchematicWorldHandler;
 import fi.dy.masa.litematica.world.WorldSchematic;
 import fi.dy.masa.malilib.config.options.ConfigBoolean;
 import fi.dy.masa.malilib.config.options.ConfigOptionList;
@@ -15,7 +14,7 @@ import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import me.aleksilassila.litematica.printer.printer.*;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
-import me.aleksilassila.litematica.printer.utils.mods.LitematicaUtils;
+import me.aleksilassila.litematica.printer.integration.litematica.LitematicaAdapter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
@@ -50,6 +49,7 @@ public abstract class FeatureModuleBase extends ConfigUtils implements RuntimeCo
     protected final RttReplayController rttReplayController;
     protected final HudStatsManager hudStats;
     protected final MissingMaterialTracker missingMaterials;
+    protected final LitematicaAdapter litematica;
     final InventoryAvailabilityTracker inventoryAvailability;
     @Nullable
     final PrintModeType printMode;
@@ -95,6 +95,7 @@ public abstract class FeatureModuleBase extends ConfigUtils implements RuntimeCo
         this.rttReplayController = runtime.rttReplayController();
         this.hudStats = runtime.hudStats();
         this.missingMaterials = runtime.missingMaterials();
+        this.litematica = runtime.litematica();
         this.inventoryAvailability = runtime.inventoryAvailability();
         this.id = id;
         this.printMode = printMode;
@@ -174,6 +175,7 @@ public abstract class FeatureModuleBase extends ConfigUtils implements RuntimeCo
     }
 
     void resetScanRuntime() {
+        this.scanEngine.resetOwner(this.id);
         this.scanCoordinator.reset();
     }
 
@@ -185,7 +187,8 @@ public abstract class FeatureModuleBase extends ConfigUtils implements RuntimeCo
             boolean interrupt,
             boolean didWork,
             boolean foundCandidate,
-            boolean completedPass
+            boolean completedPass,
+            boolean waitingForSource
     ) {
     }
 
@@ -217,7 +220,7 @@ public abstract class FeatureModuleBase extends ConfigUtils implements RuntimeCo
             return null;
         }
         if (isSchematicBlockHandler()) {
-            WorldSchematic schematic = SchematicWorldHandler.getSchematicWorld();
+            WorldSchematic schematic = this.litematica.schematicWorld();
             return new GuiBlockInfo(level, schematic, pos);
         }
         return new GuiBlockInfo(level, null, pos);
@@ -247,6 +250,10 @@ public abstract class FeatureModuleBase extends ConfigUtils implements RuntimeCo
 
     boolean isConfigAllowExecute() {
         return ModuleEnablePolicy.allows(this);
+    }
+
+    boolean isSchematicBlock(BlockPos pos) {
+        return this.litematica.isSchematicBlock(pos);
     }
 
     protected int getTickInterval() {

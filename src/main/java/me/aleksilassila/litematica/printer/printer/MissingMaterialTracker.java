@@ -4,7 +4,7 @@ import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.utils.minecraft.PlayerUtils;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
-import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
+import me.aleksilassila.litematica.printer.runtime.RuntimeAccess;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
@@ -38,7 +38,7 @@ public final class MissingMaterialTracker implements RuntimeComponent {
     }
 
     public static MissingMaterialTracker getRuntime() {
-        return PrinterRuntime.get().missingMaterials();
+        return RuntimeAccess.get().missingMaterials();
     }
 
     public void tick(@Nullable LocalPlayer player, long currentTick) {

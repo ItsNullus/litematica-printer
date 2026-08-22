@@ -165,7 +165,7 @@ final class BedrockTargetRegistry {
         for (BedrockTarget target : this.targets) {
             if (target != null
                     && target.isHorizontalLayout()
-                    && BedrockPlacer.hasPendingHorizontalLook(target.getPistonPos())) {
+                    && target.hasPendingHorizontalLook()) {
                 return target;
             }
         }

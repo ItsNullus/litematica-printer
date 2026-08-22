@@ -2,9 +2,6 @@ package me.aleksilassila.litematica.printer.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
-import me.aleksilassila.litematica.printer.config.Configs;
-import me.aleksilassila.litematica.printer.integration.inventory.MaterialRequest;
-import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -41,9 +38,7 @@ public abstract class MixinMinecraftPickBlock {
     ) {
         Minecraft client = Minecraft.getInstance();
         Item item = client.level == null ? Items.AIR : client.level.getBlockState(pos).getBlock().asItem();
-        if (shouldTakeFromQuickShulker(client.player, item)) {
-            QuickShulkerBridge.requestItem(item, MaterialRequest.Source.PICK_BLOCK);
-            QuickShulkerBridge.switchItem();
+        if (QuickShulkerBridge.handlePickBlock(client.player, item)) {
             return;
         }
         original.call(gameMode, pos, includeData);
@@ -52,23 +47,11 @@ public abstract class MixinMinecraftPickBlock {
     //$$ @WrapOperation(method = "pickBlock", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/player/Inventory;findSlotMatchingItem(Lnet/minecraft/world/item/ItemStack;)I"))
     //$$ private int litematica_printer$pickRealBlock(Inventory inventory, ItemStack stack, Operation<Integer> original) {
     //$$     int slot = original.call(inventory, stack);
-    //$$     if (slot == -1 && !stack.isEmpty() && shouldTakeFromQuickShulker(Minecraft.getInstance().player, stack.getItem())) {
-    //$$         QuickShulkerBridge.requestItem(stack.getItem());
-    //$$         QuickShulkerBridge.switchItem();
+    //$$     if (slot == -1 && QuickShulkerBridge.handlePickBlock(Minecraft.getInstance().player, stack)) {
+    //$$         return slot;
     //$$     }
     //$$     return slot;
     //$$ }
     //#endif
 
-    private static boolean shouldTakeFromQuickShulker(LocalPlayer player, Item item) {
-        return player != null
-                && item != null
-                && item != Items.AIR
-                && Configs.Core.WORK_SWITCH.getBooleanValue()
-                && !player.getAbilities().instabuild
-                && !player.isSpectator()
-                && (Configs.Placement.QUICK_SHULKER.getBooleanValue()
-                    || TakeItOutUtils.isAutoTakeoutEnabled())
-                && player.inventoryMenu.slots.stream().noneMatch(slot -> slot.getItem().is(item));
-    }
 }

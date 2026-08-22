@@ -30,7 +30,9 @@
     ]
   },
   "mixins": [
-    "litematica-printer.mixins.json",
+    "litematica-printer.core.mixins.json",
+    "litematica-printer.litematica.mixins.json",
+    "litematica-printer.malilib.mixins.json",
     "litematica-printer.optional.mixins.json"
   ],
   "depends": {

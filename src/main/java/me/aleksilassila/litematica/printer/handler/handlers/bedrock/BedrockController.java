@@ -1,6 +1,6 @@
 package me.aleksilassila.litematica.printer.handler.handlers.bedrock;
 
-import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
+import me.aleksilassila.litematica.printer.runtime.RuntimeAccess;
 import net.minecraft.core.BlockPos;
 
 /**
@@ -12,7 +12,7 @@ public final class BedrockController {
     }
 
     private static BedrockEngine engine() {
-        return PrinterRuntime.get().bedrockEngine();
+        return RuntimeAccess.get().bedrockEngine();
     }
 
     public static void reset() {

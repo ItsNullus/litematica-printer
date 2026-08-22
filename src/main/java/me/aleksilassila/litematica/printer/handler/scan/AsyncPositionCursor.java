@@ -15,9 +15,18 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Asynchronously prefetches the pure player-distance coordinate stream. */
 final class AsyncPositionCursor implements PositionCursor {
-    private static final int QUEUE_CAPACITY = 8;
-    private static final int REFILL_THRESHOLD = 2;
-    private static final int PRODUCE_BATCH = 256;
+    // This is only a producer/consumer buffer. It is deliberately independent from the
+    // selection size and never limits how many positions a session may scan.
+    private static final int QUEUE_CAPACITY = 16;
+    private static final int REFILL_THRESHOLD = 4;
+    /**
+     * A batch is deliberately large enough to amortize the worker hand-off, but it is
+     * still only a prefetch chunk; it is not a scan limit. The scan session remains
+     * responsible for its configured time budget and for stopping at the selection.
+     */
+    // Smaller worker slices reduce the time one large selection can monopolize the shared
+    // single-thread producer; the larger queue keeps the client thread from seeing a gap.
+    private static final int PRODUCE_BATCH = 512;
 
     private final AsyncPositionCursorScheduler scheduler;
     private final PlayerDistanceCursor delegate;
@@ -62,7 +71,14 @@ final class AsyncPositionCursor implements PositionCursor {
         this.scheduler = scheduler;
         this.delegate = new PlayerDistanceCursor(List.copyOf(boxes), centerX, centerY, centerZ, maxDistanceBand);
         this.handle = handle;
-        this.requestFill();
+        // Prime one pure-coordinate batch immediately. This avoids making every new
+        // session lose its first client tick to executor hand-off, while all subsequent
+        // batches remain asynchronous and bounded by the shared scheduler.
+        if (this.scheduler.isClosed()) {
+            this.failed = true;
+        } else {
+            this.produce();
+        }
     }
 
     @Override
@@ -149,8 +165,12 @@ final class AsyncPositionCursor implements PositionCursor {
             this.failed = true;
         } finally {
             this.fillScheduled.set(false);
+            // Keep the shared worker fair. Refilling merely because the queue has any
+            // capacity lets one cursor enqueue a long chain of producer tasks ahead of
+            // other active features. A low-water refill leaves room for every feature
+            // to make progress while retaining enough look-ahead for the main thread.
             if (!this.closed && !this.handle.isCancelled() && !this.failed
-                    && !this.producerExhausted && this.ready.remainingCapacity() > 0) {
+                    && !this.producerExhausted && this.ready.size() <= REFILL_THRESHOLD) {
                 this.requestFill();
             }
         }

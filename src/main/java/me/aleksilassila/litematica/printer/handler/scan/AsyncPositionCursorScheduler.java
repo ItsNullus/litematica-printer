@@ -37,6 +37,10 @@ final class AsyncPositionCursorScheduler implements AutoCloseable {
         }
     }
 
+    boolean isClosed() {
+        return this.closed;
+    }
+
     @Override
     public void close() {
         this.closed = true;

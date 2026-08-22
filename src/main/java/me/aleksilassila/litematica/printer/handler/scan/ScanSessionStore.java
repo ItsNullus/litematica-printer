@@ -1,8 +1,6 @@
 package me.aleksilassila.litematica.printer.handler.scan;
 
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEpoch;
-import me.aleksilassila.litematica.printer.handler.scan.SectionScanSession.MutableMetrics;
-import me.aleksilassila.litematica.printer.handler.scan.SectionScanSession.Region;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -17,23 +15,23 @@ import java.util.function.LongSupplier;
 final class ScanSessionStore implements AutoCloseable {
     private final AsyncPositionCursorScheduler asyncScheduler;
     private final Map<String, SectionScanSession> sessions = new HashMap<>();
-    private final Map<String, MutableMetrics> metrics = new HashMap<>();
+    private final Map<String, ScanMetricsAccumulator> metrics = new HashMap<>();
 
     ScanSessionStore(AsyncPositionCursorScheduler asyncScheduler) {
         this.asyncScheduler = asyncScheduler;
     }
 
-    MutableMetrics metrics(String ownerKey) {
-        return this.metrics.computeIfAbsent(ownerKey, ignored -> new MutableMetrics());
+    ScanMetricsAccumulator metrics(String ownerKey) {
+        return this.metrics.computeIfAbsent(ownerKey, ignored -> new ScanMetricsAccumulator());
     }
 
     ScanCache.ScanMetrics metricsFor(String ownerKey) {
-        MutableMetrics value = this.metrics.get(ownerKey);
+        ScanMetricsAccumulator value = this.metrics.get(ownerKey);
         return value == null ? ScanCache.ScanMetrics.empty() : value.snapshot();
     }
 
     void resetMetrics() {
-        for (MutableMetrics value : this.metrics.values()) {
+        for (ScanMetricsAccumulator value : this.metrics.values()) {
             value.reset();
         }
     }
@@ -59,7 +57,7 @@ final class ScanSessionStore implements AutoCloseable {
 
     SectionScanSession getOrCreate(
             String ownerKey,
-            MutableMetrics metrics,
+            ScanMetricsAccumulator metrics,
             ScanIntent intent,
             PrinterBox sourceBounds,
             List<PrinterBox> sourceBoxes,
@@ -69,7 +67,7 @@ final class ScanSessionStore implements AutoCloseable {
             LongSupplier snapshotRevision,
             LongSupplier generationSequence
     ) {
-        Region region = Region.from(sourceBounds, player);
+        ScanRegion region = ScanRegion.from(sourceBounds, player);
         String key = ownerKey + ":" + intent.name();
         SectionScanSession session = this.sessions.get(key);
         if (session == null || !session.canReuse(region) || session.usesAsyncTraversal() != asynchronous) {

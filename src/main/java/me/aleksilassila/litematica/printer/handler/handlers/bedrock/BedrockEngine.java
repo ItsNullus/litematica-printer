@@ -3,6 +3,7 @@ package me.aleksilassila.litematica.printer.handler.handlers.bedrock;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
+import me.aleksilassila.litematica.printer.integration.litematica.LitematicaAdapter;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -18,23 +19,34 @@ public final class BedrockEngine implements RuntimeComponent {
     private final BedrockTargetRegistry targets = new BedrockTargetRegistry();
     private final BedrockCleanupCoordinator cleanup;
     private final BedrockRunStats stats = new BedrockRunStats();
+    private final BedrockPlacer placer;
+    private final BedrockCriticalExecutor criticalExecutor;
     private final BedrockAdmissionController admission;
     private final BedrockTargetExecutor targetExecutor;
     private final BedrockThroughputScheduler throughputScheduler = new BedrockThroughputScheduler();
     private final LongSupplier tickClock;
     private long lastProcessedTick = Long.MIN_VALUE;
 
-    public BedrockEngine(Minecraft client, CooldownUtils cooldownUtils, LongSupplier tickClock) {
+    public BedrockEngine(
+            Minecraft client,
+            CooldownUtils cooldownUtils,
+            LongSupplier tickClock,
+            LitematicaAdapter litematica
+    ) {
         this.client = client;
         this.tickClock = tickClock;
+        this.placer = new BedrockPlacer(client);
+        this.criticalExecutor = new BedrockCriticalExecutor(this.placer);
         this.cleanup = new BedrockCleanupCoordinator(client, cooldownUtils);
         this.admission = new BedrockAdmissionController(
-                client, this.targets, this.cleanup, this.stats, cooldownUtils, tickClock);
+                client, this.targets, this.cleanup, this.stats, cooldownUtils, tickClock,
+                this.criticalExecutor, this.placer, litematica);
         this.targetExecutor = new BedrockTargetExecutor(
                 this.targets,
                 this.cleanup,
                 this.stats,
-                this.admission::setRetryCooldown
+                this.admission::setRetryCooldown,
+                this.placer
         );
     }
 
@@ -48,15 +60,15 @@ public final class BedrockEngine implements RuntimeComponent {
         this.cleanup.reset();
         this.admission.reset();
         this.stats.reset();
-        BedrockPlacer.clearHorizontalLookState();
-        BedrockCriticalExecutor.reset();
+        this.placer.clearHorizontalLookState();
+        this.criticalExecutor.reset();
         this.throughputScheduler.reset();
         this.lastProcessedTick = Long.MIN_VALUE;
         HudStatsManager.getRuntime().resetMode(HudStatsManager.Mode.BEDROCK);
     }
 
     public void clearHorizontalLookState() {
-        BedrockPlacer.clearHorizontalLookState();
+        this.placer.clearHorizontalLookState();
     }
 
     public void tick() {
@@ -72,7 +84,7 @@ public final class BedrockEngine implements RuntimeComponent {
         this.lastProcessedTick = now;
         this.stats.beginTick();
         this.cleanup.beginTick();
-        BedrockCriticalExecutor.beginTick(now);
+        this.criticalExecutor.beginTick(now);
         this.admission.purgeTargetsOutsideSelection();
         this.admission.beginTick(level);
 

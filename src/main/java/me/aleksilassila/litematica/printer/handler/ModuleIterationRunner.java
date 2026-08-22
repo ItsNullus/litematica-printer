@@ -2,7 +2,8 @@ package me.aleksilassila.litematica.printer.handler;
 
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
-import me.aleksilassila.litematica.printer.utils.mods.LitematicaUtils;
+import me.aleksilassila.litematica.printer.handler.scan.ScanAvailability;
+import me.aleksilassila.litematica.printer.handler.scan.ScanCandidateIterable;
 import net.minecraft.core.BlockPos;
 
 import java.util.concurrent.atomic.AtomicReference;
@@ -48,7 +49,7 @@ final class ModuleIterationRunner {
                 interrupt = true;
                 break;
             }
-            if (skip.get() || module.actionBroker.isWaitingForLook() || pos == null) {
+            if (skip.get() || module.actionBroker.isWaitingForLook()) {
                 interrupt = true;
                 break;
             }
@@ -60,7 +61,7 @@ final class ModuleIterationRunner {
                 module.guiBuffer().add(gui);
                 continue;
             }
-            if (module.isSchematicBlockHandler() && !LitematicaUtils.isSchematicBlock(pos)) {
+            if (module.isSchematicBlockHandler() && !module.isSchematicBlock(pos)) {
                 module.guiBuffer().add(gui);
                 continue;
             }
@@ -102,8 +103,13 @@ final class ModuleIterationRunner {
             module.guiBuffer().add(gui);
             if (interrupt) break;
         }
+        boolean waitingForSource = positions instanceof ScanCandidateIterable source
+                && source.availability() == ScanAvailability.WAITING_FOR_BATCH;
+        if (waitingForSource) {
+            interrupt = true;
+        }
         boolean completedPass = module.scanEngine.metricsFor(module.getId()).completedPasses() > completedPassesBefore;
         module.stopIteration(interrupt);
-        return new FeatureModuleBase.IterationOutcome(interrupt, didWork, foundCandidate, completedPass);
+        return new FeatureModuleBase.IterationOutcome(interrupt, didWork, foundCandidate, completedPass, waitingForSource);
     }
 }

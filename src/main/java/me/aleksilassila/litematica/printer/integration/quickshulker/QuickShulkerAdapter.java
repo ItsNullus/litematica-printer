@@ -16,11 +16,15 @@ import net.minecraft.client.player.LocalPlayer;
 public final class QuickShulkerAdapter implements InventoryProvider, RuntimeComponent {
     private static final String LEASE_OWNER = "quick_shulker";
     private final ActionPort actionBroker;
+    private final QuickShulkerRequestController requests;
+    private final OrderedStorageController orderedStorage;
     private boolean resourcesAcquired;
     private long attemptedToken;
 
     public QuickShulkerAdapter(ActionPort actionBroker) {
         this.actionBroker = actionBroker;
+        this.requests = new QuickShulkerRequestController(Minecraft.getInstance());
+        this.orderedStorage = this.requests.orderedStorage();
     }
 
     @Override
@@ -36,9 +40,9 @@ public final class QuickShulkerAdapter implements InventoryProvider, RuntimeComp
         if (!this.acquireResources()) {
             return new MaterialReservation(request.token(), MaterialReservation.State.PENDING);
         }
-        QuickShulkerRequestController.requestItem(request.item());
+        this.requests.requestItem(request.item());
         this.attemptedToken = request.token();
-        MaterialReservation.State state = QuickShulkerRequestController.hasPendingSwitchRequest()
+        MaterialReservation.State state = this.requests.hasPendingSwitchRequest()
                 ? MaterialReservation.State.PENDING : MaterialReservation.State.UNAVAILABLE;
         return new MaterialReservation(request.token(), state);
     }
@@ -52,7 +56,7 @@ public final class QuickShulkerAdapter implements InventoryProvider, RuntimeComp
         if (!this.resourcesAcquired && this.attemptedToken != request.token()) {
             return this.request(request);
         }
-        MaterialReservation.State state = QuickShulkerRequestController.hasPendingSwitchRequest()
+        MaterialReservation.State state = this.requests.hasPendingSwitchRequest()
                 ? MaterialReservation.State.PENDING : MaterialReservation.State.UNAVAILABLE;
         if (state == MaterialReservation.State.UNAVAILABLE) {
             this.releaseResources();
@@ -61,49 +65,49 @@ public final class QuickShulkerAdapter implements InventoryProvider, RuntimeComp
     }
 
     public boolean switchItem() {
-        return QuickShulkerRequestController.switchItem();
+        return this.requests.switchItem();
     }
 
     public boolean hasPendingRequest() {
-        return QuickShulkerRequestController.hasPendingSwitchRequest();
+        return this.requests.hasPendingSwitchRequest();
     }
 
     public boolean isOpenHandler() {
-        return QuickShulkerRequestController.isOpenHandler();
+        return this.requests.isOpenHandler();
     }
 
     public boolean shouldPause() {
-        return QuickShulkerRequestController.shouldPauseForSwitchRequest();
+        return this.requests.shouldPauseForSwitchRequest();
     }
 
     public boolean shouldSuppressContainerScreen() {
-        return QuickShulkerRequestController.shouldSuppressContainerScreen();
+        return this.requests.shouldSuppressContainerScreen();
     }
 
     @Override
     public void tick() {
-        QuickShulkerRequestController.tick();
-        QuickShulkerRequestController.switchItem();
+        this.requests.tick();
+        this.requests.switchItem();
         this.synchronizeResources();
     }
 
     public void onInventoryContent() {
-        if (QuickShulkerRequestController.isOpenHandler()) {
-            QuickShulkerRequestController.switchInv();
+        if (this.requests.isOpenHandler()) {
+            this.requests.switchInv();
         }
-        if (OrderedStorageController.isWaitingForRestoreContainer()) {
-            OrderedStorageController.restorePendingItem();
+        if (this.orderedStorage.isWaitingForRestoreContainer()) {
+            this.orderedStorage.restorePendingItem();
         }
     }
 
     public void onMainHandUse(LocalPlayer player) {
-        OrderedStorageController.onMainHandUse(player);
+        this.orderedStorage.onMainHandUse(player);
     }
 
     @Override
     public void reset() {
-        OrderedStorageController.reSet();
-        QuickShulkerRequestController.resetRuntime();
+        this.orderedStorage.reset();
+        this.requests.resetRuntime();
         this.attemptedToken = 0L;
         this.releaseResources();
     }
@@ -114,9 +118,9 @@ public final class QuickShulkerAdapter implements InventoryProvider, RuntimeComp
     }
 
     private void synchronizeResources() {
-        boolean busy = QuickShulkerRequestController.hasPendingSwitchRequest()
-                || QuickShulkerRequestController.isOpenHandler()
-                || OrderedStorageController.hasPendingRestore();
+        boolean busy = this.requests.hasPendingSwitchRequest()
+                || this.requests.isOpenHandler()
+                || this.orderedStorage.hasPendingRestore();
         if (busy) {
             this.acquireResources();
         } else {

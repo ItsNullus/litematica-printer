@@ -17,18 +17,24 @@ import java.util.Set;
  * on later ticks; it is deliberately not used as a mid-bundle acknowledgement.</p>
  */
 final class BedrockCriticalExecutor {
-    private static long currentTick = Long.MIN_VALUE;
-    private static int reservedPistons;
+    private long currentTick = Long.MIN_VALUE;
+    private int reservedPistons;
+    private final BedrockPlacer placer;
 
-    private BedrockCriticalExecutor() {
+    BedrockCriticalExecutor(BedrockPlacer placer) {
+        this.placer = placer;
     }
 
-    static void reset() {
+    BedrockPlacer placer() {
+        return this.placer;
+    }
+
+    void reset() {
         currentTick = Long.MIN_VALUE;
         reservedPistons = 0;
     }
 
-    static void beginTick(long tick) {
+    void beginTick(long tick) {
         if (currentTick == tick) {
             return;
         }
@@ -36,7 +42,7 @@ final class BedrockCriticalExecutor {
         reservedPistons = 0;
     }
 
-    static boolean submit(
+    boolean submit(
             ClientLevel level,
             BlockPos bedrockPos,
             BlockPos pistonPos,
@@ -73,6 +79,6 @@ final class BedrockCriticalExecutor {
         // Do not branch on packet results from this point onward. The exploit is the
         // ordering of this break immediately followed by the reverse piston placement.
         BedrockBreaker.sendCriticalBreakPackets(pistonPos, executeFacing);
-        return BedrockPlacer.placePiston(pistonPos, executeFacing);
+        return this.placer.placePiston(pistonPos, executeFacing);
     }
 }

@@ -1,6 +1,5 @@
 package me.aleksilassila.litematica.printer.utils;
 
-import me.aleksilassila.litematica.printer.printer.action.ActionPort;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.Item;
 
@@ -9,14 +8,12 @@ import java.util.function.LongSupplier;
 public final class InventorySwitchGuard {
     private static final int MAX_SETTLE_TICKS = 20;
     private final Minecraft client;
-    private final ActionPort actionBroker;
     private final LongSupplier tickClock;
     private Item pendingItem;
     private long pendingStartedTick;
 
-    public InventorySwitchGuard(Minecraft client, ActionPort actionBroker, LongSupplier tickClock) {
+    public InventorySwitchGuard(Minecraft client, LongSupplier tickClock) {
         this.client = client;
-        this.actionBroker = actionBroker;
         this.tickClock = tickClock;
     }
 
@@ -30,7 +27,9 @@ public final class InventorySwitchGuard {
         }
         pendingItem = item;
         pendingStartedTick = this.tickClock.getAsLong();
-        this.actionBroker.cancelQueue();
+        if (isMainHandReady(item)) {
+            clear();
+        }
         return true;
     }
 
@@ -38,7 +37,6 @@ public final class InventorySwitchGuard {
         if (pendingItem == null) {
             return false;
         }
-        this.actionBroker.cancelQueue();
         long age = this.tickClock.getAsLong() - pendingStartedTick;
         if (age <= 0) {
             return true;

@@ -1,25 +1,18 @@
 package me.aleksilassila.litematica.printer.handler.scan;
 
 import fi.dy.masa.litematica.world.WorldSchematic;
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
-import it.unimi.dsi.fastutil.longs.LongSet;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEpoch;
-import me.aleksilassila.litematica.printer.handler.scan.SectionScanSession.Candidate;
-import me.aleksilassila.litematica.printer.handler.scan.SectionScanSession.MutableMetrics;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Iterator;
 import java.util.List;
 import java.util.function.Predicate;
 
 public final class ScanCache {
-    private static final int BUDGET_CHECK_INTERVAL = 8;
-
     /** Controls what a completed cursor may do on a later tick. */
     public enum PassPolicy {
         /** Start another full pass when the previous pass has completed. */
@@ -142,6 +135,7 @@ public final class ScanCache {
             return;
         }
         this.sessions.resetOwner(ownerKey);
+        this.budget.removeOwner(normalizeMetricsOwnerKey(ownerKey));
     }
 
     public Iterable<BlockPos> rawIterable(
@@ -277,121 +271,29 @@ public final class ScanCache {
             boolean unbounded,
             PassPolicy passPolicy
     ) {
-        int scanLimit = unbounded ? Integer.MAX_VALUE : this.getScanLimit(scanGuardLimit);
         String cacheOwnerKey = this.cacheOwnerKey(ownerKey, intent);
         String metricsOwnerKey = normalizeMetricsOwnerKey(ownerKey);
-        MutableMetrics metrics = this.metrics(metricsOwnerKey);
-        PrinterBox sourceBounds = enclosingBox(sourceBoxes);
-        if (sourceBounds == null) {
-            return List.of();
-        }
-        SectionScanSession session = this.session(
+        return new ScanCandidateSourceFactory(
+                this.sessions,
+                this.budget,
+                this.runtimeEpoch,
+                () -> this.snapshotRevision,
+                () -> ++this.generationSequence,
+                this.tickTime
+        ).create(
                 cacheOwnerKey,
-                metrics,
-                intent,
-                sourceBounds,
+                metricsOwnerKey,
                 sourceBoxes,
-                player
+                level,
+                schematic,
+                player,
+                scanGuardLimit,
+                intent,
+                exactPredicate,
+                preFilter,
+                unbounded,
+                passPolicy
         );
-        return () -> new Iterator<>() {
-            private final LongSet emitted = new LongOpenHashSet();
-            private final WorldObservationPort observation = level == null
-                    ? null
-                    : new LiveWorldObservation(level, schematic);
-            private BlockPos next;
-            private boolean prepared;
-            private boolean scanLimitHit;
-            private boolean sentinelReturned;
-            private int considered;
-            private int budgetChecks;
-
-            private void prepare() {
-                if (this.prepared) {
-                    return;
-                }
-                this.prepared = true;
-
-                long budgetStart = System.nanoTime();
-                boolean budgetHit = false;
-                try {
-                    boolean restartCompletedPass = passPolicy == PassPolicy.RESTART;
-                    while (this.considered < scanLimit && session.canScan(tickTime, restartCompletedPass)) {
-                        if (!unbounded && ++this.budgetChecks % BUDGET_CHECK_INTERVAL == 0
-                                && ScanCache.this.budget.isExceeded(budgetStart)) {
-                            budgetHit = true;
-                            break;
-                        }
-
-                        Candidate candidate = session.next(this.observation, tickTime,
-                                () -> !unbounded && ScanCache.this.budget.isExceeded(budgetStart),
-                                preFilter,
-                                unbounded,
-                                restartCompletedPass);
-                        if (!session.belongsTo(runtimeEpoch)) {
-                            break;
-                        }
-                        if (candidate == null) {
-                            if (session.wasPaused()) {
-                                budgetHit = true;
-                            }
-                            break;
-                        }
-                        metrics.sourceCandidates++;
-                        this.considered++;
-                        BlockPos pos = candidate.pos();
-                        if (!session.contains(pos)) {
-                            continue;
-                        }
-                        boolean target = candidate.acceptedByFlags(intent);
-                        if (!target && intent.shouldRunExactPredicate(candidate.flags())) {
-                            target = exactPredicate.test(pos);
-                        }
-                        if (!target) {
-                            continue;
-                        }
-                        long posKey = key(pos);
-                        if (this.emitted.add(posKey)) {
-                            metrics.acceptedTargets++;
-                            this.next = pos;
-                            return;
-                        }
-                    }
-                } finally {
-                    if (!unbounded) {
-                        ScanCache.this.budget.record(metrics, budgetStart);
-                    }
-                }
-
-                if (budgetHit) {
-                    metrics.budgetPauses++;
-                }
-                this.scanLimitHit = session.hasPendingSource(tickTime, passPolicy == PassPolicy.RESTART)
-                        && (budgetHit || this.considered >= scanLimit);
-            }
-
-            @Override
-            public boolean hasNext() {
-                this.prepare();
-                return this.next != null || this.scanLimitHit && !this.sentinelReturned;
-            }
-
-            @Override
-            public BlockPos next() {
-                this.prepare();
-                if (this.next != null) {
-                    BlockPos result = this.next;
-                    this.next = null;
-                    this.prepared = false;
-                    return result;
-                }
-                if (this.scanLimitHit && !this.sentinelReturned) {
-                    this.sentinelReturned = true;
-                    return null;
-                }
-                return null;
-            }
-
-        };
     }
 
     private String cacheOwnerKey(String ownerKey, ScanIntent intent) {
@@ -399,64 +301,6 @@ public final class ScanCache {
             return ownerKey + ":breakExtra";
         }
         return ownerKey;
-    }
-
-    private SectionScanSession session(
-            String ownerKey,
-            MutableMetrics metrics,
-            ScanIntent intent,
-            PrinterBox sourceBounds,
-            List<PrinterBox> sourceBoxes,
-            LocalPlayer player
-    ) {
-        boolean asynchronous = Configs.Core.ASYNC_SCAN.getBooleanValue();
-        return this.sessions.getOrCreate(
-                ownerKey,
-                metrics,
-                intent,
-                sourceBounds,
-                sourceBoxes,
-                player,
-                asynchronous,
-                this.runtimeEpoch,
-                () -> this.snapshotRevision,
-                () -> ++this.generationSequence
-        );
-    }
-
-    private static PrinterBox enclosingBox(List<PrinterBox> boxes) {
-        PrinterBox result = null;
-        for (PrinterBox box : boxes) {
-            if (box == null) {
-                continue;
-            }
-            if (result == null) {
-                result = box;
-                continue;
-            }
-            result = new PrinterBox(
-                    Math.min(result.minX, box.minX),
-                    Math.min(result.minY, box.minY),
-                    Math.min(result.minZ, box.minZ),
-                    Math.max(result.maxX, box.maxX),
-                    Math.max(result.maxY, box.maxY),
-                    Math.max(result.maxZ, box.maxZ)
-            );
-        }
-        return result;
-    }
-
-    private static boolean containsAny(List<PrinterBox> boxes, BlockPos pos) {
-        for (PrinterBox box : boxes) {
-            if (box.contains(pos)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private MutableMetrics metrics(String ownerKey) {
-        return this.sessions.metrics(ownerKey);
     }
 
     private static String normalizeMetricsOwnerKey(String ownerKey) {
@@ -471,10 +315,5 @@ public final class ScanCache {
         }
         return ownerKey.substring(0, separator);
     }
-
-    private int getScanLimit(int scanGuardLimit) {
-        return scanGuardLimit > 0 ? scanGuardLimit : Integer.MAX_VALUE;
-    }
-
 
 }

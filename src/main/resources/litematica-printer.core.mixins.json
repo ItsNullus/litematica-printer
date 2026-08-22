@@ -4,9 +4,6 @@
   "package": "me.aleksilassila.litematica.printer.mixin",
   "compatibilityLevel": "${compatibility_level}",
   "mixins": [
-    "printer.litematica.EasyPlaceUtilsAccessor",
-    "printer.litematica.InventoryUtilsAccessor",
-    "printer.litematica.MixinInventoryUtils",
     "printer.mc.MixinBlockItem",
     "printer.mc.MixinConnection",
     "printer.mc.MixinServerboundMovePlayerPacket"
@@ -16,9 +13,6 @@
     "MixinContainerScreenGuard",
     "MixinMinecraftManualUse",
     "MixinMinecraftPickBlock",
-    "printer.litematica.gui.MixinLitematicaGuiMainMenu",
-    "printer.malilib.MixinAbstractCraftingMenu",
-    "printer.malilib.MixinGuiStringListEdit",
     ${beacon_client_mixins}
     "printer.mc.MixinClientLevel",
     "printer.mc.MixinClientPacketListener",

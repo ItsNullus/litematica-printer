@@ -4,7 +4,6 @@ import fi.dy.masa.malilib.config.options.ConfigOptionList;
 import me.aleksilassila.litematica.printer.enums.SelectionType;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
-import me.aleksilassila.litematica.printer.utils.mods.LitematicaUtils;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import org.jetbrains.annotations.Nullable;
@@ -47,9 +46,9 @@ final class ModuleSelectionScope {
 
         List<PrinterBox> baseBoxes;
         if (this.owner.isSchematicBlockHandler()) {
-            baseBoxes = LitematicaUtils.createSchematicPlacementBoxes();
+            baseBoxes = this.owner.litematica.createSchematicPlacementBoxes();
         } else if (this.owner.requiresSelection1ModeRangeCheck()) {
-            baseBoxes = LitematicaUtils.createSelection1Boxes();
+            baseBoxes = this.owner.litematica.createSelectionBoxes();
         } else {
             baseBoxes = List.of(interactionBox);
         }
@@ -67,7 +66,7 @@ final class ModuleSelectionScope {
     boolean contains(BlockPos pos) {
         if (!this.owner.isSchematicBlockHandler()
                 && this.owner.requiresSelection1ModeRangeCheck()
-                && !LitematicaUtils.isWithinSelection1ModeRange(pos)) {
+                && !this.owner.litematica.isWithinSelectionRange(pos)) {
             return false;
         }
         return this.selectionConfig == null
@@ -77,7 +76,7 @@ final class ModuleSelectionScope {
     Predicate<BlockPos> predicate() {
         Predicate<BlockPos> selection1 = this.owner.isSchematicBlockHandler()
                 || !this.owner.requiresSelection1ModeRangeCheck()
-                ? pos -> true : LitematicaUtils.createSelection1RangePredicate();
+                ? pos -> true : this.owner.litematica.selectionRangePredicate();
         Predicate<BlockPos> configured = this.configuredPredicate();
         return pos -> selection1.test(pos) && configured.test(pos);
     }
@@ -90,7 +89,7 @@ final class ModuleSelectionScope {
         LocalPlayer player = this.owner.player;
         return switch (selectionType) {
             case LITEMATICA_SELECTION -> pos -> true;
-            case LITEMATICA_RENDER_LAYER -> LitematicaUtils::isPositionWithinRange;
+            case LITEMATICA_RENDER_LAYER -> this.owner.litematica::isPositionWithinRenderLayer;
             case LITEMATICA_SELECTION_BELOW_PLAYER -> player == null
                     ? pos -> false : below((int) Math.floor(player.getY()));
             case LITEMATICA_SELECTION_ABOVE_PLAYER -> player == null
@@ -104,7 +103,7 @@ final class ModuleSelectionScope {
         LocalPlayer player = this.owner.player;
         return switch (selectionType) {
             case LITEMATICA_SELECTION -> box;
-            case LITEMATICA_RENDER_LAYER -> LitematicaUtils.clampToRenderLayer(box);
+            case LITEMATICA_RENDER_LAYER -> this.owner.litematica.clampToRenderLayer(box);
             case LITEMATICA_SELECTION_BELOW_PLAYER -> player == null
                     ? null : clipMaximumY(box, (int) Math.floor(player.getY()));
             case LITEMATICA_SELECTION_ABOVE_PLAYER -> player == null

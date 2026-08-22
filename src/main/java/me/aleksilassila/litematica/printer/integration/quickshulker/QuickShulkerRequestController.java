@@ -9,7 +9,7 @@ import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.mixin.printer.litematica.InventoryUtilsAccessor;
 import me.aleksilassila.litematica.printer.integration.litematica.LitematicaPickSlotAdapter;
 import me.aleksilassila.litematica.printer.integration.quickshulker.QuickShulkerSupport;
-import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
+import me.aleksilassila.litematica.printer.runtime.RuntimeAccess;
 import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -34,19 +34,30 @@ import java.util.LinkedHashSet;
 
 public final class QuickShulkerRequestController {
 
-    private QuickShulkerRequestController() {
-    }
-    private static int shulkerCooldown = 0;
-    private static int openHandlerTimeout = 0;
+    private final Minecraft client;
+    private final OrderedStorageController orderedStorage;
+    private int shulkerCooldown = 0;
+    private int openHandlerTimeout = 0;
     private static final int OPEN_HANDLER_TIMEOUT_TICKS = 40;
 
-    private static final Minecraft client = Minecraft.getInstance();
+    private final HashSet<Item> lastNeedItemList = new LinkedHashSet<>();
+    private boolean isOpenHandler;
+    private int shulkerInventoryMenuSlot = -1;
+
+    public QuickShulkerRequestController(Minecraft client) {
+        this.client = client;
+        this.orderedStorage = new OrderedStorageController(client, () -> this.lastNeedItemList);
+    }
+
+    OrderedStorageController orderedStorage() {
+        return this.orderedStorage;
+    }
 
     public static boolean isInventory(Level world, BlockPos pos) {
         return fi.dy.masa.malilib.util.InventoryUtils.getInventory(world, pos) != null;
     }
 
-    public static boolean canOpenInv(BlockPos pos) {
+    public boolean canOpenInv(BlockPos pos) {
         if (client.level != null) {
             BlockState blockState = client.level.getBlockState(pos);
             BlockEntity blockEntity = client.level.getBlockEntity(pos);
@@ -77,21 +88,18 @@ public final class QuickShulkerRequestController {
         }
     }
 
-    public static HashSet<Item> lastNeedItemList = new LinkedHashSet<>();
-    public static boolean isOpenHandler = false;
-
-    public static void requestItem(Item item) {
+    public void requestItem(Item item) {
         if (item != null) {
             lastNeedItemList.add(item);
         }
     }
 
-    public static boolean isOpenHandler() {
-        return isOpenHandler;
+    public boolean isOpenHandler() {
+        return this.isOpenHandler;
     }
 
-    public static boolean switchItem() {
-        if (!lastNeedItemList.isEmpty() && !isOpenHandler) {
+    public boolean switchItem() {
+        if (!this.lastNeedItemList.isEmpty() && !this.isOpenHandler) {
             LocalPlayer player = client.player;
             if (player == null) {
                 clearSwitchRequest();
@@ -101,7 +109,7 @@ public final class QuickShulkerRequestController {
             if (!sc.equals(player.inventoryMenu)) return true;
             if (Configs.Placement.STORE_ORDERLY.getBooleanValue()
                     && Configs.Placement.QUICK_SHULKER.getBooleanValue()
-                    && OrderedStorageController.tryRestoreForInventoryPressure()) {
+                    && this.orderedStorage.tryRestoreForInventoryPressure()) {
                 return true;
             }
 
@@ -109,7 +117,7 @@ public final class QuickShulkerRequestController {
                 if (shulkerCooldown > 0) {
                     return true;
                 }
-                if (openShulker(lastNeedItemList)) {
+                if (this.openShulker(this.lastNeedItemList)) {
                     return true;
                 }
             }
@@ -118,30 +126,28 @@ public final class QuickShulkerRequestController {
         return false;
     }
 
-    public static boolean hasPendingSwitchRequest() {
-        return isOpenHandler || !lastNeedItemList.isEmpty() || OrderedStorageController.hasPendingRestore();
+    public boolean hasPendingSwitchRequest() {
+        return this.isOpenHandler || !this.lastNeedItemList.isEmpty() || this.orderedStorage.hasPendingRestore();
     }
 
-    public static boolean shouldPauseForSwitchRequest() {
+    public boolean shouldPauseForSwitchRequest() {
         return Configs.Placement.QUICK_SHULKER.getBooleanValue() && hasPendingSwitchRequest();
     }
 
-    public static boolean shouldSuppressContainerScreen() {
+    public boolean shouldSuppressContainerScreen() {
         LocalPlayer player = client.player;
         return player != null
                 && !player.containerMenu.equals(player.inventoryMenu)
-                && (isOpenHandler || OrderedStorageController.isWaitingForRestoreContainer());
+                && (this.isOpenHandler || this.orderedStorage.isWaitingForRestoreContainer());
     }
 
-    public static void resetRuntime() {
+    public void resetRuntime() {
         clearSwitchRequest();
         shulkerCooldown = 0;
         ModLoadUtils.closeScreen = 0;
     }
 
-    static int shulkerInventoryMenuSlot = -1;
-
-    public static void switchInv() {
+    public void switchInv() {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null || client.gameMode == null) {
             clearSwitchRequest();
@@ -157,7 +163,7 @@ public final class QuickShulkerRequestController {
             player.closeContainer();
             return;
         }
-        for (Item item : lastNeedItemList) {
+        for (Item item : this.lastNeedItemList) {
             int containerSize = Math.min(slots.size(), slots.get(0).container.getContainerSize());
             for (int y = 0; y < containerSize; y++) {
                 if (slots.get(y).getItem().getItem().equals(item)) {
@@ -180,9 +186,9 @@ public final class QuickShulkerRequestController {
                             ItemStack sourceShulker = player.inventoryMenu.slots
                                     .get(shulkerInventoryMenuSlot).getItem().copy();
                             int movedPlayerSlot = QuickShulkerSupport.switchPlayerInvToHotbarAir(c);
-                            OrderedStorageController.moveTrackedItem(c, movedPlayerSlot);
+                            this.orderedStorage.moveTrackedItem(c, movedPlayerSlot);
                             fi.dy.masa.malilib.util.InventoryUtils.swapSlots(sc, y, c);
-                            OrderedStorageController.newItem(
+                            this.orderedStorage.newItem(
                                     retrievedStack,
                                     sourceShulker,
                                     y,
@@ -191,7 +197,7 @@ public final class QuickShulkerRequestController {
                             );
                             me.aleksilassila.litematica.printer.utils.InventoryUtils.setSelectedSlot(player.getInventory(), c);
                             me.aleksilassila.litematica.printer.utils.InventoryUtils.syncSelectedHotbarSlot();
-                            PrinterRuntime.get().inventorySwitchGuard().markSwitchIfNeeded(item);
+                            RuntimeAccess.get().inventorySwitchGuard().markSwitchIfNeeded(item);
                             player.closeContainer();
                             clearSwitchRequest();
                             return;
@@ -209,7 +215,7 @@ public final class QuickShulkerRequestController {
         }
     }
 
-    private static boolean openShulker(HashSet<Item> items) {
+    private boolean openShulker(HashSet<Item> items) {
         if (shulkerCooldown > 0) {
             return false;
         }
@@ -228,7 +234,7 @@ public final class QuickShulkerRequestController {
                                 continue;
                             }
                             ModLoadUtils.closeScreen++;
-                            isOpenHandler = true;
+                            this.isOpenHandler = true;
                             openHandlerTimeout = OPEN_HANDLER_TIMEOUT_TICKS;
                             shulkerCooldown = Configs.Placement.QUICK_SHULKER_COOLDOWN.getIntegerValue();
                             return true;
@@ -241,12 +247,12 @@ public final class QuickShulkerRequestController {
         return false;
     }
 
-    public static void tick() {
-        OrderedStorageController.tick();
+    public void tick() {
+        this.orderedStorage.tick();
         if (ModLoadUtils.closeScreen > 0) {
             ModLoadUtils.closeScreen--;
         }
-        if (isOpenHandler && openHandlerTimeout > 0 && --openHandlerTimeout <= 0) {
+        if (this.isOpenHandler && this.openHandlerTimeout > 0 && --this.openHandlerTimeout <= 0) {
             clearSwitchRequest();
         }
         if (shulkerCooldown > 0) {
@@ -254,17 +260,17 @@ public final class QuickShulkerRequestController {
         }
         if (Configs.Placement.STORE_ORDERLY.getBooleanValue()
                 && Configs.Placement.QUICK_SHULKER.getBooleanValue()
-                && !isOpenHandler
-                && !PrinterRuntime.get().inventorySwitchGuard().isWaiting()
+                && !this.isOpenHandler
+                && !RuntimeAccess.get().inventorySwitchGuard().isWaiting()
                 && !TakeItOutUtils.isAwaitingStack()) {
-            OrderedStorageController.maintainOrderlyStorage();
+            this.orderedStorage.maintainOrderlyStorage();
         }
     }
 
-    private static void clearSwitchRequest() {
-        shulkerInventoryMenuSlot = -1;
-        lastNeedItemList = new LinkedHashSet<>();
-        isOpenHandler = false;
-        openHandlerTimeout = 0;
+    private void clearSwitchRequest() {
+        this.shulkerInventoryMenuSlot = -1;
+        this.lastNeedItemList.clear();
+        this.isOpenHandler = false;
+        this.openHandlerTimeout = 0;
     }
 }

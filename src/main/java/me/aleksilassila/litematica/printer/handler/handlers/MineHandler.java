@@ -1,7 +1,5 @@
 package me.aleksilassila.litematica.printer.handler.handlers;
 
-import fi.dy.masa.litematica.world.SchematicWorldHandler;
-import fi.dy.masa.malilib.util.restrictions.UsageRestriction;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.enums.ExcavateListMode;
 import me.aleksilassila.litematica.printer.enums.PrintModeType;
@@ -12,8 +10,7 @@ import me.aleksilassila.litematica.printer.mixin_extension.BlockBreakResult;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
-import me.aleksilassila.litematica.printer.utils.UsageRestrictionCache;
-import me.aleksilassila.litematica.printer.utils.mods.ModLoadUtils;
+import me.aleksilassila.litematica.printer.integration.tweakeroo.TweakerooAdapter;
 import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -21,27 +18,23 @@ import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
-import static fi.dy.masa.tweakeroo.config.Configs.Lists.BLOCK_TYPE_BREAK_RESTRICTION_BLACKLIST;
-import static fi.dy.masa.tweakeroo.config.Configs.Lists.BLOCK_TYPE_BREAK_RESTRICTION_WHITELIST;
-import static fi.dy.masa.tweakeroo.tweaks.PlacementTweaks.BLOCK_TYPE_BREAK_RESTRICTION;
 
 public class MineHandler extends FeatureModuleBase {
     public static final String NAME = "mine";
-    private static final UsageRestrictionCache MINE_RESTRICTION_CACHE = new UsageRestrictionCache();
-
-    private final MineBreakExecutor analyzer = new MineBreakExecutor();
+    private final MineBreakExecutor analyzer;
+    private final TweakerooAdapter tweakeroo = new TweakerooAdapter();
     private final MineToolSession toolSession = new MineToolSession();
-    private final List<MineBreakExecutor.Target> candidates = new ArrayList<>();
+    private final MineCandidateQueue candidates = new MineCandidateQueue();
     @Nullable
     private BlockPos activeMinePos;
 
     public MineHandler(PrinterRuntime runtime) {
         super(runtime, NAME, PrintModeType.MINE, Configs.Core.MINE, Configs.Mine.MINE_SELECTION_TYPE, true);
+        this.analyzer = new MineBreakExecutor(runtime.client(), this.tweakeroo);
     }
 
     @Override
@@ -55,30 +48,17 @@ public class MineHandler extends FeatureModuleBase {
     }
 
     public int getRetryQueueSize() {
-        return this.activeMinePos == null ? 0 : 1;
+        return this.candidates.size() + (this.activeMinePos == null ? 0 : 1);
     }
 
-    public static boolean mineRestriction(BlockState blockState) {
+    private boolean mineRestriction(BlockState blockState) {
         if (!InteractionUtils.breakRestriction(blockState)) {
             return false;
         }
         if (Configs.Mine.EXCAVATE_LIMITER.getOptionListValue().equals(ExcavateListMode.TWEAKEROO)) {
-            if (!ModLoadUtils.isTweakerooLoaded()) return true;
-            UsageRestriction.ListType listType = BLOCK_TYPE_BREAK_RESTRICTION.getListType();
-            return MINE_RESTRICTION_CACHE.allows("tweakeroo", listType,
-                    BLOCK_TYPE_BREAK_RESTRICTION_BLACKLIST.getStrings(),
-                    BLOCK_TYPE_BREAK_RESTRICTION_WHITELIST.getStrings(),
-                    blockState);
+            return this.tweakeroo.allowsBreak(blockState);
         }
-
-        Object optionListValue = Configs.Mine.EXCAVATE_LIMIT.getOptionListValue();
-        UsageRestriction.ListType listType = optionListValue instanceof UsageRestriction.ListType type
-                ? type
-                : UsageRestriction.ListType.NONE;
-        return MINE_RESTRICTION_CACHE.allows("custom", listType,
-                Configs.Mine.EXCAVATE_BLACKLIST.getStrings(),
-                Configs.Mine.EXCAVATE_WHITELIST.getStrings(),
-                blockState);
+        return this.tweakeroo.allowsConfiguredBreak(blockState);
     }
 
     @Override
@@ -109,7 +89,7 @@ public class MineHandler extends FeatureModuleBase {
                 NAME,
                 scanSourceBoxes,
                 this.level,
-                SchematicWorldHandler.getSchematicWorld(),
+                this.litematica.schematicWorld(),
                 this.player,
                 this.getScanGuardLimit(),
                 ScanIntent.MINE,
@@ -120,7 +100,7 @@ public class MineHandler extends FeatureModuleBase {
 
     @Override
     protected void preprocess() {
-        this.candidates.clear();
+        this.pruneCandidates();
         this.analyzer.beginTick();
         this.toolSession.beginTick();
         this.continueActiveMineTarget();
@@ -175,10 +155,16 @@ public class MineHandler extends FeatureModuleBase {
         if (this.actionBroker.isWaitingForLook() || this.activeMinePos != null || this.candidates.isEmpty()) {
             return;
         }
-        this.candidates.sort(this.toolSession.comparator(this.player));
-        MineBreakExecutor.Target nearest = this.candidates.get(0);
-        MineBreakExecutor.Target selected = this.toolSession.selectTarget(this.candidates, this.analyzer, this.player);
-        this.executeToolSession(selected, MineToolSession.distanceScore(this.player, nearest));
+        List<MineBreakExecutor.Target> orderedCandidates = this.candidates.ordered(this.toolSession.comparator(this.player));
+        MineBreakExecutor.Target nearest = orderedCandidates.get(0);
+        MineBreakExecutor.Target selected = this.toolSession.selectTarget(orderedCandidates, this.analyzer, this.player);
+        BlockPos selectedPos = selected.pos();
+        selected = this.analyzer.analyze(selectedPos);
+        if (selected == null) {
+            this.removeCandidate(selectedPos);
+            return;
+        }
+        this.executeToolSession(selected, MineToolSession.distanceScore(this.player, nearest), orderedCandidates);
     }
 
     private void continueActiveMineTarget() {
@@ -235,7 +221,8 @@ public class MineHandler extends FeatureModuleBase {
                 && mineRestriction(state);
     }
 
-    private void executeToolSession(MineBreakExecutor.Target firstTarget, double nearestDistance) {
+    private void executeToolSession(MineBreakExecutor.Target firstTarget, double nearestDistance,
+                                    List<MineBreakExecutor.Target> orderedCandidates) {
         this.toolSession.startSession(firstTarget);
         if (!this.toolSession.ensureHandToolProtected(this.player, firstTarget)) {
             return;
@@ -244,8 +231,15 @@ public class MineHandler extends FeatureModuleBase {
         if (this.toolSession.shouldStop(result, this.activeMinePos != null)) {
             return;
         }
-        for (MineBreakExecutor.Target target : this.candidates) {
-            if (target == firstTarget) {
+        for (MineBreakExecutor.Target queuedTarget : orderedCandidates) {
+            if (queuedTarget.pos().equals(firstTarget.pos())) {
+                continue;
+            }
+            // Re-analyze only when a target reaches the action frontier. Rebuilding the whole
+            // queue on every durability change made large excavations stall while scanning.
+            MineBreakExecutor.Target target = this.analyzer.analyze(queuedTarget.pos());
+            if (target == null) {
+                this.removeCandidate(queuedTarget.pos());
                 continue;
             }
             if (!this.toolSession.hasInstantBudget()) {
@@ -284,6 +278,9 @@ public class MineHandler extends FeatureModuleBase {
         }
         this.toolSession.onTargetResolved(result, target.pos());
         MineResultReporter.record(target.pos(), result);
+        if (result != BlockBreakResult.IN_PROGRESS) {
+            this.removeCandidate(target.pos());
+        }
         return result;
     }
 
@@ -293,6 +290,19 @@ public class MineHandler extends FeatureModuleBase {
             this.activeMinePos = target.pos();
         }
         return result;
+    }
+
+    private void pruneCandidates() {
+        this.candidates.removeIf(target -> target == null
+                || !this.isMineScanCandidate(target.pos())
+                || this.isBlockPosOnCooldown(target.pos()));
+    }
+
+    private void removeCandidate(BlockPos pos) {
+        if (pos == null) {
+            return;
+        }
+        this.candidates.remove(pos);
     }
 
 }

@@ -22,6 +22,7 @@ final class BedrockTargetMachine {
     private final BlockPos pistonPos;
     private final BlockPos headPos;
     private final BedrockTargetFootprint footprint;
+    private final BedrockPlacer placer;
     private BedrockTorchPlacement torchPlacement;
     private BlockPos torchSupportPos;
     private BlockPos slimePos;
@@ -37,7 +38,8 @@ final class BedrockTargetMachine {
             BlockPos headPos,
             BedrockTargetFootprint footprint,
             BedrockTorchPlacement precomputedPlacement,
-            BlockPos precomputedSlimePos
+            BlockPos precomputedSlimePos,
+            BedrockPlacer placer
     ) {
         this.level = level;
         this.layout = layout;
@@ -45,6 +47,7 @@ final class BedrockTargetMachine {
         this.pistonPos = pistonPos;
         this.headPos = headPos;
         this.footprint = footprint;
+        this.placer = placer;
         if (layout == null) {
             return;
         }
@@ -140,7 +143,7 @@ final class BedrockTargetMachine {
                 && this.slimePos.equals(this.torchPlacement.getSupportPos())
                 && BedrockEnvironment.isSlimePlacementUsable(this.level, this.torchPlacement)) {
             if (!this.level.getBlockState(this.slimePos).is(Blocks.SLIME_BLOCK)) {
-                BedrockPlacer.placeSimple(this.slimePos, Direction.UP, Blocks.SLIME_BLOCK.asItem());
+                this.placer.placeSimple(this.slimePos, Direction.UP, Blocks.SLIME_BLOCK.asItem());
                 this.footprint.recordTemporary(this.slimePos);
             }
             this.torchSupportPos = this.torchSupportFromPlacement();
@@ -186,7 +189,7 @@ final class BedrockTargetMachine {
         this.torchPlacement = slimePlacement;
         this.slimePos = slimePlacement.getSupportPos();
         if (!this.level.getBlockState(this.slimePos).is(Blocks.SLIME_BLOCK)) {
-            BedrockPlacer.placeSimple(this.slimePos, Direction.UP, Blocks.SLIME_BLOCK.asItem());
+            this.placer.placeSimple(this.slimePos, Direction.UP, Blocks.SLIME_BLOCK.asItem());
             this.footprint.recordTemporary(this.slimePos);
             markThroughput.run();
         }
@@ -247,7 +250,7 @@ final class BedrockTargetMachine {
 
     boolean placeTorch() {
         if (this.torchPlacement == null || this.torchSupportPos == null) return false;
-        if (!BedrockPlacer.placeSimple(
+        if (!this.placer.placeSimple(
                 this.torchSupportPos,
                 this.torchPlacement.getClickedFace(),
                 Blocks.REDSTONE_TORCH.asItem()

@@ -138,6 +138,10 @@ final class ModuleScanCoordinator {
 
     private boolean runFull(PrinterBox interactionBox) {
         FeatureModuleBase.IterationOutcome outcome = this.host.runIteration(interactionBox);
+        if (outcome.waitingForSource()) {
+            this.lifecycle.setState(ScanState.FULL);
+            return true;
+        }
         int lazyThreshold = Configs.Core.LAZY_ENTER_TICKS.getIntegerValue();
         if (this.lifecycle.idlePolicy().recordFullIteration(
                 outcome.didWork(), outcome.foundCandidate(), outcome.completedPass(),
@@ -164,6 +168,10 @@ final class ModuleScanCoordinator {
             }
             FeatureModuleBase.IterationOutcome outcome = this.host.runIteration(interactionBox);
             this.pendingDirtyRegionCount = 0;
+            if (outcome.waitingForSource()) {
+                this.lifecycle.setState(ScanState.FULL);
+                return true;
+            }
             if (this.lifecycle.idlePolicy().recordLazyProbe(outcome.didWork(), outcome.foundCandidate())) {
                 this.lifecycle.setState(ScanState.FULL);
                 return outcome.interrupt();

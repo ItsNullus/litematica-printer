@@ -18,7 +18,7 @@ import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
 import me.aleksilassila.litematica.printer.utils.minecraft.DirectionUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.MessageUtils;
-import me.aleksilassila.litematica.printer.utils.mods.LitematicaUtils;
+import me.aleksilassila.litematica.printer.integration.litematica.LitematicaAdapter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.item.Item;
@@ -38,6 +38,7 @@ public final class PrintPlacementExecutor {
     private final InventorySwitchGuard inventorySwitchGuard;
     private final HudStatsManager hudStats;
     private final MissingMaterialTracker missingMaterials;
+    private final LitematicaAdapter litematica;
     private static final Item[] EMPTY_HAND_ITEMS = {Items.AIR};
     private static final long RESERVE_NOTICE_COOLDOWN_TICKS = 100L;
     private long lastReserveNoticeTick = Long.MIN_VALUE;
@@ -47,13 +48,15 @@ public final class PrintPlacementExecutor {
             CooldownUtils cooldownUtils,
             InventorySwitchGuard inventorySwitchGuard,
             HudStatsManager hudStats,
-            MissingMaterialTracker missingMaterials
+            MissingMaterialTracker missingMaterials,
+            LitematicaAdapter litematica
     ) {
         this.actionBroker = actionBroker;
         this.cooldownUtils = cooldownUtils;
         this.inventorySwitchGuard = inventorySwitchGuard;
         this.hudStats = hudStats;
         this.missingMaterials = missingMaterials;
+        this.litematica = litematica;
     }
 
     public PrintPlacementResult execute(SchematicBlockContext context, Action action, @Nullable PrintTaskAction taskAction) {
@@ -145,7 +148,7 @@ public final class PrintPlacementExecutor {
             return PrintPlacementResult.cancelled(true);
         }
         this.actionBroker.setExpectedStackPredicate(requiredStackPredicate);
-        Vec3 hitModifier = LitematicaUtils.usePrecisionPlacement(blockPos, context.requiredState);
+        Vec3 hitModifier = this.litematica.usePrecisionPlacement(blockPos, context.requiredState);
         if (hitModifier != null) {
             this.actionBroker.useProtocolHitModifier(hitModifier);
         }

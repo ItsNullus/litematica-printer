@@ -2,16 +2,21 @@ package me.aleksilassila.litematica.printer.handler.scan;
 
 import me.aleksilassila.litematica.printer.config.Configs;
 
+import java.util.HashSet;
+import java.util.Set;
+
 /** Owns the per-tick global and per-owner scan time budget. */
 final class ScanBudget {
-    private static final int OWNER_BUDGET_PERCENT = 75;
-
     private long tickTime = Long.MIN_VALUE;
     private long usedNanos;
+    private int ownerCount = 1;
+    private final Set<String> knownOwners = new HashSet<>();
 
     void reset() {
         this.tickTime = Long.MIN_VALUE;
         this.usedNanos = 0L;
+        this.ownerCount = 1;
+        this.knownOwners.clear();
     }
 
     void beginTick(long tickTime) {
@@ -20,19 +25,34 @@ final class ScanBudget {
         }
         this.tickTime = tickTime;
         this.usedNanos = 0L;
+        this.ownerCount = Math.max(1, this.knownOwners.size());
     }
 
-    boolean isExceeded(long ownerStartNanos) {
+    void registerOwner(String ownerKey) {
+        if (ownerKey != null && !ownerKey.isBlank()) {
+            this.knownOwners.add(ownerKey);
+        }
+    }
+
+    void removeOwner(String ownerKey) {
+        if (ownerKey != null) {
+            this.knownOwners.remove(ownerKey);
+            this.ownerCount = Math.max(1, this.knownOwners.size());
+        }
+    }
+
+    boolean isExceeded(String ownerKey, long ownerStartNanos) {
         long elapsed = elapsedSince(ownerStartNanos);
         long globalBudget = globalNanos();
-        long ownerBudget = Math.max(500_000L, globalBudget * OWNER_BUDGET_PERCENT / 100L);
+        long ownerBudget = Math.max(100_000L, globalBudget / this.ownerCount);
         return elapsed >= ownerBudget || this.usedNanos + elapsed >= globalBudget;
     }
 
-    void record(SectionScanSession.MutableMetrics metrics, long ownerStartNanos) {
+    void record(String ownerKey, ScanMetricsAccumulator metrics, long ownerStartNanos) {
         long elapsed = elapsedSince(ownerStartNanos);
         this.usedNanos += elapsed;
         metrics.scanNanos += elapsed;
+        this.registerOwner(ownerKey);
     }
 
     private static long elapsedSince(long startNanos) {

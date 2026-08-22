@@ -88,7 +88,13 @@ public final class MiningInteractionController {
             return BlockBreakResult.COMPLETED;
         }
         if (!level.getWorldBorder().isWithinBounds(pos)) return BlockBreakResult.FAILED;
+        if (this.port.isInventorySwitchPending()) {
+            return BlockBreakResult.IN_PROGRESS;
+        }
         if (!allowToolSwitch || !InteractionUtils.trySwitchToEffectiveTool(pos, state)) this.port.ensureCarriedItemSent();
+        if (this.port.isInventorySwitchPending()) {
+            return BlockBreakResult.IN_PROGRESS;
+        }
         if (!InteractionUtils.protectCurrentToolBeforeBreak(state)
                 || !InteractionUtils.isRecoveryToolReadyForBreak(state)) return BlockBreakResult.FAILED;
         this.port.ensureCarriedItemSent();
@@ -148,6 +154,9 @@ public final class MiningInteractionController {
             return BlockBreakResult.COMPLETED;
         }
         if (allowToolSwitch) InteractionUtils.trySwitchToEffectiveTool(pos, state);
+        if (this.port.isInventorySwitchPending()) {
+            return BlockBreakResult.IN_PROGRESS;
+        }
         this.port.ensureCarriedItemSent();
         if (!InteractionUtils.protectCurrentToolBeforeBreak(state)
                 || !InteractionUtils.isRecoveryToolReadyForBreak(state)) return BlockBreakResult.FAILED;

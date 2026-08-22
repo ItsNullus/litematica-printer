@@ -7,7 +7,6 @@ import me.aleksilassila.litematica.printer.mixin.printer.litematica.EasyPlaceUti
 import me.aleksilassila.litematica.printer.mixin.printer.litematica.InventoryUtilsAccessor;
 import me.aleksilassila.litematica.printer.integration.inventory.MaterialRequest;
 import me.aleksilassila.litematica.printer.integration.litematica.LitematicaPickSlotAdapter;
-import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import me.aleksilassila.litematica.printer.utils.minecraft.PlayerUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.ToolSelectionUtils;
 import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
@@ -25,9 +24,9 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
+
+import me.aleksilassila.litematica.printer.runtime.RuntimeAccess;
 
 //#if MC >= 12005
 import net.minecraft.core.component.DataComponents;
@@ -43,9 +42,6 @@ import static fi.dy.masa.malilib.util.InventoryUtils.*;
 public class InventoryUtils {
     private static final Minecraft client = Minecraft.getInstance();
     private static final int OFFHAND_SLOT_INDEX = 40;
-    private static final int MAIN_INVENTORY_SLOT_COUNT = 36;
-    private static final long MESSAGE_COOLDOWN_MS = 5000L;
-    private static final Map<String, Long> LAST_MESSAGE_SEND_TIME = new ConcurrentHashMap<>();
     public static int getSelectedSlot(Inventory inventory) {
         //#if MC > 12104
         return inventory.getSelectedSlot();
@@ -283,62 +279,14 @@ public class InventoryUtils {
 
     private static void showMessageWithCooldown(Message.MessageType type, String messageKey) {
         long currentTime = System.currentTimeMillis();
-        // 核心修改：通过消息Key获取最后发送时间，而非消息类型
-        long lastSendTime = LAST_MESSAGE_SEND_TIME.getOrDefault(messageKey, 0L);
-
-        // 未超过冷却时间，直接返回不发送
-        if (currentTime - lastSendTime < MESSAGE_COOLDOWN_MS) {
+        if (!RuntimeAccess.get().inventoryMessageCooldown().shouldSend(messageKey, currentTime)) {
             return;
         }
-
-        // 超过冷却时间，发送消息并更新【该Key】的最后发送时间
         InfoUtils.showGuiOrInGameMessage(type, messageKey);
-        LAST_MESSAGE_SEND_TIME.put(messageKey, currentTime);
     }
 
     public static boolean switchToBestTool(LocalPlayer player, BlockState blockState) {
-        if (player == null || blockState == null || blockState.isAir()) {
-            return false;
-        }
-        if (PlayerUtils.getAbilities(player).instabuild) {
-            return false;
-        }
-
-        Inventory inventory = player.getInventory();
-        ItemStack currentStack = player.getMainHandItem();
-        boolean currentToolAllowed = InteractionUtils.isToolAllowedByDurabilityProtection(currentStack);
-        float currentProgress = currentToolAllowed
-                ? getDestroyProgress(player, blockState, currentStack)
-                : 0.0F;
-        float bestProgress = currentProgress;
-        boolean preferSilkTouch = ToolSelectionUtils.prefersSilkTouchForDrops(blockState);
-        boolean bestHasSilkTouch = preferSilkTouch
-                && currentToolAllowed
-                && ToolSelectionUtils.hasSilkTouch(currentStack);
-        int bestSlot = -1;
-        ItemStack bestStack = ItemStack.EMPTY;
-
-        NonNullList<ItemStack> stacks = getMainStacks(inventory);
-        for (int slot = 0; slot < stacks.size(); slot++) {
-            ItemStack stack = stacks.get(slot);
-            if (stack.isEmpty() || !InteractionUtils.isToolAllowedByDurabilityProtection(stack)) {
-                continue;
-            }
-            float progress = getDestroyProgress(player, blockState, stack);
-            boolean stackHasSilkTouch = preferSilkTouch && ToolSelectionUtils.hasSilkTouch(stack);
-            if ((stackHasSilkTouch && !bestHasSilkTouch)
-                    || stackHasSilkTouch == bestHasSilkTouch && progress > bestProgress) {
-                bestProgress = progress;
-                bestHasSilkTouch = stackHasSilkTouch;
-                bestSlot = slot;
-                bestStack = stack;
-            }
-        }
-
-        if (bestSlot == -1 || bestStack.isEmpty()) {
-            return false;
-        }
-        return setPickedItemToHand(bestSlot, bestStack, client);
+        return ToolInventorySelector.switchToBestTool(client, player, blockState);
     }
 
     public static boolean hasUsableSilkTouchTool(LocalPlayer player) {
@@ -355,18 +303,6 @@ public class InventoryUtils {
         return false;
     }
 
-    private static float getDestroyProgress(LocalPlayer player, BlockState state, ItemStack stack) {
-        float hardness = state.getBlock().defaultDestroyTime();
-        if (hardness < 0.0F) {
-            return 0.0F;
-        }
-        if (hardness == 0.0F) {
-            return 1.0F;
-        }
-        int divisor = (!state.requiresCorrectToolForDrops() || stack.isCorrectToolForDrops(state)) ? 30 : 100;
-        return PlayerUtils.getBlockBreakingSpeed(player, state, stack) / hardness / (float) divisor;
-    }
-
     public static boolean switchToItems(LocalPlayer player, Item[] items) {
         return switchToItems(player, items, -1);
     }
@@ -376,50 +312,7 @@ public class InventoryUtils {
     }
 
     private static boolean switchToItems(LocalPlayer player, Item[] items, int reserveCount) {
-        if (PrinterRuntime.get().inventorySwitchGuard().isWaiting()) {
-            return false;
-        }
-        if (items == null || items.length == 0) {
-            items = new Item[]{Items.AIR};
-        }
-        Inventory inventory = player.getInventory();
-        ItemStack mainHandStack = player.getMainHandItem();
-        for (Item item : items) {
-            if (mainHandStack.getItem().equals(item)
-                    && getConsumableSurplus(player, mainHandStack, null, reserveCount) > 0) {
-                return true;
-            }
-        }
-        boolean isCreativeMode = PlayerUtils.getAbilities(player).instabuild;
-        // 创造模式下主手不匹配时才执行 pick，避免高速放置时每个方块都重复同步物品。
-        if (isCreativeMode) {
-            ItemStack stack = new ItemStack(items[0]);
-            if (InventoryUtils.setPickedItemToHand(stack, client)) {
-                return true;
-            }
-            return false;
-        }
-        // 先检查全部可接受物品，避免首选物品缺失时提前发起取货，
-        // 而背包里其实已经有后备物品（例如打火石/火焰弹）。
-        for (Item item : items) {
-            for (int i = 0; i < inventory.getContainerSize(); i++) {
-                ItemStack itemStack = inventory.getItem(i);
-                if (itemStack.getItem().equals(item)
-                        && getConsumableSurplus(player, itemStack, null, reserveCount) > 0) {
-                    boolean needsInventoryConfirmation = !Inventory.isHotbarSlot(i);
-                    if (InventoryUtils.setPickedItemToHand(i, itemStack, client)) {
-                        return !needsInventoryConfirmation
-                                || !PrinterRuntime.get().inventorySwitchGuard().markSwitchIfNeeded(item);
-                    }
-                    return false;
-                }
-            }
-        }
-        // 背包里所有后备物品都不存在后，再按优先级请求外部取货。
-        for (Item item : items) {
-            QuickShulkerBridge.requestItem(item, MaterialRequest.Source.PRINT);
-        }
-        return false;
+        return MaterialSelector.switchToItems(player, items, reserveCount);
     }
 
     public static boolean playerHasAccessToMatchingStack(
@@ -482,38 +375,7 @@ public class InventoryUtils {
             ItemStack creativeFallback,
             int reserveCount
     ) {
-        if (player == null || predicate == null || PrinterRuntime.get().inventorySwitchGuard().isWaiting()) {
-            return false;
-        }
-        ItemStack mainHandStack = player.getMainHandItem();
-        if (predicate.test(mainHandStack)
-                && getConsumableSurplus(player, mainHandStack, predicate, reserveCount) > 0) {
-            return true;
-        }
-
-        Inventory inventory = player.getInventory();
-        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
-            ItemStack stack = inventory.getItem(slot);
-            if (stack.isEmpty() || !predicate.test(stack)) {
-                continue;
-            }
-            if (getConsumableSurplus(player, stack, predicate, reserveCount) <= 0) {
-                continue;
-            }
-            boolean needsInventoryConfirmation = !Inventory.isHotbarSlot(slot);
-            if (setPickedItemToHand(slot, stack, client)) {
-                return !needsInventoryConfirmation
-                        || !PrinterRuntime.get().inventorySwitchGuard().markSwitchIfNeeded(stack.getItem());
-            }
-            return false;
-        }
-
-        if (PlayerUtils.getAbilities(player).instabuild
-                && creativeFallback != null
-                && predicate.test(creativeFallback)) {
-            return setPickedItemToHand(creativeFallback.copy(), client);
-        }
-        return false;
+        return MaterialSelector.switchToMatchingStack(player, predicate, creativeFallback, reserveCount);
     }
 
     /**
@@ -526,20 +388,7 @@ public class InventoryUtils {
             @Nullable Predicate<ItemStack> requiredStackPredicate,
             int reserveCount
     ) {
-        if (player == null || stack == null) {
-            return 0;
-        }
-        if (reserveCount < 0
-                || PlayerUtils.getAbilities(player).instabuild
-                || stack.isEmpty()
-                || stack.isDamageableItem()) {
-            return Integer.MAX_VALUE;
-        }
-
-        Predicate<ItemStack> predicate = requiredStackPredicate != null
-                ? requiredStackPredicate
-                : candidate -> candidate.is(stack.getItem());
-        return Math.max(0, countMatchingMainInventory(player, predicate) - reserveCount);
+        return MaterialSelector.getConsumableSurplus(player, stack, requiredStackPredicate, reserveCount);
     }
 
     public static ItemStack findReserveBlockedStack(
@@ -548,54 +397,7 @@ public class InventoryUtils {
             @Nullable Predicate<ItemStack> requiredStackPredicate,
             int reserveCount
     ) {
-        if (player == null
-                || reserveCount < 0
-                || PlayerUtils.getAbilities(player).instabuild) {
-            return ItemStack.EMPTY;
-        }
-
-        Inventory inventory = player.getInventory();
-        int size = Math.min(MAIN_INVENTORY_SLOT_COUNT, inventory.getContainerSize());
-        if (requiredStackPredicate != null) {
-            for (int slot = 0; slot < size; slot++) {
-                ItemStack stack = inventory.getItem(slot);
-                if (!stack.isEmpty()
-                        && requiredStackPredicate.test(stack)
-                        && getConsumableSurplus(player, stack, requiredStackPredicate, reserveCount) <= 0) {
-                    return stack.copy();
-                }
-            }
-            return ItemStack.EMPTY;
-        }
-
-        Item[] targetItems = items == null || items.length == 0 ? new Item[]{Items.AIR} : items;
-        for (Item item : targetItems) {
-            for (int slot = 0; slot < size; slot++) {
-                ItemStack stack = inventory.getItem(slot);
-                if (!stack.isEmpty()
-                        && stack.is(item)
-                        && getConsumableSurplus(player, stack, null, reserveCount) <= 0) {
-                    return stack.copy();
-                }
-            }
-        }
-        return ItemStack.EMPTY;
-    }
-
-    private static int countMatchingMainInventory(
-            LocalPlayer player,
-            Predicate<ItemStack> predicate
-    ) {
-        Inventory inventory = player.getInventory();
-        int size = Math.min(MAIN_INVENTORY_SLOT_COUNT, inventory.getContainerSize());
-        int count = 0;
-        for (int slot = 0; slot < size; slot++) {
-            ItemStack stack = inventory.getItem(slot);
-            if (!stack.isEmpty() && predicate.test(stack)) {
-                count += stack.getCount();
-            }
-        }
-        return count;
+        return MaterialSelector.findReserveBlockedStack(player, items, requiredStackPredicate, reserveCount);
     }
 
     public static ItemStack createWaterPotionStack() {

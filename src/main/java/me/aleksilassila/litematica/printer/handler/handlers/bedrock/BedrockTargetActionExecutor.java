@@ -31,6 +31,8 @@ final class BedrockTargetActionExecutor {
         void recordTemporary(BlockPos pos);
         Set<BlockPos> ownedTorchPositions();
         boolean conservativeSync();
+        BedrockCriticalExecutor criticalExecutor();
+        BedrockPlacer placer();
         boolean canRepowerNow();
         boolean rebuildLimitReached();
         void recordRebuild();
@@ -57,7 +59,7 @@ final class BedrockTargetActionExecutor {
     private void initialize(boolean allowInitialize) {
         if (!allowInitialize || !this.host.canBuildInitialMachine()) return;
         BedrockMachineLayout layout = this.host.layout();
-        if (!BedrockPlacer.placePiston(this.host.pistonPos(), layout.getPrimingFacing())) return;
+        if (!this.host.placer().placePiston(this.host.pistonPos(), layout.getPrimingFacing())) return;
         this.host.setInitializeTick(this.host.tickTimes());
         this.host.markThroughputAction();
         if (this.host.torchSupportPos() != null && !this.host.hasOwnedTorchPowerSource()) {
@@ -68,11 +70,11 @@ final class BedrockTargetActionExecutor {
     private void executeTarget(boolean allowExecute) {
         if (!allowExecute || this.host.hasTried()) return;
         BedrockMachineLayout layout = this.host.layout();
-        if (!BedrockPlacer.preparePistonPlacementLook(this.host.pistonPos(), layout.getExecuteFacing())) return;
+        if (!this.host.placer().preparePistonPlacementLook(this.host.pistonPos(), layout.getExecuteFacing())) return;
         for (int offset = 1; offset < 6; offset++) {
             this.host.recordTemporary(this.host.pistonPos().relative(layout.getPistonOffset(), offset));
         }
-        if (!BedrockCriticalExecutor.submit(
+        if (!this.host.criticalExecutor().submit(
                 this.host.level(),
                 this.host.bedrockPos(),
                 this.host.pistonPos(),
@@ -99,14 +101,14 @@ final class BedrockTargetActionExecutor {
 
         BedrockMachineLayout layout = this.host.layout();
         if (!this.host.level().getBlockState(this.host.pistonPos()).isAir()
-                && !BedrockPlacer.preparePistonPlacementLook(this.host.pistonPos(), layout.getPrimingFacing())) return;
+                && !this.host.placer().preparePistonPlacementLook(this.host.pistonPos(), layout.getPrimingFacing())) return;
         for (BlockPos torchPos : this.host.ownedTorchPositions()) {
             BedrockBreaker.breakBlock(torchPos, Direction.DOWN, !this.host.conservativeSync());
         }
         if (!this.host.level().getBlockState(this.host.pistonPos()).isAir()) {
             BedrockBreaker.breakBlock(this.host.pistonPos(), layout.getPrimingFacing(), !this.host.conservativeSync());
         }
-        if (!BedrockPlacer.placePiston(this.host.pistonPos(), layout.getPrimingFacing())) return;
+        if (!this.host.placer().placePiston(this.host.pistonPos(), layout.getPrimingFacing())) return;
         if (!this.host.tryRepowerTorch()) return;
 
         this.host.setInitializeTick(this.host.tickTimes());

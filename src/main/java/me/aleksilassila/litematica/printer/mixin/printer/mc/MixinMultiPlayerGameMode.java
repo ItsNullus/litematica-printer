@@ -5,6 +5,7 @@ import me.aleksilassila.litematica.printer.interaction.MiningInteractionPort;
 import me.aleksilassila.litematica.printer.mixin_extension.BlockBreakResult;
 import me.aleksilassila.litematica.printer.mixin_extension.MultiPlayerGameModeExtension;
 import me.aleksilassila.litematica.printer.utils.minecraft.NetworkUtils;
+import me.aleksilassila.litematica.printer.runtime.RuntimeAccess;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
@@ -104,6 +105,9 @@ public abstract class MixinMultiPlayerGameMode implements MultiPlayerGameModeExt
     @Override public boolean isDestroying() { return this.isDestroying; }
     @Override public void isDestroying(boolean destroying) { this.isDestroying = destroying; }
     @Override public boolean matchesDestroyTarget(BlockPos pos) { return this.sameDestroyTarget(pos); }
+    @Override public boolean isInventorySwitchPending() {
+        return RuntimeAccess.get().inventorySwitchGuard().isWaiting();
+    }
     @Override public void ensureCarriedItemSent() { this.ensureHasSentCarriedItem(); }
 
     @Override

@@ -6,11 +6,7 @@ import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEpoch;
 import me.aleksilassila.litematica.printer.core.scan.ScanGeneration;
 import me.aleksilassila.litematica.printer.core.scan.ScanHandle;
-import me.aleksilassila.litematica.printer.enums.RadiusShapeType;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
-import me.aleksilassila.litematica.printer.utils.ConfigUtils;
-import me.aleksilassila.litematica.printer.utils.minecraft.PlayerUtils;
-import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.state.BlockState;
@@ -32,9 +28,9 @@ final class SectionScanSession {
     private static final Direction[] DIRECTIONS = Direction.values();
 
     private final ScanIntent intent;
-    private final MutableMetrics metrics;
+    private final ScanMetricsAccumulator metrics;
     private final AsyncPositionCursorScheduler asyncScheduler;
-    private Region region;
+    private ScanRegion region;
     private List<PrinterBox> sourceBoxes;
     private PositionCursor distanceCursor;
     private final boolean configuredAsync;
@@ -45,7 +41,7 @@ final class SectionScanSession {
     private long sourceRevision;
     private long cursorRevision;
     private long exhaustedUntilTick = Long.MIN_VALUE;
-    private final PriorityQueue<DirtyPosition> dirtyPositions = new PriorityQueue<>();
+    private final PriorityQueue<ScanDirtyPosition> dirtyPositions = new PriorityQueue<>();
     private final LongSet dirtyPositionKeys = new LongOpenHashSet();
     private boolean paused;
     private boolean closed;
@@ -56,10 +52,10 @@ final class SectionScanSession {
     private boolean lastChunkLoaded;
 
     SectionScanSession(
-            Region region,
+            ScanRegion region,
             List<PrinterBox> sourceBoxes,
             ScanIntent intent,
-            MutableMetrics metrics,
+            ScanMetricsAccumulator metrics,
             AsyncPositionCursorScheduler asyncScheduler,
             boolean asynchronous,
             RuntimeEpoch epoch,
@@ -81,15 +77,15 @@ final class SectionScanSession {
     }
 
     SectionScanSession(
-            Region region,
+            ScanRegion region,
             List<PrinterBox> sourceBoxes,
             ScanIntent intent,
-            MutableMetrics metrics
+            ScanMetricsAccumulator metrics
     ) {
         this(region, sourceBoxes, intent, metrics, null, false, RuntimeEpoch.INITIAL, () -> 0L, () -> 0L);
     }
 
-    boolean canReuse(Region region) {
+    boolean canReuse(ScanRegion region) {
         return this.region.sameSectionWindow(region)
                 && this.region.maxDistanceBand() == region.maxDistanceBand();
     }
@@ -98,7 +94,7 @@ final class SectionScanSession {
         return this.configuredAsync;
     }
 
-    void updateRegion(Region region, List<PrinterBox> sourceBoxes) {
+    void updateRegion(ScanRegion region, List<PrinterBox> sourceBoxes) {
         boolean boxesChanged = !this.sourceBoxes.equals(sourceBoxes);
         // Compare the section window (16-block granularity), not the exact center. The center
         // follows the player's block position; bumping the revision for every single block of
@@ -186,7 +182,7 @@ final class SectionScanSession {
     }
 
     boolean contains(BlockPos pos) {
-        return containsAny(this.sourceBoxes, pos);
+        return ScanGeometry.containsAny(this.sourceBoxes, pos);
     }
 
     void invalidate(BlockPos pos) {
@@ -205,15 +201,15 @@ final class SectionScanSession {
     }
 
     private void addDirtyPosition(BlockPos pos) {
-        if (pos == null || !containsAny(this.sourceBoxes, pos)) {
+        if (pos == null || !ScanGeometry.containsAny(this.sourceBoxes, pos)) {
             return;
         }
         this.exhaustedUntilTick = Long.MIN_VALUE;
         long key = ScanCache.key(pos);
         if (this.dirtyPositionKeys.add(key)) {
-            this.dirtyPositions.add(new DirtyPosition(
+            this.dirtyPositions.add(new ScanDirtyPosition(
                     pos.immutable(),
-                    distanceSqr(pos, this.region.centerX(), this.region.centerY(), this.region.centerZ())
+                    ScanGeometry.distanceSqr(pos, this.region.centerX(), this.region.centerY(), this.region.centerZ())
             ));
         }
     }
@@ -293,8 +289,8 @@ final class SectionScanSession {
                 continue;
             }
 
-            int chunkX = sectionCoord(x);
-            int chunkZ = sectionCoord(z);
+            int chunkX = ScanGeometry.sectionCoord(x);
+            int chunkZ = ScanGeometry.sectionCoord(z);
             if (chunkX != this.lastChunkX || chunkZ != this.lastChunkZ) {
                 this.lastChunkX = chunkX;
                 this.lastChunkZ = chunkZ;
@@ -304,7 +300,8 @@ final class SectionScanSession {
                 continue;
             }
 
-            this.metrics.recordScannedSection(sectionKey(chunkX, sectionCoord(y), chunkZ));
+            this.metrics.recordScannedSection(ScanGeometry.sectionKey(
+                    chunkX, ScanGeometry.sectionCoord(y), chunkZ));
 
             BlockState state = observation.worldState(this.liveMutable);
             this.metrics.scannedBlocks++;
@@ -331,14 +328,14 @@ final class SectionScanSession {
 
     private BlockPos pollDirtyPositionBefore(long sourceDistanceSqr) {
         while (!this.dirtyPositions.isEmpty()) {
-            DirtyPosition dirty = this.dirtyPositions.peek();
+            ScanDirtyPosition dirty = this.dirtyPositions.peek();
             if (dirty.distanceSqr() > sourceDistanceSqr) {
                 return null;
             }
             this.dirtyPositions.poll();
             BlockPos pos = dirty.pos();
             this.dirtyPositionKeys.remove(ScanCache.key(pos));
-            if (containsAny(this.sourceBoxes, pos)) {
+            if (ScanGeometry.containsAny(this.sourceBoxes, pos)) {
                 return pos;
             }
         }
@@ -355,32 +352,6 @@ final class SectionScanSession {
         this.exhaustedUntilTick = tickTime + 1;
         this.metrics.completedPasses++;
         return true;
-    }
-
-    private static boolean containsAny(List<PrinterBox> boxes, BlockPos pos) {
-        for (PrinterBox box : boxes) {
-            if (box.contains(pos)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static int sectionCoord(int blockCoord) {
-        return blockCoord >> 4;
-    }
-
-    private static long sectionKey(int sectionX, int sectionY, int sectionZ) {
-        return ((long) sectionX & 0x3FFFFFL) << 42
-                | ((long) sectionZ & 0x3FFFFFL) << 20
-                | ((long) sectionY & 0xFFFFFL);
-    }
-
-    private static long distanceSqr(BlockPos pos, int centerX, int centerY, int centerZ) {
-        long dx = pos.getX() - (long) centerX;
-        long dy = pos.getY() - (long) centerY;
-        long dz = pos.getZ() - (long) centerZ;
-        return dx * dx + dy * dy + dz * dz;
     }
 
     void close() {
@@ -409,122 +380,4 @@ final class SectionScanSession {
         }
     }
 
-    record Region(
-            int centerX,
-            int centerY,
-            int centerZ,
-            int minSectionX,
-            int minSectionY,
-            int minSectionZ,
-            int maxSectionX,
-            int maxSectionY,
-            int maxSectionZ,
-            int maxDistanceBand
-    ) {
-        static Region from(PrinterBox box, LocalPlayer player) {
-            int centerX = player == null ? (box.minX + box.maxX) >> 1 : (int) Math.floor(player.getX());
-            int centerY = player == null ? (box.minY + box.maxY) >> 1 : (int) Math.floor(player.getEyeY());
-            int centerZ = player == null ? (box.minZ + box.maxZ) >> 1 : (int) Math.floor(player.getZ());
-            int maxDistanceBand = farthestDistanceBand(box, centerX, centerY, centerZ);
-            if (player != null) {
-                Object shape = Configs.Core.ITERATOR_SHAPE.getOptionListValue();
-                if (shape == RadiusShapeType.SPHERE || shape == RadiusShapeType.OCTAHEDRON) {
-                    maxDistanceBand = Math.min(maxDistanceBand, ConfigUtils.getWorkRange() + 2);
-                }
-                if (Configs.Core.CHECK_PLAYER_INTERACTION_RANGE.getBooleanValue()) {
-                    int interactionBand = (int) Math.ceil(
-                            PlayerUtils.getPlayerBlockInteractionRange(5.0D) + 3.0D
-                    );
-                    maxDistanceBand = Math.min(maxDistanceBand, interactionBand);
-                }
-            }
-            return new Region(
-                    centerX,
-                    centerY,
-                    centerZ,
-                    sectionCoord(box.minX),
-                    sectionCoord(box.minY),
-                    sectionCoord(box.minZ),
-                    sectionCoord(box.maxX),
-                    sectionCoord(box.maxY),
-                    sectionCoord(box.maxZ),
-                    maxDistanceBand
-            );
-        }
-
-        boolean sameSectionWindow(Region other) {
-            return this.minSectionX == other.minSectionX
-                    && this.minSectionY == other.minSectionY
-                    && this.minSectionZ == other.minSectionZ
-                    && this.maxSectionX == other.maxSectionX
-                    && this.maxSectionY == other.maxSectionY
-                    && this.maxSectionZ == other.maxSectionZ;
-        }
-
-        private static int farthestDistanceBand(PrinterBox box, int centerX, int centerY, int centerZ) {
-            long dx = Math.max(Math.abs((long) box.minX - centerX), Math.abs((long) box.maxX - centerX));
-            long dy = Math.max(Math.abs((long) box.minY - centerY), Math.abs((long) box.maxY - centerY));
-            long dz = Math.max(Math.abs((long) box.minZ - centerZ), Math.abs((long) box.maxZ - centerZ));
-            return (int) Math.ceil(Math.sqrt(dx * dx + dy * dy + dz * dz));
-        }
-    }
-
-    private record DirtyPosition(BlockPos pos, long distanceSqr) implements Comparable<DirtyPosition> {
-        @Override
-        public int compareTo(DirtyPosition other) {
-            int result = Long.compare(this.distanceSqr, other.distanceSqr);
-            if (result != 0) {
-                return result;
-            }
-            result = Integer.compare(this.pos.getX(), other.pos.getX());
-            if (result != 0) {
-                return result;
-            }
-            result = Integer.compare(this.pos.getY(), other.pos.getY());
-            if (result != 0) {
-                return result;
-            }
-            return Integer.compare(this.pos.getZ(), other.pos.getZ());
-        }
-    }
-
-    static final class MutableMetrics {
-        long scanNanos;
-        int scannedBlocks;
-        int scannedSections;
-        private final LongSet scannedSectionKeys = new LongOpenHashSet();
-        int sourceCandidates;
-        int acceptedTargets;
-        int budgetPauses;
-        int completedPasses;
-
-        void reset() {
-            this.scanNanos = 0L;
-            this.scannedBlocks = 0;
-            this.scannedSections = 0;
-            this.scannedSectionKeys.clear();
-            this.sourceCandidates = 0;
-            this.acceptedTargets = 0;
-            this.budgetPauses = 0;
-            this.completedPasses = 0;
-        }
-
-        ScanCache.ScanMetrics snapshot() {
-            return new ScanCache.ScanMetrics(
-                    this.scanNanos,
-                    this.scannedBlocks,
-                    this.scannedSections,
-                    this.sourceCandidates,
-                    this.acceptedTargets,
-                    this.budgetPauses,
-                    this.completedPasses
-            );
-        }
-
-        void recordScannedSection(long sectionKey) {
-            if (this.scannedSectionKeys.add(sectionKey)) {
-                this.scannedSections++;
-            }
-        }
-    }
 }
