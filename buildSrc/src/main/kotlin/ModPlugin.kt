@@ -24,6 +24,7 @@ abstract class ModPlugin : Plugin<Project> {
         configureJava()
         configureLombok()
         configureJavaCompile()
+        configureTestWorkers()
         configureResources()
         configureJar()
         configureCoreCoverage()
@@ -109,6 +110,17 @@ abstract class ModPlugin : Plugin<Project> {
             )
             if (javaVersion <= JavaVersion.VERSION_1_8) {
                 options.compilerArgs.add("-Xlint:-options")
+            }
+        }
+    }
+
+    private fun Project.configureTestWorkers() {
+        tasks.withType<Test>().configureEach {
+            // Java 25 warns when legacy Guava/JOML code uses Unsafe. Keep the
+            // compatibility access enabled only on runtimes that support this
+            // switch; older Java versions must not receive an unknown option.
+            if (Runtime.version().feature() >= 23) {
+                jvmArgs("--sun-misc-unsafe-memory-access=allow")
             }
         }
     }
