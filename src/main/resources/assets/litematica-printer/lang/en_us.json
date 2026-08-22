@@ -234,8 +234,6 @@
   "litematica-printer.config.unlockBeaconEffects.desc": "Relax the client-side beacon UI effect tier limits and allow selecting primary/secondary effects that would normally be unavailable at the current beacon level, similar to wacko-beacons.\nThis does not change server-side validation; whether it actually works depends on the server still being vulnerable or unpatched.",
   "litematica-printer.config.scanTimeBudgetMs": "Scan Time Budget",
   "litematica-printer.config.scanTimeBudgetMs.desc": "Main-thread time cap for the entry scanner per tick, in milliseconds.\nThis is a safety fuse, not a performance optimization switch. Raising it only allows more same-tick scanning and may stutter; lowering it yields earlier to the next tick and may refresh targets more slowly.",
-  "litematica-printer.config.asyncScan": "Asynchronous Scan Traversal",
-  "litematica-printer.config.asyncScan.desc": "Prefetches selection-only distance traversal on a background worker. World and schematic state are still read and revalidated on the client thread. Automatically falls back to synchronous traversal after a worker failure.",
   "litematica-printer.config.lazyEnterTicks": "Lazy Scan Delay",
   "litematica-printer.config.lazyEnterTicks.desc": "Number of continuously idle ticks before the entry scanner enters lazy state; 0 disables lazy scanning.",
   "litematica-printer.config.workRange": "Work Radius",

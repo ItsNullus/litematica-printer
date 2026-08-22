@@ -253,7 +253,7 @@ public final class BedrockCandidatePlanner {
 
     private int getCandidateScanLimit(int scanGuardLimit) {
         // The scan session already yields cooperatively on the configured time budget and keeps
-        // its cursor between ticks. A second fixed spatial slice made async scanning stop around
+        // its cursor between ticks. A second fixed spatial slice would stop scanning around
         // the same part of a large selection until movement rebuilt the cursor.
         return scanGuardLimit > 0 ? scanGuardLimit : Integer.MAX_VALUE;
     }

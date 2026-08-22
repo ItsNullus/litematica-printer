@@ -72,7 +72,6 @@ public class PrintHandler extends FeatureModuleBase {
 
     @Override
     protected int getTickInterval() {
-        WorldSchematic schematic = this.litematica.schematicWorld();
         if (this.printTasks.hasActiveWorkflow()) {
             return 0;
         }
@@ -93,7 +92,6 @@ public class PrintHandler extends FeatureModuleBase {
 
     @Override
     protected boolean hasPendingIterationWork() {
-        WorldSchematic schematic = this.litematica.schematicWorld();
         return this.printTasks.hasReadyWorkflow() || this.sortedTargets.hasPendingWork();
     }
 

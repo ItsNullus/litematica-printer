@@ -48,6 +48,9 @@ final class SectionScanSession {
     private int lastChunkZ = Integer.MIN_VALUE;
     private boolean lastChunkLoaded;
     private final ChunkCandidateCache chunkCandidateCache = new ChunkCandidateCache();
+    private SectionCandidateCursor candidateCursor;
+    private boolean candidateModeDecided;
+    private boolean useCandidateCursor;
 
     SectionScanSession(
             ScanRegion region,
@@ -85,6 +88,9 @@ final class SectionScanSession {
 
     void updateRegion(ScanRegion region, List<PrinterBox> sourceBoxes) {
         boolean boxesChanged = !this.sourceBoxes.equals(sourceBoxes);
+        boolean centerChanged = this.region.centerX() != region.centerX()
+                || this.region.centerY() != region.centerY()
+                || this.region.centerZ() != region.centerZ();
         // Compare the section window (16-block granularity), not the exact center. The center
         // follows the player's block position; bumping the revision for every single block of
         // movement made finishPass() rebuild the cursor from scratch on every pass, which
@@ -97,6 +103,17 @@ final class SectionScanSession {
         }
         if (boxesChanged || windowChanged) {
             this.sourceRevision++;
+            this.candidateCursor = null;
+            this.candidateModeDecided = false;
+            this.useCandidateCursor = false;
+        }
+        if (centerChanged && this.candidateCursor != null) {
+            // The cached candidate list is filtered by the reach predicate captured for the
+            // current player position. Rebuild only that candidate view; the underlying flags
+            // remain valid and the normal cursor is not needlessly rewound.
+            this.candidateCursor = null;
+            this.candidateModeDecided = false;
+            this.useCandidateCursor = false;
         }
         // Keep the active cursor while the section window remains stable. Rebuilding it for every
         // block of player movement repeatedly walks the already-scanned prefix and starves the
@@ -119,6 +136,19 @@ final class SectionScanSession {
     }
 
     private void resetProgress() {
+        if (this.useCandidateCursor && this.candidateCursor != null) {
+            this.candidateCursor.reset();
+            this.dirtyPositions.clear();
+            this.dirtyPositionKeys.clear();
+            this.scanHandle.close();
+            this.scanHandle = this.createScanHandle();
+            this.cursorRevision = this.sourceRevision;
+            this.exhaustedUntilTick = Long.MIN_VALUE;
+            this.lastChunkX = Integer.MIN_VALUE;
+            this.lastChunkZ = Integer.MIN_VALUE;
+            this.lastChunkLoaded = false;
+            return;
+        }
         this.rebuildDistanceCursor();
         this.dirtyPositions.clear();
         this.dirtyPositionKeys.clear();
@@ -129,6 +159,9 @@ final class SectionScanSession {
         this.scanHandle.close();
         this.scanHandle = this.createScanHandle();
         this.distanceCursor = this.createDistanceCursor();
+        this.candidateCursor = null;
+        this.candidateModeDecided = false;
+        this.useCandidateCursor = false;
         this.cursorRevision = this.sourceRevision;
         this.exhaustedUntilTick = Long.MIN_VALUE;
         this.lastChunkX = Integer.MIN_VALUE;
@@ -147,8 +180,11 @@ final class SectionScanSession {
     }
 
     boolean hasPendingSource(long tickTime, boolean restartCompletedPass) {
+        boolean traversalPending = this.intent == ScanIntent.CUSTOM || !this.candidateModeDecided || !this.useCandidateCursor
+                ? !this.distanceCursor.isComplete()
+                : this.candidateCursor == null || !this.candidateCursor.isComplete();
         return this.canScan(tickTime, restartCompletedPass)
-                && (!this.dirtyPositions.isEmpty() || !this.distanceCursor.isComplete());
+                && (!this.dirtyPositions.isEmpty() || traversalPending);
     }
 
     boolean wasPaused() {
@@ -234,7 +270,31 @@ final class SectionScanSession {
                 return null;
             }
 
-            BlockPos dirtyPos = this.pollDirtyPositionBefore(this.distanceCursor.peekDistanceSqr());
+            if (this.intent != ScanIntent.CUSTOM
+                    && !this.candidateModeDecided
+                    && this.distanceCursor.isComplete()) {
+                SnapshotWorldObservation snapshotObservation = (SnapshotWorldObservation) observation;
+                boolean breakExtra = Configs.Print.BREAK_EXTRA_BLOCK.getBooleanValue();
+                this.useCandidateCursor = snapshotObservation.snapshots().hasCompleteCandidates(
+                        this.sourceBoxes, this.intent, breakExtra, preFilter, snapshotObservation.source()
+                );
+                this.candidateModeDecided = true;
+                if (this.useCandidateCursor) {
+                    this.candidateCursor = new SectionCandidateCursor(
+                            this.region,
+                            this.sourceBoxes,
+                            this.intent,
+                            breakExtra,
+                            snapshotObservation.snapshots(),
+                            snapshotObservation.source(),
+                            preFilter
+                    );
+                }
+            }
+            long sourceDistance = this.intent == ScanIntent.CUSTOM || !this.useCandidateCursor
+                    ? this.distanceCursor.peekDistanceSqr()
+                    : this.candidateCursor.peekDistanceSqr();
+            BlockPos dirtyPos = this.pollDirtyPositionBefore(sourceDistance);
             int x;
             int y;
             int z;
@@ -244,7 +304,14 @@ final class SectionScanSession {
                 z = dirtyPos.getZ();
                 this.liveMutable.set(x, y, z);
             } else {
-                PositionCursor.PollResult pollResult = this.distanceCursor.poll(this.liveMutable);
+                PositionCursor.PollResult pollResult;
+                if (this.intent == ScanIntent.CUSTOM || !this.useCandidateCursor) {
+                    pollResult = this.distanceCursor.poll(this.liveMutable);
+                } else {
+                    pollResult = this.candidateCursor.next(this.liveMutable)
+                            ? PositionCursor.PollResult.AVAILABLE
+                            : PositionCursor.PollResult.COMPLETE;
+                }
                 if (pollResult == PositionCursor.PollResult.COMPLETE) {
                     if (this.finishPass(tickTime)) {
                         return null;
@@ -338,6 +405,7 @@ final class SectionScanSession {
         this.closed = true;
         this.scanHandle.close();
         this.distanceCursor.close();
+        this.candidateCursor = null;
         this.dirtyPositions.clear();
         this.dirtyPositionKeys.clear();
         this.chunkCandidateCache.clear();

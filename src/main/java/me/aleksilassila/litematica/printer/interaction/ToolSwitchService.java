@@ -43,7 +43,6 @@ public final class ToolSwitchService {
 
         int beforeSlot = InventoryUtils.getSelectedSlot(player.getInventory());
         ItemStack before = player.getMainHandItem().copy();
-
         if (allowEffectiveSwitch) {
             if (this.tweakeroo.isEffectiveToolSwitchEnabled()) {
                 this.tweakeroo.switchToEffectiveTool(pos);
@@ -51,14 +50,12 @@ public final class ToolSwitchService {
                 InventoryUtils.switchToBestTool(player, state);
             }
         }
-        if (this.tweakeroo.isNearlyBrokenToolSwapEnabled()) {
-            this.tweakeroo.swapNearlyBrokenTool();
-        }
-
-        ItemStack after = player.getMainHandItem();
+        // Tweakeroo checks its own toggle and durability threshold inside this call. Printer
+        // deliberately does not mirror either policy.
+        this.tweakeroo.swapNearlyBrokenTool();
         int afterSlot = InventoryUtils.getSelectedSlot(player.getInventory());
-        if (beforeSlot != afterSlot || stackFingerprintChanged(before, after)) {
-            this.switchGuard.markSwitchIfNeeded(after);
+        if (beforeSlot != afterSlot || stackFingerprintChanged(before, player.getMainHandItem())) {
+            this.switchGuard.markSwitchIfNeeded(player.getMainHandItem());
             return ToolPreparationResult.SWITCHED_WAITING_SYNC;
         }
         return ToolPreparationResult.READY;

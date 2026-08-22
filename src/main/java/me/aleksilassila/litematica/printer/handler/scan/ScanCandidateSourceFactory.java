@@ -21,8 +21,8 @@ import java.util.function.Predicate;
  *
  * <p>This class deliberately owns only candidate production. Session lifetime, dirty-region
  * invalidation and the global time budget remain in their dedicated services. The returned
- * iterable exposes an explicit availability state so a producer that is still filling an async
- * batch cannot be mistaken for a completed scan.</p>
+ * iterable exposes an explicit availability state so a budget-limited pass cannot be mistaken
+ * for a completed scan.</p>
  */
 final class ScanCandidateSourceFactory {
     private static final int BUDGET_CHECK_INTERVAL = 8;

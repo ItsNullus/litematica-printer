@@ -4,6 +4,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
+import java.util.List;
+import java.util.function.Predicate;
+
 
 /**
  * Compact incremental classification cache.
@@ -16,7 +19,6 @@ final class SectionSnapshotStore {
     private static final Direction[] DIRECTIONS = Direction.values();
 
     private final Long2ObjectOpenHashMap<MutableSection> sections = new Long2ObjectOpenHashMap<>();
-    private long revision;
 
     byte classify(BlockPos pos, ScanIntent intent, boolean breakExtraBlocks, WorldObservationPort source) {
         MutableSection section = this.section(pos);
@@ -28,21 +30,41 @@ final class SectionSnapshotStore {
         return section.flags(cacheSlot, index);
     }
 
+    boolean hasCompleteCandidates(
+            List<me.aleksilassila.litematica.printer.printer.PrinterBox> boxes,
+            ScanIntent intent,
+            boolean breakExtraBlocks,
+            Predicate<BlockPos> preFilter,
+            WorldObservationPort source
+    ) {
+        int cacheSlot = cacheSlot(intent, breakExtraBlocks);
+        for (me.aleksilassila.litematica.printer.printer.PrinterBox box : boxes) {
+            for (int x = box.minX >> 4; x <= box.maxX >> 4; x++) {
+                for (int y = box.minY >> 4; y <= box.maxY >> 4; y++) {
+                    for (int z = box.minZ >> 4; z <= box.maxZ >> 4; z++) {
+                        if (!source.hasChunk(x, z)
+                                || !source.hasCandidatesInChunk(intent, x, z, breakExtraBlocks)) {
+                            continue;
+                        }
+                        MutableSection section = this.sections.get(ScanGeometry.sectionKey(x, y, z));
+                        if (section == null || !section.isComplete(cacheSlot, x, y, z, preFilter)) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
     void invalidateWorld(BlockPos pos) {
         if (pos == null) return;
         this.invalidateCell(pos);
         for (Direction direction : DIRECTIONS) this.invalidateCell(pos.relative(direction));
-        this.revision++;
     }
 
     void clear() {
         this.sections.clear();
-        this.revision++;
-    }
-
-    SectionSnapshot snapshot(long sectionKey) {
-        MutableSection section = this.sections.get(sectionKey);
-        return section == null ? null : section.snapshot(sectionKey, this.revision);
     }
 
     int cachedSectionCount() {
@@ -118,12 +140,31 @@ final class SectionSnapshotStore {
             }
         }
 
-        private SectionSnapshot snapshot(long sectionKey, long revision) {
-            byte[][] intentFlags = new byte[ScanIntent.values().length][];
-            long[][] intentObserved = new long[ScanIntent.values().length][];
-            System.arraycopy(this.flags, 0, intentFlags, 0, intentFlags.length);
-            System.arraycopy(this.observed, 0, intentObserved, 0, intentObserved.length);
-            return new SectionSnapshot(sectionKey, revision, intentFlags, intentObserved);
+        private boolean isComplete(
+                int cacheSlot,
+                int sectionX,
+                int sectionY,
+                int sectionZ,
+                Predicate<BlockPos> preFilter
+        ) {
+            if (this.observed[cacheSlot] == null) {
+                return false;
+            }
+            BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+            int baseX = sectionX << 4;
+            int baseY = sectionY << 4;
+            int baseZ = sectionZ << 4;
+            for (int index = 0; index < SECTION_VOLUME; index++) {
+                int x = baseX + (index & 15);
+                int z = baseZ + (index >>> 4 & 15);
+                int y = baseY + (index >>> 8 & 15);
+                pos.set(x, y, z);
+                if (preFilter.test(pos) && !this.isObserved(cacheSlot, index)) {
+                    return false;
+                }
+            }
+            return true;
         }
+
     }
 }

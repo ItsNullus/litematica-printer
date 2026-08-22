@@ -103,10 +103,10 @@ public final class MiningInteractionController {
             if (this.hasDelayedDestroy) return pos.equals(this.delayedDestroyPos)
                     ? BlockBreakResult.IN_PROGRESS : BlockBreakResult.ABORTED;
             if (this.feedback.hasPending(pos)) return BlockBreakResult.IN_PROGRESS;
-            // Mine uses the same local prediction path as vanilla. Besides avoiding a stale
-            // client world, this advances the local ItemStack durability after every accepted
-            // block so Tweakeroo can evaluate its nearly-broken threshold before the next packet.
-            BlockBreakResult result = this.continueDestroy(true, pos, direction, false, allowToolSwitch);
+            // Keep the mining path packet-only, as in the working baseline. The server update
+            // owns the real durability change; calling destroyBlock() here would send a second
+            // vanilla break sequence for the same target.
+            BlockBreakResult result = this.continueDestroy(false, pos, direction, false, allowToolSwitch);
             if (result == BlockBreakResult.FAILED) return result;
             return this.hasDelayedDestroy && pos.equals(this.delayedDestroyPos) || this.feedback.hasPending(pos)
                     ? BlockBreakResult.IN_PROGRESS : result;
@@ -116,10 +116,6 @@ public final class MiningInteractionController {
         this.feedback.playHitSound(player, level, state, pos, true);
         this.send(Action.START_DESTROY_BLOCK, pos, direction);
         if (!player.getAbilities().instabuild) this.send(Action.STOP_DESTROY_BLOCK, pos, direction);
-        // Vanilla's local destroy path applies the tool damage immediately. Sending only packets
-        // let an unlimited mining tick enqueue many breaks against the same stale durability,
-        // which bypassed Tweakeroo's own pre-break swap hook and could consume whole tools.
-        this.port.destroyBlock(pos);
         this.feedback.resetHitSound();
         return BlockBreakResult.COMPLETED_WAIT;
     }

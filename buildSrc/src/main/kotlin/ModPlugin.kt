@@ -240,17 +240,6 @@ abstract class ModPlugin : Plugin<Project> {
                                     violations += "$relative: global MaLiLib config mixins are forbidden"
                                 }
 
-                                if (relative.contains("/handler/scan/Async")
-                                    && listOf("ClientLevel", "WorldSchematic", "LocalPlayer", "Connection")
-                                        .any(text::contains)) {
-                                    violations += "$relative: async traversal must not access live client state"
-                                }
-
-                                if (!relative.endsWith("/config/Configs.java")
-                                    && text.contains("ASYNC_SCAN")) {
-                                    violations += "$relative: removed coordinate-prefetch setting must remain compatibility-only"
-                                }
-
                                 if (listOf(
                                         "switchToSafeTool",
                                         "getCurrentToolSafeBreakBudget",

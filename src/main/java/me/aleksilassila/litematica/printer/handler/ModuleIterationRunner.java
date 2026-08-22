@@ -37,9 +37,6 @@ final class ModuleIterationRunner {
 
         int completedPassesBefore = module.scanEngine.metricsFor(module.getId()).completedPasses();
         Iterable<BlockPos> positions = module.getIterationPositions(interactionBox);
-        if (module.iterationPositionsArePrefetched()) {
-            iterationStartNanos = System.nanoTime();
-        }
         for (BlockPos pos : positions) {
             if (++budgetChecks % BUDGET_CHECK_INTERVAL == 0
                     && System.nanoTime() - iterationStartNanos - actionExecutionNanos >= budgetNanos) {

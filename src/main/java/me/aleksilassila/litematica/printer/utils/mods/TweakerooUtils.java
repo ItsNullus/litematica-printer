@@ -3,7 +3,6 @@ package me.aleksilassila.litematica.printer.utils.mods;
 import me.aleksilassila.litematica.printer.Reference;
 import net.fabricmc.loader.api.FabricLoader;
 import fi.dy.masa.malilib.util.restrictions.UsageRestriction;
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
@@ -12,7 +11,6 @@ import java.util.List;
 
 public class TweakerooUtils {
     private static @Nullable Object tweakToolSwitchEnum;
-    private static @Nullable Object tweakSwapAlmostBrokenToolsEnum;
     private static @Nullable Object disableBlockBreakCooldownConfig;
     private static @Nullable Method trySwitchToEffectiveToolMethod;
     private static @Nullable Method trySwapCurrentToolIfNearlyBrokenMethod;
@@ -22,10 +20,6 @@ public class TweakerooUtils {
     private static @Nullable Object blockTypeBreakRestrictionWhitelist;
     private static @Nullable Method getListTypeMethod;
     private static @Nullable Method getStringsMethod;
-    private static long configCacheTick = Long.MIN_VALUE;
-    private static boolean cachedToolSwitchEnabled;
-    private static boolean cachedSwapAlmostBrokenToolsEnabled;
-    private static boolean cachedDisableBlockBreakCooldownEnabled;
     private static boolean bindingWarningLogged;
 
     static {
@@ -33,7 +27,6 @@ public class TweakerooUtils {
             Class<?> featureToggleClass = loadClass("fi.dy.masa.tweakeroo.config.FeatureToggle");
             if (featureToggleClass != null) {
                 tweakToolSwitchEnum = loadField(featureToggleClass, "TWEAK_TOOL_SWITCH");
-                tweakSwapAlmostBrokenToolsEnum = loadField(featureToggleClass, "TWEAK_SWAP_ALMOST_BROKEN_TOOLS");
             }
 
             Class<?> disableConfigsClass = loadClass("fi.dy.masa.tweakeroo.config.Configs$Disable");
@@ -127,18 +120,11 @@ public class TweakerooUtils {
      * @return 如果 Tweakeroo 存在且选项启用，则返回 true，否则返回 false。
      */
     public static boolean isToolSwitchEnabled() {
-        refreshConfigCache();
-        return cachedToolSwitchEnabled;
+        return readBoolean(tweakToolSwitchEnum);
     }
 
     public static boolean isDisableBlockBreakCooldownEnabled() {
-        refreshConfigCache();
-        return cachedDisableBlockBreakCooldownEnabled;
-    }
-
-    public static boolean isSwapAlmostBrokenToolsEnabled() {
-        refreshConfigCache();
-        return cachedSwapAlmostBrokenToolsEnabled;
+        return readBoolean(disableBlockBreakCooldownConfig);
     }
 
     /**
@@ -200,24 +186,6 @@ public class TweakerooUtils {
         } catch (ReflectiveOperationException exception) {
             return List.of();
         }
-    }
-
-    /**
-     * Tweakeroo exposes these values through reflection. They are configuration values, not
-     * per-block state, so resolving them once per client tick avoids repeated reflective calls
-     * while a large mining queue is analyzed.
-     */
-    private static void refreshConfigCache() {
-        long tick = Minecraft.getInstance().level == null
-                ? Long.MIN_VALUE
-                : Minecraft.getInstance().level.getGameTime();
-        if (configCacheTick == tick) {
-            return;
-        }
-        configCacheTick = tick;
-        cachedToolSwitchEnabled = readBoolean(tweakToolSwitchEnum);
-        cachedSwapAlmostBrokenToolsEnabled = readBoolean(tweakSwapAlmostBrokenToolsEnum);
-        cachedDisableBlockBreakCooldownEnabled = readBoolean(disableBlockBreakCooldownConfig);
     }
 
     private static boolean readBoolean(@Nullable Object config) {

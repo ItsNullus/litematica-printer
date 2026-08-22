@@ -6,8 +6,6 @@ import net.minecraft.core.BlockPos;
 public interface TweakerooToolSwitchPort {
     boolean isEffectiveToolSwitchEnabled();
 
-    boolean isNearlyBrokenToolSwapEnabled();
-
     void switchToEffectiveTool(BlockPos pos);
 
     void swapNearlyBrokenTool();

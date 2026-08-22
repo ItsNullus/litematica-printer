@@ -6,8 +6,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SectionSnapshotStoreTest {
     @Test
@@ -40,24 +38,6 @@ class SectionSnapshotStoreTest {
         store.invalidateWorld(target.east());
         store.classify(target, ScanIntent.FILL, false, source);
         assertEquals(2, source.supportReads);
-    }
-
-    @Test
-    void publishesDefensiveCompactSnapshot() {
-        SectionSnapshotStore store = new SectionSnapshotStore();
-        CountingObservation source = new CountingObservation();
-        BlockPos pos = new BlockPos(1, 2, 3);
-        byte expected = store.classify(pos, ScanIntent.PRINT, false, source);
-
-        long key = ScanGeometry.sectionKey(0, 0, 0);
-        SectionSnapshot snapshot = store.snapshot(key);
-        assertNotNull(snapshot);
-        int index = (pos.getY() & 15) << 8 | (pos.getZ() & 15) << 4 | pos.getX() & 15;
-        assertTrue(snapshot.isObserved(ScanIntent.PRINT, index));
-        assertEquals(expected, snapshot.flags(ScanIntent.PRINT, index));
-        snapshot.flags()[ScanIntent.PRINT.ordinal()][index] = 0;
-        assertEquals(expected, store.classify(pos, ScanIntent.PRINT, false, source));
-        assertEquals(1, source.worldReads);
     }
 
     private static final class CountingObservation implements WorldObservationPort {

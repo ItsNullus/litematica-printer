@@ -280,10 +280,6 @@ public abstract class FeatureModuleBase extends ConfigUtils implements RuntimeCo
         return false;
     }
 
-    protected boolean iterationPositionsArePrefetched() {
-        return false;
-    }
-
     protected Iterable<BlockPos> getIterationPositions(PrinterBox playerInteractionBox) {
         return playerInteractionBox;
     }
