@@ -103,10 +103,7 @@ public final class MiningInteractionController {
             if (this.hasDelayedDestroy) return pos.equals(this.delayedDestroyPos)
                     ? BlockBreakResult.IN_PROGRESS : BlockBreakResult.ABORTED;
             if (this.feedback.hasPending(pos)) return BlockBreakResult.IN_PROGRESS;
-            // Keep the mining path packet-only, as in the working baseline. The server update
-            // owns the real durability change; calling destroyBlock() here would send a second
-            // vanilla break sequence for the same target.
-            BlockBreakResult result = this.continueDestroy(false, pos, direction, false, allowToolSwitch);
+            BlockBreakResult result = this.continueDestroy(true, pos, direction, false, allowToolSwitch);
             if (result == BlockBreakResult.FAILED) return result;
             return this.hasDelayedDestroy && pos.equals(this.delayedDestroyPos) || this.feedback.hasPending(pos)
                     ? BlockBreakResult.IN_PROGRESS : result;
@@ -116,6 +113,7 @@ public final class MiningInteractionController {
         this.feedback.playHitSound(player, level, state, pos, true);
         this.send(Action.START_DESTROY_BLOCK, pos, direction);
         if (!player.getAbilities().instabuild) this.send(Action.STOP_DESTROY_BLOCK, pos, direction);
+        this.port.destroyBlock(pos);
         this.feedback.resetHitSound();
         return BlockBreakResult.COMPLETED_WAIT;
     }

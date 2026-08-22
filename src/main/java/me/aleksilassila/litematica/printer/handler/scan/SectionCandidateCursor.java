@@ -2,6 +2,7 @@ package me.aleksilassila.litematica.printer.handler.scan;
 
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import net.minecraft.core.BlockPos;
 
@@ -26,6 +27,7 @@ final class SectionCandidateCursor {
     private final SectionSnapshotStore snapshots;
     private final WorldObservationPort source;
     private final Predicate<BlockPos> preFilter;
+    private final Long2ObjectOpenHashMap<short[]> candidateCache;
     private final PriorityQueue<SectionState> ready = new PriorityQueue<>(SectionState.ORDER);
     private int nextSection;
     private boolean complete;
@@ -37,7 +39,8 @@ final class SectionCandidateCursor {
             boolean breakExtraBlocks,
             SectionSnapshotStore snapshots,
             WorldObservationPort source,
-            Predicate<BlockPos> preFilter
+            Predicate<BlockPos> preFilter,
+            Long2ObjectOpenHashMap<short[]> candidateCache
     ) {
         this.region = region;
         this.sourceBoxes = sourceBoxes;
@@ -47,6 +50,7 @@ final class SectionCandidateCursor {
         this.source = source;
         this.preFilter = preFilter;
         this.sections = buildSections(sourceBoxes, region);
+        this.candidateCache = candidateCache;
         this.complete = this.sections.isEmpty();
     }
 
@@ -85,15 +89,16 @@ final class SectionCandidateCursor {
             while (this.nextSection < this.sections.size()
                     && (this.ready.isEmpty()
                     || this.sections.get(this.nextSection).lowerBound() <= this.ready.peek().distanceSqr())) {
-                Section section = this.sections.get(this.nextSection++);
+                int sectionIndex = this.nextSection++;
+                Section section = this.sections.get(sectionIndex);
                 if (!this.source.hasChunk(section.x(), section.z())
                         || !this.source.hasCandidatesInChunk(
                         this.intent, section.x(), section.z(), this.breakExtraBlocks)) {
                     continue;
                 }
-                short[] candidates = this.buildCandidates(section);
+                short[] candidates = this.candidatesFor(section);
                 SectionState state = new SectionState(section, candidates, this.region, this.sourceBoxes,
-                        this.snapshots, this.source, this.intent, this.breakExtraBlocks);
+                        this.snapshots, this.source, this.intent, this.breakExtraBlocks, this.preFilter);
                 if (state.hasNext()) {
                     this.ready.add(state);
                 }
@@ -106,6 +111,16 @@ final class SectionCandidateCursor {
         }
     }
 
+    private short[] candidatesFor(Section section) {
+        long key = ScanGeometry.sectionKey(section.x(), section.y(), section.z());
+        short[] candidates = this.candidateCache.get(key);
+        if (candidates == null) {
+            candidates = this.buildCandidates(section);
+            this.candidateCache.put(key, candidates);
+        }
+        return candidates;
+    }
+
     private short[] buildCandidates(Section section) {
         short[] values = new short[16 * 16 * 16];
         int count = 0;
@@ -116,8 +131,7 @@ final class SectionCandidateCursor {
                     (section.y() << 4) + (index >>> 8 & 15),
                     (section.z() << 4) + (index >>> 4 & 15)
             );
-            if (this.preFilter.test(pos)
-                    && this.intent.shouldConsider(
+            if (this.intent.shouldConsider(
                     this.snapshots.classify(pos, this.intent, this.breakExtraBlocks, this.source))) {
                 values[count++] = (short) index;
             }
@@ -184,6 +198,7 @@ final class SectionCandidateCursor {
         private final WorldObservationPort source;
         private final ScanIntent intent;
         private final boolean breakExtraBlocks;
+        private final Predicate<BlockPos> preFilter;
         private int index;
         private int x;
         private int y;
@@ -199,7 +214,8 @@ final class SectionCandidateCursor {
                 SectionSnapshotStore snapshots,
                 WorldObservationPort source,
                 ScanIntent intent,
-                boolean breakExtraBlocks
+                boolean breakExtraBlocks,
+                Predicate<BlockPos> preFilter
         ) {
             this.section = section;
             this.candidates = candidates;
@@ -209,6 +225,7 @@ final class SectionCandidateCursor {
             this.source = source;
             this.intent = intent;
             this.breakExtraBlocks = breakExtraBlocks;
+            this.preFilter = preFilter;
             this.advance();
         }
 
@@ -223,7 +240,8 @@ final class SectionCandidateCursor {
                 this.z = (this.section.z() << 4) + (local >>> 4 & 15);
                 this.y = (this.section.y() << 4) + (local >>> 8 & 15);
                 BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos(this.x, this.y, this.z);
-                if (!ScanGeometry.containsAny(this.sourceBoxes, pos)
+                if (!this.preFilter.test(pos)
+                        || !ScanGeometry.containsAny(this.sourceBoxes, pos)
                         || ScanGeometry.distanceSqr(pos, this.region.centerX(), this.region.centerY(), this.region.centerZ())
                         > (long) this.region.maxDistanceBand() * this.region.maxDistanceBand()
                         || this.snapshots.classify(pos, this.intent, this.breakExtraBlocks, this.source) == 0) {

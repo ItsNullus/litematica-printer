@@ -1,6 +1,7 @@
 package me.aleksilassila.litematica.printer.handler.scan;
 
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEpoch;
@@ -48,6 +49,7 @@ final class SectionScanSession {
     private int lastChunkZ = Integer.MIN_VALUE;
     private boolean lastChunkLoaded;
     private final ChunkCandidateCache chunkCandidateCache = new ChunkCandidateCache();
+    private final Long2ObjectOpenHashMap<short[]> sectionCandidateCache = new Long2ObjectOpenHashMap<>();
     private SectionCandidateCursor candidateCursor;
     private boolean candidateModeDecided;
     private boolean useCandidateCursor;
@@ -106,6 +108,7 @@ final class SectionScanSession {
             this.candidateCursor = null;
             this.candidateModeDecided = false;
             this.useCandidateCursor = false;
+            this.sectionCandidateCache.clear();
         }
         if (centerChanged && this.candidateCursor != null) {
             // The cached candidate list is filtered by the reach predicate captured for the
@@ -160,6 +163,7 @@ final class SectionScanSession {
         this.scanHandle = this.createScanHandle();
         this.distanceCursor = this.createDistanceCursor();
         this.candidateCursor = null;
+        this.sectionCandidateCache.clear();
         this.candidateModeDecided = false;
         this.useCandidateCursor = false;
         this.cursorRevision = this.sourceRevision;
@@ -275,21 +279,18 @@ final class SectionScanSession {
                     && this.distanceCursor.isComplete()) {
                 SnapshotWorldObservation snapshotObservation = (SnapshotWorldObservation) observation;
                 boolean breakExtra = Configs.Print.BREAK_EXTRA_BLOCK.getBooleanValue();
-                this.useCandidateCursor = snapshotObservation.snapshots().hasCompleteCandidates(
-                        this.sourceBoxes, this.intent, breakExtra, preFilter, snapshotObservation.source()
-                );
+                this.useCandidateCursor = true;
                 this.candidateModeDecided = true;
-                if (this.useCandidateCursor) {
-                    this.candidateCursor = new SectionCandidateCursor(
-                            this.region,
-                            this.sourceBoxes,
-                            this.intent,
-                            breakExtra,
-                            snapshotObservation.snapshots(),
-                            snapshotObservation.source(),
-                            preFilter
-                    );
-                }
+                this.candidateCursor = new SectionCandidateCursor(
+                        this.region,
+                        this.sourceBoxes,
+                        this.intent,
+                        breakExtra,
+                        snapshotObservation.snapshots(),
+                        snapshotObservation.source(),
+                        preFilter,
+                        this.sectionCandidateCache
+                );
             }
             long sourceDistance = this.intent == ScanIntent.CUSTOM || !this.useCandidateCursor
                     ? this.distanceCursor.peekDistanceSqr()
@@ -409,6 +410,7 @@ final class SectionScanSession {
         this.dirtyPositions.clear();
         this.dirtyPositionKeys.clear();
         this.chunkCandidateCache.clear();
+        this.sectionCandidateCache.clear();
     }
 
     private ScanHandle createScanHandle() {
