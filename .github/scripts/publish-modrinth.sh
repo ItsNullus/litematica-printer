@@ -7,7 +7,6 @@ MODRINTH_PROJECT_ID="${MODRINTH_PROJECT_ID:-nriQwbvD}"
 MODRINTH_FILE_DIR="${MODRINTH_FILE_DIR:-fabricWrapper/build/libs}"
 MODRINTH_GAME_VERSIONS="${MODRINTH_GAME_VERSIONS:-[\"1.18.2\",\"1.19.4\",\"1.20.1\",\"1.20.2\",\"1.20.4\",\"1.20.6\",\"1.21\",\"1.21.1\",\"1.21.2\",\"1.21.3\",\"1.21.4\",\"1.21.5\",\"1.21.6\",\"1.21.7\",\"1.21.8\",\"1.21.9\",\"1.21.10\",\"1.21.11\",\"26.1\",\"26.1.1\",\"26.1.2\",\"26.2\"]}"
 MODRINTH_DRY_RUN="${MODRINTH_DRY_RUN:-false}"
-MODRINTH_VERSION_NAME_PREFIX="${MODRINTH_VERSION_NAME_PREFIX:-Litematica Printer - Hana -}"
 MODRINTH_REPOSITORY="${MODRINTH_REPOSITORY:-Yur1Ca/litematica-printer}"
 
 : "${MODRINTH_VERSION_TYPE:?MODRINTH_VERSION_TYPE must be alpha or beta}"
@@ -43,15 +42,25 @@ fi
 
 wrapper_jar="${wrapper_jars[0]}"
 filename="$(basename "$wrapper_jar")"
-version_number="${filename#litematica-printer-}"
-version_number="${version_number%.jar}"
+artifact_version="${filename#litematica-printer-}"
+artifact_version="${artifact_version%.jar}"
 
-if [[ -z "$version_number" || "$version_number" == "$filename" ]]; then
+if [[ -z "$artifact_version" || "$artifact_version" == "$filename" ]]; then
   echo "Could not derive the version number from $filename" >&2
   exit 1
 fi
 
-version_name="${MODRINTH_VERSION_NAME:-$MODRINTH_VERSION_NAME_PREFIX $version_number}"
+display_version="${artifact_version}"
+case "$display_version" in
+  dev*) display_version="Dev${display_version#dev}" ;;
+  beta*) display_version="Beta${display_version#beta}" ;;
+  local) display_version="Local" ;;
+esac
+
+# Keep the downloadable filename short, while giving Modrinth a stable,
+# human-readable title that is independent of the Minecraft base version.
+version_number="${MODRINTH_VERSION_NUMBER:-Hana - ${display_version}}"
+version_name="${MODRINTH_VERSION_NAME:-Litematica Printer}"
 if [[ -n "${MODRINTH_CHANGELOG:-}" ]]; then
   changelog="$MODRINTH_CHANGELOG"
 elif [[ -n "${MODRINTH_COMMIT_SHA:-}" ]]; then

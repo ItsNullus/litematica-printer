@@ -109,7 +109,6 @@ jobs:
         env:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
           MODRINTH_VERSION_TYPE: alpha
-          MODRINTH_VERSION_NAME_PREFIX: Litematica Printer - Hana -
           MODRINTH_COMMIT_SHA: ${{ github.sha }}
           MODRINTH_REPOSITORY: ${{ github.repository }}
         run: bash .github/scripts/publish-modrinth.sh
