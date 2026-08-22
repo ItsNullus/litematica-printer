@@ -27,6 +27,7 @@ final class MineBreakExecutor {
     private final TweakerooAdapter tweakeroo;
     private final Map<BlockState, Float> currentProgressCache = new IdentityHashMap<>();
     private final Map<BlockState, ToolChoice> bestToolCache = new IdentityHashMap<>();
+    private int inventorySignature;
     private boolean resolveBestTool;
 
     MineBreakExecutor(Minecraft client, TweakerooAdapter tweakeroo) {
@@ -37,6 +38,7 @@ final class MineBreakExecutor {
     public void beginTick() {
         this.currentProgressCache.clear();
         this.bestToolCache.clear();
+        this.inventorySignature = Integer.MIN_VALUE;
         this.resolveBestTool = Configs.Break.BREAK_AUTO_TOOL.getBooleanValue()
                 || this.tweakeroo.isToolSwitchEnabled();
     }
@@ -44,6 +46,7 @@ final class MineBreakExecutor {
     public void reset() {
         this.currentProgressCache.clear();
         this.bestToolCache.clear();
+        this.inventorySignature = Integer.MIN_VALUE;
         this.resolveBestTool = false;
     }
 
@@ -54,6 +57,7 @@ final class MineBreakExecutor {
         if (player == null || level == null || pos == null) {
             return null;
         }
+        this.refreshInventoryCaches(player);
         BlockState state = level.getBlockState(pos);
         if (!InteractionUtils.canBreakBlock(pos)) {
             return null;
@@ -198,6 +202,24 @@ final class MineBreakExecutor {
         float progress = this.getDestroyProgress(player, state, stack);
         this.currentProgressCache.put(state, progress);
         return progress;
+    }
+
+    /**
+     * A tool can be changed after a target was analyzed in the same client tick. The old caches
+     * were keyed only by BlockState, so the next target reused the broken tool's speed and best
+     * tool choice until the following tick, producing an avoidable pause at tool exhaustion.
+     */
+    private void refreshInventoryCaches(LocalPlayer player) {
+        int signature = 1;
+        for (ItemStack stack : InventoryUtils.getMainStacks(player.getInventory())) {
+            signature = 31 * signature + stack.hashCode();
+        }
+        signature = 31 * signature + player.getMainHandItem().hashCode();
+        if (this.inventorySignature != Integer.MIN_VALUE && this.inventorySignature != signature) {
+            this.currentProgressCache.clear();
+            this.bestToolCache.clear();
+        }
+        this.inventorySignature = signature;
     }
 
     public static final class Target {

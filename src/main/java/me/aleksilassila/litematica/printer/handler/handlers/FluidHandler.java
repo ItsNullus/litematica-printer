@@ -135,12 +135,10 @@ public class FluidHandler extends FeatureModuleBase {
         Predicate<BlockPos> selectionPredicate = this.createSelectionRangePredicate();
         Predicate<BlockPos> reachPredicate = this.createScanReachPredicate();
 
-        // Always run full passes (RESTART), mirroring FillHandler. A full pass that yields nothing
-        // still counts as a completed pass (SectionScanSession.finishPass increments
-        // completedPasses), which the feature idle policy needs to admit lazy scanning once the water
-        // is fully filled. The previous INVALIDATIONS_ONLY state machine stopped scheduling passes
-        // after the first completed pass, so empty passes never accumulated and the module could
-        // never settle into lazy scanning.
+        // Finish the initial pass, then let ModuleScanCoordinator enter lazy mode. Subsequent
+        // updates are delivered through the dirty-region path; restarting the whole distance
+        // cursor every tick after the fluid is complete defeats lazy scanning and keeps a large
+        // selection needlessly hot.
         //
         // Iterate the scan session directly (Beta2.6 behaviour). The session cursor resumes from
         // where the previous tick left off and yields distance-ordered targets for as long as the
@@ -157,7 +155,7 @@ public class FluidHandler extends FeatureModuleBase {
                 ScanIntent.FLUID,
                 this::isReadyFluidTarget,
                 pos -> reachPredicate.test(pos) && selectionPredicate.test(pos),
-                ScanEngine.PassPolicy.RESTART
+                ScanEngine.PassPolicy.INVALIDATIONS_ONLY
         );
     }
 

@@ -22,12 +22,11 @@ public final class BedrockCandidatePlanner {
     private static final Direction[] NEIGHBOR_DIRECTIONS = Direction.values();
     private static final int CANDIDATE_SOFT_CAP = 256;
     private static final int CANDIDATE_COLLECT_CAP = CANDIDATE_SOFT_CAP * 4;
-    private static final int UNLIMITED_SCAN_SLICE = 4096;
-    private static final int MAX_SCAN_SLICE = 32768;
     private final ScanEngine scanEngine;
     private final LitematicaAdapter litematica;
     private final BedrockCandidateBacklog<CandidateInfo> candidateBacklog =
             new BedrockCandidateBacklog<>(CANDIDATE_COLLECT_CAP);
+    private boolean sourceHasMore;
 
     public BedrockCandidatePlanner(ScanEngine scanEngine, LitematicaAdapter litematica) {
         this.scanEngine = scanEngine;
@@ -43,6 +42,7 @@ public final class BedrockCandidatePlanner {
                 scanGuardLimit,
                 this.candidateBacklog.remainingCapacity()
         );
+        this.sourceHasMore = shard.hasMoreSource();
         for (CandidateInfo candidate : shard.candidates()) {
             this.candidateBacklog.offer(candidate.pos(), candidate);
         }
@@ -83,9 +83,6 @@ public final class BedrockCandidatePlanner {
             BedrockController.primeSubmissionPlan(candidate.pos(), candidate.layout(), candidate.placement(), candidate.slimePos());
             filtered.add(candidate.pos());
         }
-        if (shard.hasMoreSource() || !this.candidateBacklog.isEmpty()) {
-            filtered.add(null);
-        }
         return filtered;
     }
 
@@ -103,12 +100,17 @@ public final class BedrockCandidatePlanner {
         return !this.candidateBacklog.isEmpty();
     }
 
+    public boolean hasPendingScanSource() {
+        return this.sourceHasMore;
+    }
+
     public int getPendingCandidateCount() {
         return this.candidateBacklog.size();
     }
 
     public void reset() {
         this.candidateBacklog.clear();
+        this.sourceHasMore = false;
     }
 
     private List<CandidateInfo> getEligibleCandidates() {
@@ -238,11 +240,10 @@ public final class BedrockCandidatePlanner {
     }
 
     private int getCandidateScanLimit(int scanGuardLimit) {
-        int baseScanLimit = scanGuardLimit > 0 ? scanGuardLimit : UNLIMITED_SCAN_SLICE;
-        BedrockEngine.HudSnapshot snapshot = BedrockController.getHudSnapshot();
-        int activeDeficit = Math.max(1, snapshot.activeCap() - snapshot.activeTargets());
-        long expandedScanLimit = (long) baseScanLimit * activeDeficit;
-        return (int) Math.max(1L, Math.min(MAX_SCAN_SLICE, expandedScanLimit));
+        // The scan session already yields cooperatively on the configured time budget and keeps
+        // its cursor between ticks. A second fixed spatial slice made async scanning stop around
+        // the same part of a large selection until movement rebuilt the cursor.
+        return scanGuardLimit > 0 ? scanGuardLimit : Integer.MAX_VALUE;
     }
 
     private CandidateInfo buildCandidate(ClientLevel level, BlockPos pos) {

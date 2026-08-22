@@ -61,7 +61,9 @@ public class BedrockHandler extends FeatureModuleBase {
 
     @Override
     protected boolean hasPendingIterationWork() {
-        return BedrockController.hasPendingScanWork() || this.candidatePlanner.hasPendingCandidates();
+        return BedrockController.hasPendingScanWork()
+                || this.candidatePlanner.hasPendingCandidates()
+                || this.candidatePlanner.hasPendingScanSource();
     }
 
     @Override

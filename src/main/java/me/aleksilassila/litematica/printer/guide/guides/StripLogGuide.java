@@ -53,6 +53,8 @@ public class StripLogGuide extends Guide {
         if (stripped != null && stripped == requiredBlock) {
             return Result.success(new ClickAction().setItems(Reference.AXE_ITEMS));
         }
-        return Result.SKIP;
+        // An unrelated block is still a normal WRONG_BLOCK. Let DefaultGuide queue its removal
+        // instead of hiding the target behind this specialized guide.
+        return Result.PASS;
     }
 }

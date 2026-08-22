@@ -82,14 +82,17 @@ public class WaterPrintTask implements PrintTask {
         }
         if (this.iceBreakSent || InteractionUtils.getRuntime().isPendingDelayedDestroy(this.pos)) {
             this.refreshState(currentState);
-            return !this.isStateStalled(level, currentState);
+            // A delayed destroy is confirmed by a block update, not by a client-side timeout.
+            // Dropping this task after a few ticks lets the normal printer place a dry block into
+            // a water workflow, which is exactly the intermittent failure seen in large builds.
+            return true;
         }
         if (currentState.getBlock() instanceof IceBlock) {
             this.icePlacementSent = false;
-            return !this.isStateStalled(level, currentState);
+            return true;
         }
         if (this.icePlacementSent) {
-            return !this.isStateStalled(level, currentState);
+            return true;
         }
         if (isDryWaterloggedBlock(requiredState, currentState)
                 && InteractionUtils.canBreakBlock(this.pos)
@@ -140,8 +143,9 @@ public class WaterPrintTask implements PrintTask {
         }
         if (this.iceBreakSent || InteractionUtils.getRuntime().isPendingDelayedDestroy(this.pos)) {
             if (this.isStateStalled(context.level, context.currentState)) {
-                this.aborted = true;
-                return PrintTaskBuildResult.PASS;
+                // Keep ownership until the server resolves the destroy. Returning PASS here
+                // would release the target to ordinary placement and lose the water stage.
+                return PrintTaskBuildResult.SKIP;
             }
             this.refreshState(context.currentState);
             return PrintTaskBuildResult.SKIP;
@@ -159,7 +163,10 @@ public class WaterPrintTask implements PrintTask {
         }
         if (this.icePlacementSent) {
             if (this.isStateStalled(context.level, context.currentState)) {
-                this.aborted = true;
+                // Retry the ice placement instead of abandoning the multi-stage task. The
+                // queued action has already completed, so a second attempt is safe.
+                this.icePlacementSent = false;
+                this.resetStallTracking();
                 return PrintTaskBuildResult.PASS;
             }
             this.refreshState(context.currentState);
@@ -238,6 +245,12 @@ public class WaterPrintTask implements PrintTask {
             this.lastState = currentState;
             this.stateTicks = 0;
         }
+    }
+
+    private void resetStallTracking() {
+        this.lastState = null;
+        this.stateTicks = 0;
+        this.stateTickTime = Long.MIN_VALUE;
     }
 
     private boolean isStateStalled(ClientLevel level, BlockState currentState) {
@@ -362,7 +375,11 @@ public class WaterPrintTask implements PrintTask {
 
         @Override
         public void onFailure(SchematicBlockContext context, Action action) {
-            aborted = true;
+            // A rejected interaction can be caused by a transient inventory or look lease. Keep
+            // the workflow alive so the next scan can retry rather than placing the final block
+            // without its required water stage.
+            icePlacementSent = false;
+            resetStallTracking();
         }
     }
 }
