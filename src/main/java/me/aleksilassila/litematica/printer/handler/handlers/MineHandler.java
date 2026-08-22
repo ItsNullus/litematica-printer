@@ -103,7 +103,7 @@ public class MineHandler extends FeatureModuleBase {
     protected void preprocess() {
         this.pruneCandidates();
         this.analyzer.beginTick();
-        this.toolSession.beginTick(this.tweakeroo.isNearlyBrokenToolSwapEnabled());
+        this.toolSession.beginTick();
         this.continueActiveMineTarget();
     }
 

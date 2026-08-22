@@ -240,7 +240,8 @@ abstract class ModPlugin : Plugin<Project> {
                                     violations += "$relative: global MaLiLib config mixins are forbidden"
                                 }
 
-                                if (listOf(
+                                val tweakerooCompatibilityAdapter = relative.endsWith("/utils/mods/TweakerooUtils.java")
+                                if (!tweakerooCompatibilityAdapter && listOf(
                                         "switchToSafeTool",
                                         "getCurrentToolSafeBreakBudget",
                                         "protectCurrentToolBeforeBreak",

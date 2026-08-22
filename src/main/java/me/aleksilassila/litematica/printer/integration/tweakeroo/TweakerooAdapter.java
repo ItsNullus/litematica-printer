@@ -6,6 +6,7 @@ import me.aleksilassila.litematica.printer.utils.UsageRestrictionCache;
 import me.aleksilassila.litematica.printer.utils.mods.ModLoadUtils;
 import me.aleksilassila.litematica.printer.utils.mods.TweakerooUtils;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.item.ItemStack;
 
 import net.minecraft.core.BlockPos;
 
@@ -43,6 +44,16 @@ public final class TweakerooAdapter implements TweakerooToolSwitchPort {
         if (this.isNearlyBrokenToolSwapEnabled()) {
             TweakerooUtils.trySwapCurrentToolIfNearlyBroken();
         }
+    }
+
+    /**
+     * Returns the number of client-predicted breaks before Tweakeroo's own swap threshold.
+     * The value comes from Tweakeroo; Printer does not define a durability policy here.
+     */
+    public int safeBreakBudget(ItemStack stack) {
+        return this.isNearlyBrokenToolSwapEnabled()
+                ? TweakerooUtils.getSafeBreakBudget(stack)
+                : Integer.MAX_VALUE;
     }
 
     public boolean allowsBreak(BlockState state) {

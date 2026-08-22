@@ -12,7 +12,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.List;
-import java.util.ArrayList;
 import java.util.PriorityQueue;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
@@ -49,10 +48,6 @@ final class SectionScanSession {
     private int lastChunkZ = Integer.MIN_VALUE;
     private boolean lastChunkLoaded;
     private final ChunkCandidateCache chunkCandidateCache = new ChunkCandidateCache();
-    private final List<BlockPos> printCandidates = new ArrayList<>();
-    private final LongSet printCandidateKeys = new LongOpenHashSet();
-    private int printCandidateIndex;
-    private boolean printCandidatePassReady;
 
     SectionScanSession(
             ScanRegion region,
@@ -90,9 +85,6 @@ final class SectionScanSession {
 
     void updateRegion(ScanRegion region, List<PrinterBox> sourceBoxes) {
         boolean boxesChanged = !this.sourceBoxes.equals(sourceBoxes);
-        boolean centerChanged = this.region.centerX() != region.centerX()
-                || this.region.centerY() != region.centerY()
-                || this.region.centerZ() != region.centerZ();
         // Compare the section window (16-block granularity), not the exact center. The center
         // follows the player's block position; bumping the revision for every single block of
         // movement made finishPass() rebuild the cursor from scratch on every pass, which
@@ -105,13 +97,6 @@ final class SectionScanSession {
         }
         if (boxesChanged || windowChanged) {
             this.sourceRevision++;
-            this.clearPrintCandidates();
-            this.rebuildDistanceCursor();
-        } else if (this.intent == ScanIntent.PRINT && centerChanged && this.printCandidatePassReady) {
-            // A completed print cache is reach-filtered for its original player center. Rebuild
-            // only when the center changes; the in-flight first pass can keep its cursor.
-            this.clearPrintCandidates();
-            this.rebuildDistanceCursor();
         }
         // Keep the active cursor while the section window remains stable. Rebuilding it for every
         // block of player movement repeatedly walks the already-scanned prefix and starves the
@@ -134,17 +119,6 @@ final class SectionScanSession {
     }
 
     private void resetProgress() {
-        if (this.intent == ScanIntent.PRINT && this.printCandidatePassReady) {
-            this.printCandidateIndex = 0;
-            this.dirtyPositions.clear();
-            this.dirtyPositionKeys.clear();
-            this.scanHandle.close();
-            this.scanHandle = this.createScanHandle();
-            this.cursorRevision = this.sourceRevision;
-            this.exhaustedUntilTick = Long.MIN_VALUE;
-            this.paused = false;
-            return;
-        }
         this.rebuildDistanceCursor();
         this.dirtyPositions.clear();
         this.dirtyPositionKeys.clear();
@@ -173,11 +147,8 @@ final class SectionScanSession {
     }
 
     boolean hasPendingSource(long tickTime, boolean restartCompletedPass) {
-        boolean traversalPending = this.intent == ScanIntent.PRINT && this.printCandidatePassReady
-                ? this.printCandidateIndex < this.printCandidates.size()
-                : !this.distanceCursor.isComplete();
         return this.canScan(tickTime, restartCompletedPass)
-                && (!this.dirtyPositions.isEmpty() || traversalPending);
+                && (!this.dirtyPositions.isEmpty() || !this.distanceCursor.isComplete());
     }
 
     boolean wasPaused() {
@@ -262,16 +233,6 @@ final class SectionScanSession {
                 this.paused = true;
                 return null;
             }
-            if (this.intent == ScanIntent.PRINT && this.printCandidatePassReady) {
-                Candidate cached = this.nextCachedPrintCandidate(
-                        observation, tickTime, shouldPause, preFilter, unbounded, scanned
-                );
-                if (cached != null || this.paused) {
-                    return cached;
-                }
-                return null;
-            }
-
             BlockPos dirtyPos = this.pollDirtyPositionBefore(this.distanceCursor.peekDistanceSqr());
             int x;
             int y;
@@ -336,72 +297,9 @@ final class SectionScanSession {
                     Configs.Print.BREAK_EXTRA_BLOCK.getBooleanValue()
             );
             if (flags != 0) {
-                BlockPos candidatePos = new BlockPos(x, y, z);
-                this.rememberPrintCandidate(candidatePos);
-                return new Candidate(candidatePos, flags);
+                return new Candidate(new BlockPos(x, y, z), flags);
             }
         }
-    }
-
-    private Candidate nextCachedPrintCandidate(
-            WorldObservationPort observation,
-            long tickTime,
-            BooleanSupplier shouldPause,
-            Predicate<BlockPos> preFilter,
-            boolean unbounded,
-            int scanned
-    ) {
-        while (true) {
-            if (!unbounded
-                    && scanned > 0
-                    && scanned % BUDGET_CHECK_INTERVAL == 0
-                    && shouldPause.getAsBoolean()) {
-                this.paused = true;
-                return null;
-            }
-            long nextDistance = this.printCandidateIndex < this.printCandidates.size()
-                    ? ScanGeometry.distanceSqr(
-                    this.printCandidates.get(this.printCandidateIndex),
-                    this.region.centerX(), this.region.centerY(), this.region.centerZ())
-                    : Long.MAX_VALUE;
-            BlockPos dirtyPos = this.pollDirtyPositionBefore(nextDistance);
-            BlockPos pos;
-            if (dirtyPos != null) {
-                pos = dirtyPos;
-            } else if (this.printCandidateIndex < this.printCandidates.size()) {
-                pos = this.printCandidates.get(this.printCandidateIndex++);
-            } else {
-                this.finishPass(tickTime);
-                return null;
-            }
-            scanned++;
-            if (!preFilter.test(pos) || !this.contains(pos)) {
-                continue;
-            }
-            this.liveMutable.set(pos.getX(), pos.getY(), pos.getZ());
-            byte flags = observation.classify(
-                    this.intent,
-                    this.liveMutable,
-                    Configs.Print.BREAK_EXTRA_BLOCK.getBooleanValue()
-            );
-            if (flags != 0) {
-                this.rememberPrintCandidate(pos);
-                return new Candidate(pos, flags);
-            }
-        }
-    }
-
-    private void rememberPrintCandidate(BlockPos pos) {
-        if (this.intent == ScanIntent.PRINT && this.printCandidateKeys.add(ScanCache.key(pos))) {
-            this.printCandidates.add(pos.immutable());
-        }
-    }
-
-    private void clearPrintCandidates() {
-        this.printCandidates.clear();
-        this.printCandidateKeys.clear();
-        this.printCandidateIndex = 0;
-        this.printCandidatePassReady = false;
     }
 
     private BlockPos pollDirtyPositionBefore(long sourceDistanceSqr) {
@@ -425,10 +323,6 @@ final class SectionScanSession {
             this.rebuildDistanceCursor();
             return false;
         }
-        if (this.intent == ScanIntent.PRINT) {
-            this.printCandidatePassReady = true;
-            this.printCandidateIndex = 0;
-        }
         // Restart on the next client tick. Lazy admission is owned by the feature runtime and must count
         // real empty passes instead of coupling availability to the lazy admission window.
         this.exhaustedUntilTick = tickTime + 1;
@@ -446,7 +340,6 @@ final class SectionScanSession {
         this.dirtyPositions.clear();
         this.dirtyPositionKeys.clear();
         this.chunkCandidateCache.clear();
-        this.clearPrintCandidates();
     }
 
     private ScanHandle createScanHandle() {

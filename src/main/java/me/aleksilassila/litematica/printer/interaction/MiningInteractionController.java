@@ -16,8 +16,7 @@ import net.minecraft.world.level.block.state.BlockState;
 
 /** Stateful mining protocol. The Mixin only exposes Minecraft fields through {@link MiningInteractionPort}. */
 public final class MiningInteractionController {
-    private static final float FAST_FINISH_PROGRESS = 0.5F;
-    private static final float FAST_FINISH_COMPLETED_PROGRESS = 0.6F;
+    private static final float FAST_FINISH_PROGRESS = 0.7F;
 
     private final MiningInteractionPort port;
     private final MiningFeedback feedback;
@@ -68,6 +67,11 @@ public final class MiningInteractionController {
             this.finishDelayed(player);
             return;
         }
+        // A survival START+STOP does not give the client authority to remove a block. Keep
+        // the server's delayed-destroy slot occupied until the block update arrives; using a
+        // local progress prediction here lets the next target overwrite that slot and causes
+        // the familiar crackle/flash without a successful break.
+        if (!this.delayedDestroyLocalPrediction) return;
         int elapsed = (int) (this.clientTick() - this.delayedDestroyStartTick);
         if (state.getDestroyProgress(player, level, this.delayedDestroyPos) * elapsed >= 1.0F) {
             if (this.delayedDestroyLocalPrediction) this.port.destroyBlock(this.delayedDestroyPos);
@@ -92,6 +96,12 @@ public final class MiningInteractionController {
         if (this.port.isInventorySwitchPending()) {
             return BlockBreakResult.IN_PROGRESS;
         }
+        // A survival START+STOP may leave the target in the server's delayed-destroy slot.
+        // Do not let the next candidate overwrite that slot before the server has processed it.
+        if (this.hasDelayedDestroy) {
+            return pos.equals(this.delayedDestroyPos)
+                    ? BlockBreakResult.IN_PROGRESS : BlockBreakResult.ABORTED;
+        }
         if (this.toolSwitchService.prepareForBreak(pos, state, allowToolSwitch)
                 != ToolPreparationResult.READY) {
             return BlockBreakResult.IN_PROGRESS;
@@ -113,9 +123,20 @@ public final class MiningInteractionController {
         this.feedback.playHitSound(player, level, state, pos, true);
         this.send(Action.START_DESTROY_BLOCK, pos, direction);
         if (!player.getAbilities().instabuild) this.send(Action.STOP_DESTROY_BLOCK, pos, direction);
-        this.port.destroyBlock(pos);
+        boolean needsDelayedConfirmation = !player.getAbilities().instabuild && progress < 1.0F;
+        if (needsDelayedConfirmation) {
+            this.hasDelayedDestroy = true;
+            this.delayedDestroyPos = pos.immutable();
+            // Do not remove a block locally before the server has accepted a sub-100%
+            // START+STOP. Otherwise the next target can overwrite the server's delayed
+            // destroy slot while the client is already showing the block as broken.
+            this.delayedDestroyLocalPrediction = false;
+            this.delayedDestroyStartTick = this.clientTick();
+            this.feedback.addPending(pos, this.delayedDestroyStartTick);
+        }
+        if (!needsDelayedConfirmation) this.port.destroyBlock(pos);
         this.feedback.resetHitSound();
-        return BlockBreakResult.COMPLETED_WAIT;
+        return needsDelayedConfirmation ? BlockBreakResult.COMPLETED_WAIT : BlockBreakResult.COMPLETED;
     }
 
     public BlockBreakResult continueDestroy(
@@ -191,7 +212,7 @@ public final class MiningInteractionController {
         boolean fastFinish = forceDelayedDestroy && progress > FAST_FINISH_PROGRESS;
         if (progress >= ConfigUtils.getBreakProgressThreshold() || fastFinish) {
             boolean waitForServer = fastFinish && progress < ConfigUtils.getBreakProgressThreshold()
-                    && progress <= FAST_FINISH_COMPLETED_PROGRESS;
+                    && progress < 1.0F;
             if (!localRemoval) {
                 if (waitForServer) this.feedback.queueBreakSound(pos, state);
                 else this.feedback.playBreakSound(pos, state);
@@ -239,6 +260,7 @@ public final class MiningInteractionController {
 
     private void completeDelayedIfReady(LocalPlayer player, ClientLevel level) {
         if (!this.hasDelayedDestroy || this.delayedDestroyPos == null) return;
+        if (!this.delayedDestroyLocalPrediction) return;
         BlockState state = level.getBlockState(this.delayedDestroyPos);
         int elapsed = (int) (this.clientTick() - this.delayedDestroyStartTick);
         if (state.getDestroyProgress(player, level, this.delayedDestroyPos) * elapsed < 1.0F) return;

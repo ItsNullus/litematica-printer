@@ -24,8 +24,16 @@ interface WorldObservationPort {
     boolean hasFillSupport(BlockPos pos);
 
     default byte classify(ScanIntent intent, BlockPos pos, boolean breakExtraBlocks) {
-        BlockState state = this.worldState(pos);
         BlockState schematicState = intent == ScanIntent.PRINT ? this.schematicState(pos) : null;
+        // A normal print pass is driven by the schematic, not by every live block in the
+        // interaction box. Avoid a ClientLevel lookup for schematic-air positions; on large
+        // sparse projects this is the difference between checking targets and walking the whole
+        // 3-D box. BREAK_EXTRA_BLOCK deliberately keeps the world lookup for cleanup targets.
+        if (intent == ScanIntent.PRINT && !breakExtraBlocks
+                && (schematicState == null || schematicState.isAir())) {
+            return 0;
+        }
+        BlockState state = this.worldState(pos);
         boolean fillSupport = intent == ScanIntent.FILL && this.hasFillSupport(pos);
         return ScanClassifier.flags(intent, state, schematicState, fillSupport, breakExtraBlocks);
     }

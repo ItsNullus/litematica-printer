@@ -17,20 +17,17 @@ final class MineToolSession {
     private int remainingInstantBudget;
     private int toolSessionRemaining;
     private BlockPos lastSessionPos;
-    private boolean externalToolProtection;
 
     void reset() {
         this.sessionToolItem = null;
         this.remainingInstantBudget = 0;
         this.toolSessionRemaining = 0;
         this.lastSessionPos = null;
-        this.externalToolProtection = false;
     }
 
-    void beginTick(boolean externalToolProtection) {
+    void beginTick() {
         int configuredBudget = Configs.Break.BREAK_BLOCKS_PER_TICK.getIntegerValue();
         this.remainingInstantBudget = configuredBudget <= 0 ? -1 : configuredBudget;
-        this.externalToolProtection = externalToolProtection;
     }
 
     Comparator<MineBreakExecutor.Target> comparator(LocalPlayer player) {
@@ -84,8 +81,7 @@ final class MineToolSession {
         return result == BlockBreakResult.IN_PROGRESS
                 || result == BlockBreakResult.ABORTED
                 || hasActiveMinePos
-                || !this.hasInstantBudget()
-                || this.externalToolProtection && this.toolSessionRemaining <= 0;
+                || !this.hasInstantBudget();
     }
 
     void consumeAction() {
