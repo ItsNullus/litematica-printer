@@ -101,7 +101,7 @@ public class MineHandler extends FeatureModuleBase {
 
     @Override
     protected void preprocess() {
-        this.pruneCandidates();
+        this.candidates.clear();
         this.analyzer.beginTick();
         this.toolSession.beginTick();
         this.continueActiveMineTarget();
@@ -159,12 +159,6 @@ public class MineHandler extends FeatureModuleBase {
         List<MineBreakExecutor.Target> orderedCandidates = this.candidates.ordered(this.toolSession.comparator(this.player));
         MineBreakExecutor.Target nearest = orderedCandidates.get(0);
         MineBreakExecutor.Target selected = this.toolSession.selectTarget(orderedCandidates, this.analyzer, this.player);
-        BlockPos selectedPos = selected.pos();
-        selected = this.analyzer.analyze(selectedPos);
-        if (selected == null) {
-            this.removeCandidate(selectedPos);
-            return;
-        }
         this.executeToolSession(selected, MineToolSession.distanceScore(this.player, nearest), orderedCandidates);
     }
 
@@ -240,23 +234,16 @@ public class MineHandler extends FeatureModuleBase {
             if (queuedTarget.pos().equals(firstTarget.pos())) {
                 continue;
             }
-            // Re-analyze only when a target reaches the action frontier. Rebuilding the whole
-            // queue on every durability change made large excavations stall while scanning.
-            MineBreakExecutor.Target target = this.analyzer.analyze(queuedTarget.pos());
-            if (target == null) {
-                this.removeCandidate(queuedTarget.pos());
-                continue;
-            }
             if (!this.toolSession.hasInstantBudget()) {
                 break;
             }
-            if (!this.toolSession.matchesSessionTool(this.analyzer, target)) {
+            if (!this.toolSession.matchesSessionTool(this.analyzer, queuedTarget)) {
                 continue;
             }
-            if (!this.toolSession.isInsideFrontier(this.player, target, nearestDistance)) {
+            if (!this.toolSession.isInsideFrontier(this.player, queuedTarget, nearestDistance)) {
                 break;
             }
-            result = this.executeSessionTarget(target, false);
+            result = this.executeSessionTarget(queuedTarget, false);
             if (this.toolSession.shouldStop(result, this.activeMinePos != null)) {
                 break;
             }
@@ -292,12 +279,6 @@ public class MineHandler extends FeatureModuleBase {
             this.activeMinePos = target.pos();
         }
         return result;
-    }
-
-    private void pruneCandidates() {
-        this.candidates.removeIf(target -> target == null
-                || !this.isMineScanCandidate(target.pos())
-                || this.isBlockPosOnCooldown(target.pos()));
     }
 
     private void removeCandidate(BlockPos pos) {

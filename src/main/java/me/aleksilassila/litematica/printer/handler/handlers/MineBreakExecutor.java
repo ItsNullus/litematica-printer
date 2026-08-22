@@ -205,11 +205,9 @@ final class MineBreakExecutor {
      * tool choice until the following tick, producing an avoidable pause at tool exhaustion.
      */
     private void refreshInventoryCaches(LocalPlayer player) {
-        int signature = 1;
-        for (ItemStack stack : InventoryUtils.getMainStacks(player.getInventory())) {
-            signature = 31 * signature + stack.hashCode();
-        }
-        signature = 31 * signature + player.getMainHandItem().hashCode();
+        ItemStack mainHand = player.getMainHandItem();
+        int signature = 31 * InventoryUtils.getSelectedSlot(player.getInventory())
+                + mainHand.hashCode();
         if (this.inventorySignature != Integer.MIN_VALUE && this.inventorySignature != signature) {
             this.currentProgressCache.clear();
             this.bestToolCache.clear();

@@ -108,7 +108,16 @@ public final class MiningInteractionController {
             this.feedback.resetHitSound();
             this.feedback.playHitSound(player, level, state, pos, true);
             this.send(Action.START_DESTROY_BLOCK, pos, direction);
-            if (!player.getAbilities().instabuild) this.send(Action.STOP_DESTROY_BLOCK, pos, direction);
+            if (!player.getAbilities().instabuild) {
+                if (progress >= 1.0F) {
+                    NetworkUtils.sendPacket(sequence -> {
+                        this.port.destroyBlock(pos);
+                        return this.port.actionPacket(Action.STOP_DESTROY_BLOCK, pos, direction, sequence);
+                    });
+                } else {
+                    this.send(Action.STOP_DESTROY_BLOCK, pos, direction);
+                }
+            }
             this.feedback.resetHitSound();
             return player.getAbilities().instabuild
                     ? BlockBreakResult.COMPLETED
