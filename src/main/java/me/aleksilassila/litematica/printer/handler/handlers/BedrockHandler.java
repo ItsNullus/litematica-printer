@@ -56,7 +56,12 @@ public class BedrockHandler extends FeatureModuleBase {
     @Override
     protected boolean canIterate() {
         BedrockController.tick();
-        return BedrockController.canScanForTargets();
+        // A full active-target lane may temporarily reject new submissions, but it must not
+        // prevent already discovered candidates from reaching the controller. Previously this
+        // gate made the last cached bedrock positions wait until player movement rebuilt the
+        // interaction window and invoked the scanner again.
+        return this.candidatePlanner.hasPendingCandidates()
+                || BedrockController.canScanForTargets();
     }
 
     @Override

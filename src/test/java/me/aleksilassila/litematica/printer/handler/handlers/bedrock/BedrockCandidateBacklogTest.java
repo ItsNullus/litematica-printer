@@ -30,17 +30,17 @@ class BedrockCandidateBacklogTest {
     }
 
     @Test
-    void capacityIsBoundedAndExistingCandidateCanBeRefreshed() {
+    void candidatesAreRetainedUntilSubmissionAndExistingCandidateCanBeRefreshed() {
         BedrockCandidateBacklog<String> backlog = new BedrockCandidateBacklog<>(2);
         BlockPos first = new BlockPos(0, 0, 0);
         BlockPos second = new BlockPos(1, 0, 0);
 
         assertTrue(backlog.offer(first, "old"));
         assertTrue(backlog.offer(second, "second"));
-        assertFalse(backlog.offer(new BlockPos(2, 0, 0), "overflow"));
+        assertTrue(backlog.offer(new BlockPos(2, 0, 0), "third"));
         assertFalse(backlog.offer(first, "refreshed"));
 
-        assertEquals(0, backlog.remainingCapacity());
+        assertEquals(Integer.MAX_VALUE, backlog.remainingCapacity());
         assertEquals("refreshed", backlog.snapshot().get(0));
     }
 

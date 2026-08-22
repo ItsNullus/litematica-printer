@@ -13,6 +13,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.IceBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
@@ -21,34 +22,28 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.function.LongSupplier;
 
-public class WaterPrintTask implements PrintTask {
+/** Owns one water/ice workflow independently from the full selection scan. */
+public final class WaterPrintTask implements PrintTask {
     private static final int STALL_PADDING_TICKS = 8;
     private static final int MIN_STALL_TICKS = 12;
     private static final int MAX_STALL_TICKS = 40;
 
     private final BlockPos pos;
     private final LongSupplier tickClock;
-    @Nullable
-    private BlockState lastState;
-    private int stateTicks;
-    private long stateTickTime = Long.MIN_VALUE;
-    private boolean icePlacementSent;
-    private boolean iceBreakSent;
-    private boolean readyForPlacement;
-    private boolean complete;
-    private boolean aborted;
+    private WaterTaskStage stage = WaterTaskStage.RESERVED;
+    private long stageSinceTick;
+    private long retryAtTick;
+    private long actionGeneration;
 
     private WaterPrintTask(BlockPos pos, LongSupplier tickClock) {
         this.pos = pos.immutable();
         this.tickClock = tickClock;
+        this.stageSinceTick = tickClock.getAsLong();
     }
 
     @Nullable
     public static WaterPrintTask tryCreate(SchematicBlockContext context, LongSupplier tickClock) {
-        if (!isCandidate(context)) {
-            return null;
-        }
-        return new WaterPrintTask(context.blockPos, tickClock);
+        return isCandidate(context) ? new WaterPrintTask(context.blockPos, tickClock) : null;
     }
 
     @Override
@@ -56,206 +51,172 @@ public class WaterPrintTask implements PrintTask {
         return this.pos;
     }
 
+    WaterTaskStage stage() {
+        return this.stage;
+    }
+
     @Override
     public boolean shouldKeep(ClientLevel level, WorldSchematic schematic) {
-        if (this.complete || this.aborted || !Configs.Print.PRINT_ICE_FOR_WATER.getBooleanValue()) {
+        if (!Configs.Print.PRINT_ICE_FOR_WATER.getBooleanValue()) {
             return false;
         }
         BlockState requiredState = schematic.getBlockState(this.pos);
         if (!BlockStateUtils.isWaterBlock(requiredState) || shouldSkipWaterloggedTarget(requiredState)) {
             return false;
         }
-        BlockState currentState = level.getBlockState(this.pos);
-        if (isWorkflowComplete(requiredState, currentState)) {
-            return false;
-        }
-
-        this.readyForPlacement = false;
-        if (BlockStateUtils.isCorrectWaterLevel(requiredState, currentState)) {
-            this.icePlacementSent = false;
-            this.iceBreakSent = false;
-            this.refreshState(currentState);
-            if (isWaterloggedTarget(requiredState)) {
-                this.readyForPlacement = true;
-            }
-            return isWaterloggedTarget(requiredState);
-        }
-        if (this.iceBreakSent || InteractionUtils.getRuntime().isPendingDelayedDestroy(this.pos)) {
-            this.refreshState(currentState);
-            // A delayed destroy is confirmed by a block update, not by a client-side timeout.
-            // Dropping this task after a few ticks lets the normal printer place a dry block into
-            // a water workflow, which is exactly the intermittent failure seen in large builds.
-            return true;
-        }
-        if (currentState.getBlock() instanceof IceBlock) {
-            this.icePlacementSent = false;
-            return true;
-        }
-        if (this.icePlacementSent) {
-            return true;
-        }
-        if (isDryWaterloggedBlock(requiredState, currentState)
-                && InteractionUtils.canBreakBlock(this.pos)
-                && canStartIceWaterWorkflow(level, this.pos)) {
-            return !this.isStateStalled(level, currentState);
-        }
-        return BlockStateUtils.isReplaceable(currentState) && canStartIceWaterWorkflow(level, this.pos);
+        this.reconcile(level, requiredState, level.getBlockState(this.pos));
+        return this.stage != WaterTaskStage.COMPLETE;
     }
 
     @Override
     public boolean isWaitingForWorldUpdate(ClientLevel level, WorldSchematic schematic) {
-        if (this.complete || this.aborted) {
-            return false;
-        }
         BlockState requiredState = schematic.getBlockState(this.pos);
         BlockState currentState = level.getBlockState(this.pos);
-        if (isWorkflowComplete(requiredState, currentState)
-                || BlockStateUtils.isCorrectWaterLevel(requiredState, currentState)) {
-            return false;
+        this.reconcile(level, requiredState, currentState);
+        boolean waitingForSupport = this.stage == WaterTaskStage.PLACE_ICE
+                && !canStartIceWaterWorkflow(level, this.pos);
+        if (waitingForSupport) {
+            this.retryAtTick = Math.max(this.retryAtTick, this.tickClock.getAsLong() + 5L);
         }
-        if (currentState.getBlock() instanceof IceBlock) {
-            return this.iceBreakSent || InteractionUtils.getRuntime().isPendingDelayedDestroy(this.pos);
+        return this.stage.waitsForWorldUpdate()
+                || this.stage == WaterTaskStage.RETRY_WAIT
+                || waitingForSupport;
+    }
+
+    @Override
+    public long nextCheckTick() {
+        if (this.stage == WaterTaskStage.RETRY_WAIT) return this.retryAtTick;
+        if (this.stage.waitsForWorldUpdate()) return this.stageSinceTick + MIN_STALL_TICKS;
+        if (this.stage == WaterTaskStage.PLACE_ICE && this.retryAtTick > this.tickClock.getAsLong()) {
+            return this.retryAtTick;
         }
-        return this.icePlacementSent
-                || this.iceBreakSent
-                || InteractionUtils.getRuntime().isPendingDelayedDestroy(this.pos);
+        return this.tickClock.getAsLong();
     }
 
     @Override
     public PrintTaskBuildResult buildAction(SchematicBlockContext context) {
-        if (this.complete || this.aborted) {
-            return PrintTaskBuildResult.PASS;
-        }
-        if (isWorkflowComplete(context.requiredState, context.currentState)) {
-            this.complete = true;
-            return PrintTaskBuildResult.SKIP;
-        }
-        if (BlockStateUtils.isCorrectWaterLevel(context.requiredState, context.currentState)) {
-            this.icePlacementSent = false;
-            this.iceBreakSent = false;
-            if (isWaterloggedTarget(context.requiredState)) {
-                this.readyForPlacement = true;
-                this.refreshState(context.currentState);
-                return PrintTaskBuildResult.PASS;
-            }
-            this.complete = true;
-            return PrintTaskBuildResult.SKIP;
-        }
-        if (this.iceBreakSent || InteractionUtils.getRuntime().isPendingDelayedDestroy(this.pos)) {
-            if (this.isStateStalled(context.level, context.currentState)) {
-                // Keep ownership until the server resolves the destroy. Returning PASS here
-                // would release the target to ordinary placement and lose the water stage.
-                return PrintTaskBuildResult.SKIP;
-            }
-            this.refreshState(context.currentState);
-            return PrintTaskBuildResult.SKIP;
-        }
-        if (context.currentState.getBlock() instanceof IceBlock) {
-            this.icePlacementSent = false;
-            return this.breakBlockForWorkflow(context, true);
-        }
-        if (isDryWaterloggedBlock(context.requiredState, context.currentState)) {
-            if (!canStartIceWaterWorkflow(context.level, context.blockPos)) {
-                this.complete = true;
-                return PrintTaskBuildResult.SKIP;
-            }
-            return this.breakBlockForWorkflow(context, false);
-        }
-        if (this.icePlacementSent) {
-            if (this.isStateStalled(context.level, context.currentState)) {
-                // Retry the ice placement instead of abandoning the multi-stage task. The
-                // queued action has already completed, so a second attempt is safe.
-                this.icePlacementSent = false;
-                this.resetStallTracking();
-                return PrintTaskBuildResult.PASS;
-            }
-            this.refreshState(context.currentState);
-            return PrintTaskBuildResult.SKIP;
-        }
-        if (isWaterloggedTarget(context.requiredState) && !canStartIceWaterWorkflow(context.level, context.blockPos)) {
-            this.aborted = true;
-            return PrintTaskBuildResult.PASS;
-        }
-        if (isWaterloggedTarget(context.requiredState) && !BlockStateUtils.isReplaceable(context.currentState)) {
-            this.aborted = true;
-            return PrintTaskBuildResult.PASS;
-        }
-        if (!canIceBecomeWaterSource(context.level, context.blockPos)) {
-            this.aborted = true;
-            return isWaterloggedTarget(context.requiredState) ? PrintTaskBuildResult.PASS : PrintTaskBuildResult.SKIP;
-        }
-
-        Action action = new Action().setItem(Items.ICE).setRequiresSupport();
-        return PrintTaskBuildResult.action(action, new WaterTaskAction(false));
+        this.reconcile(context.level, context.requiredState, context.currentState);
+        return switch (this.stage) {
+            case COMPLETE -> PrintTaskBuildResult.SKIP;
+            case REMOVE_EXISTING -> this.breakBlockForWorkflow(context, false);
+            case PLACE_ICE -> this.buildIcePlacement(context);
+            case BREAK_ICE -> this.breakBlockForWorkflow(context, true);
+            case PLACE_FINAL_BLOCK -> PrintTaskBuildResult.PASS;
+            case RESERVED, WAIT_REMOVE_CONFIRM, WAIT_ICE_CONFIRM,
+                    WAIT_WATER_CONFIRM, WAIT_FINAL_CONFIRM, RETRY_WAIT -> PrintTaskBuildResult.SKIP;
+        };
     }
 
     @Override
     public @Nullable PrintTaskAction createActionHandle(SchematicBlockContext context, Action action) {
-        if (this.readyForPlacement && isWaterloggedTarget(context.requiredState)) {
-            return new WaterTaskAction(true);
+        this.reconcile(context.level, context.requiredState, context.currentState);
+        if (this.stage != WaterTaskStage.PLACE_FINAL_BLOCK) {
+            return null;
         }
-        return null;
+        return this.newActionHandle(WaterTaskStage.PLACE_FINAL_BLOCK, WaterTaskStage.WAIT_FINAL_CONFIRM);
+    }
+
+    private PrintTaskBuildResult buildIcePlacement(SchematicBlockContext context) {
+        if (!BlockStateUtils.isReplaceable(context.currentState)
+                || !canStartIceWaterWorkflow(context.level, context.blockPos)) {
+            return PrintTaskBuildResult.SKIP;
+        }
+        Action action = new Action().setItem(Items.ICE).setRequiresSupport();
+        PrintTaskAction handle = this.newActionHandle(
+                WaterTaskStage.PLACE_ICE,
+                WaterTaskStage.WAIT_ICE_CONFIRM
+        );
+        return PrintTaskBuildResult.action(action, handle);
     }
 
     private PrintTaskBuildResult breakBlockForWorkflow(SchematicBlockContext context, boolean ice) {
-        if (!InteractionUtils.canBreakBlock(context.blockPos) || this.isStateStalled(context.level, context.currentState)) {
-            this.aborted = true;
-            return PrintTaskBuildResult.PASS;
+        if (!InteractionUtils.canBreakBlock(context.blockPos)) {
+            return PrintTaskBuildResult.SKIP;
         }
         if (ice && !IceBreakToolSelector.switchToNonSilkTouchBreakItem(context.client)) {
-            this.aborted = true;
-            return PrintTaskBuildResult.PASS;
+            return PrintTaskBuildResult.SKIP;
         }
 
         InteractionUtils.getRuntime().suppressQueuedBreaks(2);
         BlockBreakResult result = ice
-                ? InteractionUtils.getRuntime().continueDestroyBlockWithoutToolSwitch(context.blockPos, Direction.DOWN, false)
-                : InteractionUtils.getRuntime().continueDestroyBlockWithoutTracking(context.blockPos, Direction.DOWN);
+                ? InteractionUtils.getRuntime().continueDestroyBlockWithoutToolSwitch(
+                        context.blockPos, Direction.DOWN, false)
+                : InteractionUtils.getRuntime().continueDestroyBlockWithoutTracking(
+                        context.blockPos, Direction.DOWN);
         if (result == BlockBreakResult.COMPLETED || result == BlockBreakResult.COMPLETED_WAIT) {
-            if (ice) {
-                this.markIceBreakSent(context.currentState);
-            } else {
-                this.refreshState(context.currentState);
-            }
+            this.transition(ice
+                    ? WaterTaskStage.WAIT_WATER_CONFIRM
+                    : WaterTaskStage.WAIT_REMOVE_CONFIRM);
             return PrintTaskBuildResult.SKIP;
         }
         if (result == BlockBreakResult.IN_PROGRESS) {
-            this.refreshState(context.currentState);
             return PrintTaskBuildResult.SKIP;
         }
-
-        this.aborted = true;
-        return PrintTaskBuildResult.PASS;
+        this.retrySoon();
+        return PrintTaskBuildResult.SKIP;
     }
 
-    private void markIceBreakSent(BlockState currentState) {
-        this.refreshState(currentState);
-        this.iceBreakSent = true;
+    private PrintTaskAction newActionHandle(WaterTaskStage expected, WaterTaskStage success) {
+        long token = ++this.actionGeneration;
+        return new WaterTaskAction(token, expected, success);
     }
 
-    private void refreshState(BlockState currentState) {
-        long currentTick = this.tickClock.getAsLong();
-        if (currentTick == this.stateTickTime) {
+    private void reconcile(ClientLevel level, BlockState requiredState, BlockState currentState) {
+        if (this.stage == WaterTaskStage.COMPLETE) {
             return;
         }
-        this.stateTickTime = currentTick;
-        if (currentState.equals(this.lastState)) {
-            this.stateTicks++;
-        } else {
-            this.lastState = currentState;
-            this.stateTicks = 0;
+        long now = this.tickClock.getAsLong();
+        WaterStageResolver.Observation observation = observe(level, requiredState, currentState);
+        this.transition(WaterStageResolver.resolve(
+                this.stage,
+                observation,
+                isWaterloggedTarget(requiredState),
+                this.isStageStalled(level, currentState),
+                now >= this.retryAtTick
+        ));
+    }
+
+    private WaterStageResolver.Observation observe(
+            ClientLevel level,
+            BlockState requiredState,
+            BlockState currentState
+    ) {
+        if (isWorkflowComplete(requiredState, currentState)) {
+            return WaterStageResolver.Observation.COMPLETE;
+        }
+        if (BlockStateUtils.isCorrectWaterLevel(requiredState, currentState)) {
+            return WaterStageResolver.Observation.WATER_READY;
+        }
+        if (currentState.getBlock() instanceof IceBlock) {
+            return WaterStageResolver.Observation.ICE;
+        }
+        if (BlockStateUtils.isReplaceable(currentState)) {
+            return canStartIceWaterWorkflow(level, this.pos)
+                    ? WaterStageResolver.Observation.REPLACEABLE_WITH_SUPPORT
+                    : WaterStageResolver.Observation.REPLACEABLE_WITHOUT_SUPPORT;
+        }
+        return WaterStageResolver.Observation.BLOCKED;
+    }
+
+    private void retrySoon() {
+        this.retryAtTick = this.tickClock.getAsLong() + 1L;
+        this.transition(WaterTaskStage.RETRY_WAIT);
+    }
+
+    private void transition(WaterTaskStage next) {
+        if (this.stage == next) {
+            return;
+        }
+        this.stage = next;
+        this.stageSinceTick = this.tickClock.getAsLong();
+        if (next == WaterTaskStage.COMPLETE) {
+            this.actionGeneration++;
         }
     }
 
-    private void resetStallTracking() {
-        this.lastState = null;
-        this.stateTicks = 0;
-        this.stateTickTime = Long.MIN_VALUE;
-    }
-
-    private boolean isStateStalled(ClientLevel level, BlockState currentState) {
-        this.refreshState(currentState);
-        return this.stateTicks > getStallLimit(level, currentState);
+    private boolean isStageStalled(ClientLevel level, BlockState currentState) {
+        long elapsed = this.tickClock.getAsLong() - this.stageSinceTick;
+        return elapsed > getStallLimit(level, currentState);
     }
 
     private int getStallLimit(ClientLevel level, BlockState currentState) {
@@ -281,26 +242,25 @@ public class WaterPrintTask implements PrintTask {
             return false;
         }
         if (context.currentState.getBlock() instanceof IceBlock) {
-            return canIceBecomeWaterSource(context.level, context.blockPos);
+            return isWaterloggedTarget(context.requiredState)
+                    || canIceBecomeWaterSource(context.level, context.blockPos);
         }
         if (isWaterloggedTarget(context.requiredState)
                 && BlockStateUtils.isCorrectWaterLevel(context.requiredState, context.currentState)) {
             return true;
         }
         if (isDryWaterloggedBlock(context.requiredState, context.currentState)) {
-            return InteractionUtils.canBreakBlock(context.blockPos)
-                    && canStartIceWaterWorkflow(context.level, context.blockPos);
+            return true;
         }
         if (isWaterloggedTarget(context.requiredState) && !BlockStateUtils.isReplaceable(context.currentState)) {
-            return false;
+            return true;
         }
-        return BlockStateUtils.isReplaceable(context.currentState)
+        return isWaterloggedTarget(context.requiredState)
+                || BlockStateUtils.isReplaceable(context.currentState)
                 && canStartIceWaterWorkflow(context.level, context.blockPos);
     }
 
     private static boolean canStartIceWaterWorkflow(ClientLevel level, BlockPos pos) {
-        // 材料是否可用由 PrintPlacementExecutor 统一处理，这样背包换槽、
-        // 快捷潜影盒和 Take It Out 都能走同一条可恢复的取货链路。
         return canIceBecomeWaterSource(level, pos);
     }
 
@@ -342,44 +302,53 @@ public class WaterPrintTask implements PrintTask {
         return BlockStateUtils.isCorrectWaterLevel(requiredState, currentState);
     }
 
-    private class WaterTaskAction implements PrintTaskAction {
-        private final boolean finalPlacement;
+    private final class WaterTaskAction implements PrintTaskAction {
+        private final long token;
+        private final WaterTaskStage expected;
+        private final WaterTaskStage success;
 
-        private WaterTaskAction(boolean finalPlacement) {
-            this.finalPlacement = finalPlacement;
+        private WaterTaskAction(long token, WaterTaskStage expected, WaterTaskStage success) {
+            this.token = token;
+            this.expected = expected;
+            this.success = success;
+        }
+
+        @Override
+        public BlockState expectedBlockState(SchematicBlockContext context, Action action) {
+            return this.expected == WaterTaskStage.PLACE_ICE
+                    ? Blocks.ICE.defaultBlockState()
+                    : context.requiredState;
         }
 
         @Override
         public void onQueued(SchematicBlockContext context, Action action) {
-            refreshState(context.currentState);
+            this.markSubmitted();
         }
 
         @Override
         public void onSuccess(SchematicBlockContext context, Action action) {
-            if (this.finalPlacement) {
-                complete = true;
-            } else {
-                icePlacementSent = true;
-                iceBreakSent = false;
-                refreshState(context.currentState);
+            this.markSubmitted();
+        }
+
+        private void markSubmitted() {
+            if (this.token == actionGeneration
+                    && (stage == this.expected || stage == this.success)) {
+                transition(this.success);
             }
         }
 
         @Override
         public void onCancelled(SchematicBlockContext context, Action action) {
-            if (!this.finalPlacement) {
-                icePlacementSent = false;
+            if (this.token == actionGeneration) {
+                retrySoon();
             }
-            refreshState(context.currentState);
         }
 
         @Override
         public void onFailure(SchematicBlockContext context, Action action) {
-            // A rejected interaction can be caused by a transient inventory or look lease. Keep
-            // the workflow alive so the next scan can retry rather than placing the final block
-            // without its required water stage.
-            icePlacementSent = false;
-            resetStallTracking();
+            if (this.token == actionGeneration) {
+                retrySoon();
+            }
         }
     }
 }

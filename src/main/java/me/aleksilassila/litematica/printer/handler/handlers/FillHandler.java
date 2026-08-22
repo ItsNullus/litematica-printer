@@ -8,8 +8,8 @@ import me.aleksilassila.litematica.printer.enums.PrintModeType;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.I18n;
 import me.aleksilassila.litematica.printer.handler.FeatureModuleBase;
-import me.aleksilassila.litematica.printer.handler.PrefetchedCandidateIterable;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
+import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.printer.PlayerLook;
 import me.aleksilassila.litematica.printer.printer.PrinterUtils;
 import me.aleksilassila.litematica.printer.printer.action.ActionPort;
@@ -34,7 +34,6 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
@@ -186,12 +185,12 @@ public class FillHandler extends FeatureModuleBase {
 
         Predicate<BlockPos> selectionPredicate = this.createSelectionRangePredicate();
         Predicate<BlockPos> reachPredicate = this.createScanReachPredicate();
-        return new PrefetchedCandidateIterable(
-                () -> this.createSourceIterator(scanSourceBoxes, reachPredicate, selectionPredicate)
-        );
+        // ScanEngine already exposes a resumable candidate iterable and its explicit pause
+        // state. A second look-ahead iterator would hide budget pauses from the coordinator.
+        return this.createSourceIterator(scanSourceBoxes, reachPredicate, selectionPredicate);
     }
 
-    private Iterator<BlockPos> createSourceIterator(
+    private Iterable<BlockPos> createSourceIterator(
             List<PrinterBox> scanSourceBoxes,
             Predicate<BlockPos> reachPredicate,
             Predicate<BlockPos> selectionPredicate
@@ -208,8 +207,9 @@ public class FillHandler extends FeatureModuleBase {
                 this.getScanGuardLimit(),
                 scanIntent,
                 this::isFillTarget,
-                pos -> this.isFillCandidatePreFilter(pos, reachPredicate, selectionPredicate)
-        ).iterator();
+                pos -> this.isFillCandidatePreFilter(pos, reachPredicate, selectionPredicate),
+                ScanEngine.PassPolicy.INVALIDATIONS_ONLY
+        );
     }
 
     private boolean isFillCandidatePreFilter(

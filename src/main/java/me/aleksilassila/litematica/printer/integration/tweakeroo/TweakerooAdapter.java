@@ -7,12 +7,10 @@ import me.aleksilassila.litematica.printer.utils.mods.ModLoadUtils;
 import me.aleksilassila.litematica.printer.utils.mods.TweakerooUtils;
 import net.minecraft.world.level.block.state.BlockState;
 
-import static fi.dy.masa.tweakeroo.config.Configs.Lists.BLOCK_TYPE_BREAK_RESTRICTION_BLACKLIST;
-import static fi.dy.masa.tweakeroo.config.Configs.Lists.BLOCK_TYPE_BREAK_RESTRICTION_WHITELIST;
-import static fi.dy.masa.tweakeroo.tweaks.PlacementTweaks.BLOCK_TYPE_BREAK_RESTRICTION;
+import net.minecraft.core.BlockPos;
 
 /** Optional Tweakeroo capability boundary used by mining. */
-public final class TweakerooAdapter {
+public final class TweakerooAdapter implements TweakerooToolSwitchPort {
     private final UsageRestrictionCache restrictionCache = new UsageRestrictionCache();
 
     public boolean isLoaded() {
@@ -23,16 +21,40 @@ public final class TweakerooAdapter {
         return this.isLoaded() && TweakerooUtils.isToolSwitchEnabled();
     }
 
+    @Override
+    public boolean isEffectiveToolSwitchEnabled() {
+        return this.isToolSwitchEnabled();
+    }
+
+    @Override
+    public boolean isNearlyBrokenToolSwapEnabled() {
+        return this.isLoaded() && TweakerooUtils.isSwapAlmostBrokenToolsEnabled();
+    }
+
+    @Override
+    public void switchToEffectiveTool(BlockPos pos) {
+        if (this.isEffectiveToolSwitchEnabled()) {
+            TweakerooUtils.trySwitchToEffectiveTool(pos);
+        }
+    }
+
+    @Override
+    public void swapNearlyBrokenTool() {
+        if (this.isNearlyBrokenToolSwapEnabled()) {
+            TweakerooUtils.trySwapCurrentToolIfNearlyBroken();
+        }
+    }
+
     public boolean allowsBreak(BlockState state) {
         if (!this.isLoaded()) {
             return true;
         }
-        UsageRestriction.ListType listType = BLOCK_TYPE_BREAK_RESTRICTION.getListType();
+        UsageRestriction.ListType listType = TweakerooUtils.getBreakRestrictionListType();
         return this.restrictionCache.allows(
                 "tweakeroo",
                 listType,
-                BLOCK_TYPE_BREAK_RESTRICTION_BLACKLIST.getStrings(),
-                BLOCK_TYPE_BREAK_RESTRICTION_WHITELIST.getStrings(),
+                TweakerooUtils.getBreakRestrictionBlacklist(),
+                TweakerooUtils.getBreakRestrictionWhitelist(),
                 state
         );
     }

@@ -21,10 +21,10 @@ public final class ScanCache {
         INVALIDATIONS_ONLY
     }
 
-    private final AsyncPositionCursorScheduler asyncScheduler = new AsyncPositionCursorScheduler();
-    private final ScanSessionStore sessions = new ScanSessionStore(this.asyncScheduler);
+    private final ScanSessionStore sessions = new ScanSessionStore();
     private final DirtyRegionTracker dirtyRegions;
     private final ScanBudget budget = new ScanBudget();
+    private final SectionSnapshotStore snapshots = new SectionSnapshotStore();
 
     private Object levelIdentity;
     private Object schematicIdentity;
@@ -49,6 +49,7 @@ public final class ScanCache {
         this.snapshotRevision = 0L;
         this.tickTime = Long.MIN_VALUE;
         this.budget.reset();
+        this.snapshots.clear();
         this.dirtyRegions.clear();
     }
 
@@ -101,6 +102,7 @@ public final class ScanCache {
             this.schematicIdentity = schematic;
             this.runtimeEpoch = epoch;
             this.snapshotRevision++;
+            this.snapshots.clear();
         }
         if (this.tickTime != tickTime) {
             this.sessions.resetMetrics();
@@ -118,6 +120,7 @@ public final class ScanCache {
             return;
         }
         this.snapshotRevision++;
+        this.snapshots.invalidateWorld(pos);
         this.dirtyRegions.markDirty(pos);
         this.sessions.invalidate(pos);
     }
@@ -135,7 +138,6 @@ public final class ScanCache {
             return;
         }
         this.sessions.resetOwner(ownerKey);
-        this.budget.removeOwner(normalizeMetricsOwnerKey(ownerKey));
     }
 
     public Iterable<BlockPos> rawIterable(
@@ -276,6 +278,7 @@ public final class ScanCache {
         return new ScanCandidateSourceFactory(
                 this.sessions,
                 this.budget,
+                this.snapshots,
                 this.runtimeEpoch,
                 () -> this.snapshotRevision,
                 () -> ++this.generationSequence,

@@ -50,6 +50,23 @@ class MaterialRequestCoordinatorTest {
     }
 
     @Test
+    void alternativesAreOneAtomicRequestInsteadOfCompetingTokens() {
+        FakeProvider provider = new FakeProvider("external", MaterialReservation.State.PENDING);
+        MaterialRequestCoordinator coordinator = new MaterialRequestCoordinator(List.of(provider));
+
+        MaterialReservation result = coordinator.request(
+                new Item[]{Items.STRIPPED_OAK_LOG, Items.OAK_LOG},
+                MaterialRequest.Source.PRINT
+        );
+
+        assertEquals(MaterialReservation.State.PENDING, result.state());
+        assertEquals(1, provider.requestCount);
+        assertEquals(List.of(Items.STRIPPED_OAK_LOG, Items.OAK_LOG), provider.lastRequest.acceptedItems());
+        assertSame(Items.STRIPPED_OAK_LOG, provider.lastRequest.preferredItem());
+        assertEquals(2, coordinator.activeItems().size());
+    }
+
+    @Test
     void timedOutProviderCannotBlockTheChainForever() {
         FakeProvider stalled = new FakeProvider("stalled", MaterialReservation.State.PENDING);
         FakeProvider fallback = new FakeProvider("fallback", MaterialReservation.State.AVAILABLE);
@@ -83,6 +100,7 @@ class MaterialRequestCoordinatorTest {
         private final MaterialReservation.State state;
         private int requestCount;
         private int resetCount;
+        private MaterialRequest lastRequest;
 
         private FakeProvider(String id, MaterialReservation.State state) {
             this.id = id;
@@ -97,6 +115,7 @@ class MaterialRequestCoordinatorTest {
         @Override
         public MaterialReservation request(MaterialRequest request) {
             this.requestCount++;
+            this.lastRequest = request;
             return new MaterialReservation(request.token(), this.state);
         }
 

@@ -53,10 +53,10 @@ final class TickScheduler implements RuntimeComponent {
             return;
         }
         boolean inventoryBusy = this.pauseForInventoryState("shared_precheck");
-        if (this.pauseForPendingLookQueue()) {
-            this.runtime.actionBroker().sendQueue(mc.player);
-            return;
-        }
+        // Advance a pending look transaction, but do not turn it into a global scheduler
+        // barrier.  The coordinator owns LOOK/INTERACTION per action owner; unrelated features
+        // must still be able to scan and submit their own resources in this tick.
+        this.advancePendingLookQueue(mc);
         if (this.pauseForLagCheck()) {
             return;
         }
@@ -138,12 +138,12 @@ final class TickScheduler implements RuntimeComponent {
         return false;
     }
 
-    private boolean pauseForPendingLookQueue() {
+    private void advancePendingLookQueue(Minecraft mc) {
         if (!this.runtime.actionBroker().isWaitingForLook()) {
-            return false;
+            return;
         }
         this.pause("send_queue_wait_modify_look");
-        return true;
+        this.runtime.actionBroker().sendQueue(mc.player);
     }
 
     private boolean pauseForLagCheck() {
@@ -159,9 +159,8 @@ final class TickScheduler implements RuntimeComponent {
     }
 
     private boolean pauseForHandlerPrecheck(FeatureModuleBase handler) {
-        if (this.runtime.actionBroker().isWaitingForLook()) {
+        if (this.runtime.actionBroker().isResourceHeldByOther(ResourceLease.LOOK, handler.getId())) {
             this.pause("action_wait_modify_look handler=" + handler.getId());
-            return true;
         }
         return false;
     }

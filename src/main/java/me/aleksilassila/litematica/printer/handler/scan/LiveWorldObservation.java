@@ -29,6 +29,20 @@ final class LiveWorldObservation implements WorldObservationPort {
     }
 
     @Override
+    public boolean hasCandidatesInChunk(
+            ScanIntent intent,
+            int chunkX,
+            int chunkZ,
+            boolean breakExtraBlocks
+    ) {
+        if (!this.level.hasChunk(chunkX, chunkZ)) return false;
+        return intent != ScanIntent.PRINT
+                || breakExtraBlocks
+                || this.schematic == null
+                || !this.schematic.getChunk(chunkX, chunkZ).isEmpty();
+    }
+
+    @Override
     public BlockState worldState(BlockPos pos) {
         return this.level.getBlockState(pos);
     }

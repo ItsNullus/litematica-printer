@@ -21,7 +21,7 @@ final class ScanClassifier {
     ) {
         return switch (intent) {
             case PRINT -> printFlags(worldState, schematicState, breakExtraBlocks);
-            case MINE -> worldState.isAir() || worldState.getBlock() instanceof LiquidBlock
+            case MINE, BEDROCK -> worldState.isAir() || worldState.getBlock() instanceof LiquidBlock
                     ? 0 : ScanFlags.WORLD_NON_AIR;
             case FLUID -> worldState.getFluidState().isEmpty()
                     ? 0 : (byte) (ScanFlags.WORLD_NON_AIR | ScanFlags.WORLD_FLUID);

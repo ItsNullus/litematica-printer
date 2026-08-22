@@ -135,9 +135,7 @@ final class MineBreakExecutor {
         float bestProgress = currentProgress;
         Item bestItem = currentStack.getItem();
         boolean preferSilkTouch = ToolSelectionUtils.prefersSilkTouchForDrops(state);
-        boolean currentPreservesDrops = preferSilkTouch
-                && InteractionUtils.isToolAllowedByDurabilityProtection(currentStack)
-                && ToolSelectionUtils.hasSilkTouch(currentStack);
+        boolean currentPreservesDrops = preferSilkTouch && ToolSelectionUtils.hasSilkTouch(currentStack);
         boolean bestPreservesDrops = currentPreservesDrops;
         if (!this.shouldResolveBestTool()) {
             ToolChoice choice = new ToolChoice(bestItem, bestProgress, currentPreservesDrops, bestPreservesDrops);
@@ -145,7 +143,7 @@ final class MineBreakExecutor {
             return choice;
         }
         for (ItemStack stack : InventoryUtils.getMainStacks(player.getInventory())) {
-            if (stack.isEmpty() || !InteractionUtils.isToolAllowedByDurabilityProtection(stack)) {
+            if (stack.isEmpty()) {
                 continue;
             }
             float progress = this.getDestroyProgress(player, state, stack);
@@ -180,9 +178,6 @@ final class MineBreakExecutor {
     }
 
     private float getDestroyProgress(LocalPlayer player, BlockState state, ItemStack stack) {
-        if (!InteractionUtils.isToolAllowedByDurabilityProtection(stack)) {
-            return 0.0F;
-        }
         float hardness = state.getBlock().defaultDestroyTime();
         if (hardness < 0.0F) {
             return 0.0F;

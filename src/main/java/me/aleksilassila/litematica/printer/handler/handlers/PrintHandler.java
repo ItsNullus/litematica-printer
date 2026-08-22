@@ -12,7 +12,9 @@ import me.aleksilassila.litematica.printer.handler.handlers.print.PrintPlacement
 import me.aleksilassila.litematica.printer.handler.handlers.print.PrintPlacementResult;
 import me.aleksilassila.litematica.printer.handler.handlers.print.PrintTaskAction;
 import me.aleksilassila.litematica.printer.handler.handlers.print.PrintTaskBuildResult;
-import me.aleksilassila.litematica.printer.handler.handlers.print.PrintTaskController;
+import me.aleksilassila.litematica.printer.handler.handlers.print.PrintWorkflowScheduler;
+import me.aleksilassila.litematica.printer.handler.handlers.print.FallingPlacementTracker;
+import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
 import me.aleksilassila.litematica.printer.handler.handlers.print.SortedSchematicTargetQueue;
 import me.aleksilassila.litematica.printer.printer.*;
 import me.aleksilassila.litematica.printer.printer.action.Action;
@@ -30,14 +32,16 @@ import org.jetbrains.annotations.Nullable;
 public class PrintHandler extends FeatureModuleBase {
     public final static String NAME = "print";
 
+    private final Guides guides = new Guides();
     private Action action;
     @Nullable
     private PrintTaskAction printTaskAction;
 
     private SchematicBlockContext ctx;
-    private final PrintTaskController printTasks;
+    private final PrintWorkflowScheduler printTasks;
     private final SortedSchematicTargetQueue sortedTargets;
     private final PrintPlacementExecutor placementExecutor;
+    private final FallingPlacementTracker fallingPlacements = new FallingPlacementTracker();
 
     private List<String> printSkipListCache = List.of();
     private String[] printSkipFilters = new String[0];
@@ -45,7 +49,12 @@ public class PrintHandler extends FeatureModuleBase {
 
     public PrintHandler(PrinterRuntime runtime) {
         super(runtime, NAME, PrintModeType.PRINTER, Configs.Core.PRINT, Configs.Print.PRINT_SELECTION_TYPE, true);
-        this.printTasks = new PrintTaskController(runtime::currentTick);
+        this.printTasks = new PrintWorkflowScheduler(runtime::currentTick, runtime.strippableBlocks());
+        runtime.events().subscribe(event -> {
+            if (event instanceof RuntimeEvent.BlockUpdated update) {
+                this.printTasks.wake(new BlockPos(update.x(), update.y(), update.z()));
+            }
+        });
         this.sortedTargets = new SortedSchematicTargetQueue(this.scanEngine);
         this.placementExecutor = new PrintPlacementExecutor(
                 this.actionBroker,
@@ -53,7 +62,8 @@ public class PrintHandler extends FeatureModuleBase {
                 runtime.inventorySwitchGuard(),
                 this.hudStats,
                 this.missingMaterials,
-                this.litematica);
+                this.litematica,
+                this.fallingPlacements);
     }
 
     public SchematicBlockContext getContext() {
@@ -63,8 +73,7 @@ public class PrintHandler extends FeatureModuleBase {
     @Override
     protected int getTickInterval() {
         WorldSchematic schematic = this.litematica.schematicWorld();
-        if (this.printTasks.hasActiveTask()
-                && !this.printTasks.isWaitingForWorldUpdate(level, schematic)) {
+        if (this.printTasks.hasActiveWorkflow()) {
             return 0;
         }
         int baseInterval = Configs.Placement.PLACE_INTERVAL.getIntegerValue();
@@ -83,12 +92,19 @@ public class PrintHandler extends FeatureModuleBase {
     }
 
     @Override
+    protected boolean hasPendingIterationWork() {
+        WorldSchematic schematic = this.litematica.schematicWorld();
+        return this.printTasks.hasReadyWorkflow() || this.sortedTargets.hasPendingWork();
+    }
+
+    @Override
     protected boolean isSchematicBlockHandler() {
         return true;
     }
 
     @Override
     protected void preprocess() {
+        this.printTasks.tick(this.level, this.litematica.schematicWorld());
         this.updatePrintSkipCache();
         int actionConfigHash = this.getActionConfigHash();
         if (this.observedActionConfigHash != Integer.MIN_VALUE
@@ -107,6 +123,7 @@ public class PrintHandler extends FeatureModuleBase {
         this.printTaskAction = null;
         this.ctx = null;
         this.printTasks.clear();
+        this.fallingPlacements.clear();
         this.sortedTargets.clear();
         this.observedActionConfigHash = Integer.MIN_VALUE;
     }
@@ -114,17 +131,11 @@ public class PrintHandler extends FeatureModuleBase {
     @Override
     protected Iterable<BlockPos> getIterationPositions(PrinterBox playerInteractionBox) {
         WorldSchematic schematic = this.litematica.schematicWorld();
-        BlockPos activeTaskPos = this.printTasks.getActiveTargetPos(level, schematic);
-        boolean taskWaitingForWorld = activeTaskPos != null
-                && this.printTasks.isWaitingForWorldUpdate(level, schematic);
-        if (activeTaskPos != null && !taskWaitingForWorld) {
-            this.sortedTargets.clear();
-            return List.of(activeTaskPos);
-        }
+        List<BlockPos> runnableTasks = this.printTasks.readyTargetPositions();
         Iterable<BlockPos> normalPositions = this.getNormalIterationPositions(playerInteractionBox, schematic);
-        return activeTaskPos == null
+        return runnableTasks.isEmpty()
                 ? normalPositions
-                : Iterables.concat(List.of(activeTaskPos), normalPositions);
+                : Iterables.concat(runnableTasks, normalPositions);
     }
 
     private Iterable<BlockPos> getNormalIterationPositions(
@@ -160,6 +171,15 @@ public class PrintHandler extends FeatureModuleBase {
             return false;
         }
         this.ctx = new SchematicBlockContext(client, level, schematic, blockPos);
+        if (this.ctx.requiredState.getBlock() instanceof net.minecraft.world.level.block.FallingBlock
+                && this.fallingPlacements.blocks(
+                        blockPos,
+                        this.level.getGameTime(),
+                        Configs.Placement.FALLING_CHECK.getBooleanValue(),
+                        (pendingPos, expectedState) -> this.level.getBlockState(pendingPos).equals(expectedState)
+                )) {
+            return false;
+        }
         if (this.shouldSkipRequiredState(ctx.requiredState)) {
             return false;
         }
@@ -173,7 +193,7 @@ public class PrintHandler extends FeatureModuleBase {
             return true;
         }
 //        Action action = guide.getAction(ctx);
-        Optional<Action> action = Guides.INSTANCE.buildAction(ctx);
+        Optional<Action> action = this.guides.buildAction(ctx);
         if (action.isEmpty())
             return false;
         this.action = action.get();
@@ -246,10 +266,8 @@ public class PrintHandler extends FeatureModuleBase {
         switch (taskEvent) {
             case SUCCESS -> this.printTasks.onActionSuccess(taskAction, this.ctx, this.action);
             case QUEUED -> this.printTasks.onActionQueued(taskAction, this.ctx, this.action);
-            case DEFERRED -> {
-                // 物品换槽或外部取货尚未完成，保留多阶段任务的当前状态。
-            }
-            case CANCELLED -> taskAction.onCancelled(this.ctx, this.action);
+            case DEFERRED -> this.printTasks.onActionDeferred(this.ctx);
+            case CANCELLED -> this.printTasks.onActionCancelled(taskAction, this.ctx, this.action);
             case FAILURE -> this.printTasks.onActionFailure(taskAction, this.ctx, this.action);
         }
     }

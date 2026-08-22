@@ -20,6 +20,11 @@ public interface PrintTask {
         return false;
     }
 
+    /** Earliest fallback poll when no matching server block update is received. */
+    default long nextCheckTick() {
+        return Long.MIN_VALUE;
+    }
+
     PrintTaskBuildResult buildAction(SchematicBlockContext context);
 
     @Nullable

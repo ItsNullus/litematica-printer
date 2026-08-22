@@ -50,7 +50,10 @@ public abstract class MixinMultiPlayerGameMode implements MultiPlayerGameModeExt
     @Unique
     private MiningInteractionController litematica_printer$controller() {
         if (this.litematica_printer$mining == null) {
-            this.litematica_printer$mining = new MiningInteractionController(this);
+            this.litematica_printer$mining = new MiningInteractionController(
+                    this,
+                    RuntimeAccess.get().toolSwitchService()
+            );
         }
         return this.litematica_printer$mining;
     }

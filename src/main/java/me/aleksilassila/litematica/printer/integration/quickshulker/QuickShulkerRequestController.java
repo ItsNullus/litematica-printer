@@ -31,6 +31,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.Collection;
 
 public final class QuickShulkerRequestController {
 
@@ -91,6 +92,13 @@ public final class QuickShulkerRequestController {
     public void requestItem(Item item) {
         if (item != null) {
             lastNeedItemList.add(item);
+        }
+    }
+
+    public void requestItems(Collection<Item> items) {
+        if (items == null) return;
+        for (Item item : items) {
+            this.requestItem(item);
         }
     }
 

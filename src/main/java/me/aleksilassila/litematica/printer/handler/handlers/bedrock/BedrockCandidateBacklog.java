@@ -6,19 +6,19 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.function.BiPredicate;
 
-/**
- * Bounded retention for modeled bedrock candidates that have not been submitted yet.
- *
- * <p>The scan cursor may model substantially more positions than the controller can admit in one
- * tick. Keeping those candidates here prevents a completed scan pass from becoming an implicit
- * queue that has to circle the entire interaction range before a nearby target is reconsidered.</p>
- */
+/** Retains modeled bedrock candidates until the controller accepts or invalidates them. */
 final class BedrockCandidateBacklog<T> {
-    private final int capacity;
     private final LinkedHashMap<BlockPos, T> entries = new LinkedHashMap<>();
 
-    BedrockCandidateBacklog(int capacity) {
-        this.capacity = Math.max(1, capacity);
+    BedrockCandidateBacklog() {
+    }
+
+    /**
+     * Compatibility constructor for existing tests and pre-refactor callers.  Retention is no
+     * longer spatially capped; the argument is intentionally ignored.
+     */
+    BedrockCandidateBacklog(int ignoredCapacity) {
+        this();
     }
 
     boolean offer(BlockPos pos, T candidate) {
@@ -28,9 +28,6 @@ final class BedrockCandidateBacklog<T> {
         BlockPos stablePos = pos.immutable();
         if (this.entries.containsKey(stablePos)) {
             this.entries.put(stablePos, candidate);
-            return false;
-        }
-        if (this.entries.size() >= this.capacity) {
             return false;
         }
         this.entries.put(stablePos, candidate);
@@ -56,7 +53,7 @@ final class BedrockCandidateBacklog<T> {
     }
 
     int remainingCapacity() {
-        return Math.max(0, this.capacity - this.entries.size());
+        return Integer.MAX_VALUE;
     }
 
     int size() {

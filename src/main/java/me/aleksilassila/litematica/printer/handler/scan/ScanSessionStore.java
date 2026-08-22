@@ -13,12 +13,10 @@ import java.util.function.LongSupplier;
 
 /** Owns scan sessions and their per-owner metrics, independent of budget policy. */
 final class ScanSessionStore implements AutoCloseable {
-    private final AsyncPositionCursorScheduler asyncScheduler;
     private final Map<String, SectionScanSession> sessions = new HashMap<>();
     private final Map<String, ScanMetricsAccumulator> metrics = new HashMap<>();
 
-    ScanSessionStore(AsyncPositionCursorScheduler asyncScheduler) {
-        this.asyncScheduler = asyncScheduler;
+    ScanSessionStore() {
     }
 
     ScanMetricsAccumulator metrics(String ownerKey) {
@@ -62,7 +60,6 @@ final class ScanSessionStore implements AutoCloseable {
             PrinterBox sourceBounds,
             List<PrinterBox> sourceBoxes,
             LocalPlayer player,
-            boolean asynchronous,
             RuntimeEpoch epoch,
             LongSupplier snapshotRevision,
             LongSupplier generationSequence
@@ -70,15 +67,13 @@ final class ScanSessionStore implements AutoCloseable {
         ScanRegion region = ScanRegion.from(sourceBounds, player);
         String key = ownerKey + ":" + intent.name();
         SectionScanSession session = this.sessions.get(key);
-        if (session == null || !session.canReuse(region) || session.usesAsyncTraversal() != asynchronous) {
+        if (session == null || !session.canReuse(region)) {
             if (session != null) session.close();
             session = new SectionScanSession(
                     region,
                     sourceBoxes,
                     intent,
                     metrics,
-                    this.asyncScheduler,
-                    asynchronous,
                     epoch,
                     snapshotRevision,
                     generationSequence

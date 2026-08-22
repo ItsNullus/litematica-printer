@@ -1,6 +1,5 @@
 package me.aleksilassila.litematica.printer.guide;
 
-import me.aleksilassila.litematica.printer.Reference;
 import me.aleksilassila.litematica.printer.enums.BlockMatchResult;
 import me.aleksilassila.litematica.printer.guide.guides.*;
 import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
@@ -8,32 +7,34 @@ import me.aleksilassila.litematica.printer.printer.action.Action;
 import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.piston.PistonBaseBlock;
 
-import java.lang.reflect.Constructor;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 
 public class Guides {
-    public static final Guides INSTANCE = new Guides();
     private final List<GuideRegistration> registrations = new ArrayList<>();
+    private final Map<Class<?>, List<GuideRegistration>> registrationsByBlockClass = new IdentityHashMap<>();
 
-    private Guides() {
+    public Guides() {
         // ============================================================
-        // 水源/含水方块兜底规则（跨 tick 破冰放水流程由 PrintTaskController 处理）
+        // 水源/含水方块兜底规则（跨 tick 破冰放水流程由 PrintWorkflowScheduler 处理）
         // ============================================================
-        register(WaterGuide.class);
+        register(WaterGuide::new);
 
         // ============================================================
         // 跳过指南（对无需放置的方块直接跳过，优先级低于 WaterGuide）
         // ============================================================
-        register(SkipGuide.class,
+        register(SkipGuide::new,
                 LiquidBlock.class,
                 BubbleColumnBlock.class,
                 LilyPadBlock.class
         );
 
         // 火把
-        register(TorchGuide.class,
+        register(TorchGuide::new,
                 //#if MC > 12002
                 BaseTorchBlock.class
                 //#else
@@ -42,43 +43,43 @@ public class Guides {
         );
 
         // 紫水晶芽
-        register(AmethystGuide.class, AmethystClusterBlock.class);
+        register(AmethystGuide::new, AmethystClusterBlock.class);
 
         // 花
-        register(FlowerGuide.class, FlowerBlock.class);
+        register(FlowerGuide::new, FlowerBlock.class);
 
         // 台阶
-        register(SlabGuide.class, SlabBlock.class);
+        register(SlabGuide::new, SlabBlock.class);
 
         // 楼梯
-        register(StairGuide.class, StairBlock.class);
+        register(StairGuide::new, StairBlock.class);
 
         // 活板门
-        register(TrapDoorGuide.class, TrapDoorBlock.class);
+        register(TrapDoorGuide::new, TrapDoorBlock.class);
 
         // 门
-        register(DoorGuide.class, DoorBlock.class);
+        register(DoorGuide::new, DoorBlock.class);
 
         // 栅栏门
-        register(FenceGateGuide.class, FenceGateBlock.class);
+        register(FenceGateGuide::new, FenceGateBlock.class);
 
         // 床
-        register(BedGuide.class, BedBlock.class);
+        register(BedGuide::new, BedBlock.class);
 
         // 钟
-        register(BellGuide.class, BellBlock.class);
+        register(BellGuide::new, BellBlock.class);
 
         // 侦测器
-        register(ObserverGuide.class, ObserverBlock.class);
+        register(ObserverGuide::new, ObserverBlock.class);
 
         // 活塞
-        register(PistonGuide.class, PistonBaseBlock.class);
+        register(PistonGuide::new, PistonBaseBlock.class);
 
         // 箱子
-        register(ChestGuide.class, ChestBlock.class, TrappedChestBlock.class);
+        register(ChestGuide::new, ChestBlock.class, TrappedChestBlock.class);
 
         // 告示牌
-        register(SignGuide.class,
+        register(SignGuide::new,
                 StandingSignBlock.class,
                 WallSignBlock.class
                 //#if MC >= 12002
@@ -88,44 +89,44 @@ public class Guides {
         );
 
         // 旗帜
-        register(BannerGuide.class, AbstractBannerBlock.class);
+        register(BannerGuide::new, AbstractBannerBlock.class);
 
         // 头颅
-        register(SkullGuide.class, SkullBlock.class, WallSkullBlock.class);
+        register(SkullGuide::new, SkullBlock.class, WallSkullBlock.class);
 
         // 下界传送门
-        register(NetherPortalGuide.class, NetherPortalBlock.class);
+        register(NetherPortalGuide::new, NetherPortalBlock.class);
 
         // 梯子
-        register(LadderGuide.class, LadderBlock.class);
+        register(LadderGuide::new, LadderBlock.class);
 
         // 灯笼
-        register(LanternGuide.class, LanternBlock.class);
+        register(LanternGuide::new, LanternBlock.class);
 
         // 末地烛/避雷针
-        register(RodGuide.class, RodBlock.class);
+        register(RodGuide::new, RodBlock.class);
 
         // 漏斗
-        register(HopperGuide.class, HopperBlock.class);
+        register(HopperGuide::new, HopperBlock.class);
 
         // 铁砧
-        register(AnvilGuide.class, AnvilBlock.class);
+        register(AnvilGuide::new, AnvilBlock.class);
 
         // 去皮原木
-        register(StripLogGuide.class, RotatedPillarBlock.class);
+        register(StripLogGuide::new, RotatedPillarBlock.class);
 
         // 可可豆
-        register(CocoaGuide.class, CocoaBlock.class);
+        register(CocoaGuide::new, CocoaBlock.class);
 
         // 绊线钩
-        register(TripWireHookGuide.class, TripWireHookBlock.class);
+        register(TripWireHookGuide::new, TripWireHookBlock.class);
 
         // 铁轨
-        register(RailGuide.class, BaseRailBlock.class);
+        register(RailGuide::new, BaseRailBlock.class);
 
         // 合成器（MC 1.21+）
         //#if MC >= 12003
-        register(CrafterGuide.class, CrafterBlock.class);
+        register(CrafterGuide::new, CrafterBlock.class);
         //#endif
 
         // ============================================================
@@ -133,48 +134,48 @@ public class Guides {
         // ============================================================
 
         // 蜡烛（添加/点燃/熄灭）
-        register(CandleGuide.class, CandleBlock.class);
+        register(CandleGuide::new, CandleBlock.class);
 
         // 海泡菜
-        register(SeaPickleGuide.class, SeaPickleBlock.class);
+        register(SeaPickleGuide::new, SeaPickleBlock.class);
 
         // 海龟蛋（叠加放置）
-        register(TurtleEggGuide.class, TurtleEggBlock.class);
+        register(TurtleEggGuide::new, TurtleEggBlock.class);
 
         // 红石中继器（延迟调整）
-        register(RepeaterGuide.class, RepeaterBlock.class);
+        register(RepeaterGuide::new, RepeaterBlock.class);
 
         // 红石比较器（模式切换）
-        register(ComparatorGuide.class, net.minecraft.world.level.block.ComparatorBlock.class);
+        register(ComparatorGuide::new, net.minecraft.world.level.block.ComparatorBlock.class);
 
         // 红石线（点状/十字形）
-        register(RedstoneWireGuide.class, RedStoneWireBlock.class);
+        register(RedstoneWireGuide::new, RedStoneWireBlock.class);
 
         // 拉杆
-        register(LeverGuide.class, LeverBlock.class);
+        register(LeverGuide::new, LeverBlock.class);
 
         // 篝火
-        register(CampfireGuide.class, CampfireBlock.class);
+        register(CampfireGuide::new, CampfireBlock.class);
 
         // 农作物（骨粉催熟）
-        register(CropsGuide.class,
+        register(CropsGuide::new,
                 AttachedStemBlock.class, StemBlock.class, CropBlock.class, BeetrootBlock.class);
 
         // 音符盒（调音）
-        register(NoteBlockGuide.class, NoteBlock.class);
+        register(NoteBlockGuide::new, NoteBlock.class);
 
         // 雪层（叠加）
-        register(SnowGuide.class, SnowLayerBlock.class);
+        register(SnowGuide::new, SnowLayerBlock.class);
 
         // 末地传送门框架（嵌入末影之眼）
-        register(EndPortalFrameGuide.class, EndPortalFrameBlock.class);
+        register(EndPortalFrameGuide::new, EndPortalFrameBlock.class);
 
         // 阳光探测器（反转切换）
-        register(DaylightDetectorGuide.class, DaylightDetectorBlock.class);
+        register(DaylightDetectorGuide::new, DaylightDetectorBlock.class);
 
         // 花簇（MC 1.19.4+）
         //#if MC >= 11904
-        register(FlowerBedGuide.class,
+        register(FlowerBedGuide::new,
                 //#if MC >= 12105
                 FlowerBedBlock.class
                 //#else
@@ -184,62 +185,64 @@ public class Guides {
         //#endif
 
         // 藤蔓/发光地衣
-        register(VineGuide.class, VineBlock.class, GlowLichenBlock.class);
+        register(VineGuide::new, VineBlock.class, GlowLichenBlock.class);
 
         // 火/灵魂火
-        register(FireGuide.class, FireBlock.class, SoulFireBlock.class);
+        register(FireGuide::new, FireBlock.class, SoulFireBlock.class);
 
         // 炼药锅
-        register(CauldronGuide.class,
+        register(CauldronGuide::new,
                 CauldronBlock.class, LavaCauldronBlock.class, LayeredCauldronBlock.class);
 
         // 堆肥桶
-        register(ComposterGuide.class, ComposterBlock.class);
+        register(ComposterGuide::new, ComposterBlock.class);
 
         // ============================================================
         // 混合指南（放置 + 交互 + 破坏）
         // ============================================================
 
         // 耕地/土径
-        register(SoilGuide.class, FarmlandBlock.class, DirtPathBlock.class);
+        register(SoilGuide::new, FarmlandBlock.class, DirtPathBlock.class);
 
         // 花盆
-        register(FlowerPotGuide.class, FlowerPotBlock.class);
+        register(FlowerPotGuide::new, FlowerPotBlock.class);
 
         // 攀爬植物（洞穴藤蔓/垂泪藤/缠怨藤/大垂叶茎）
-        register(ClimbingPlantGuide.class,
+        register(ClimbingPlantGuide::new,
                 BigDripleafStemBlock.class,
                 CaveVinesBlock.class, CaveVinesPlantBlock.class,
                 WeepingVinesBlock.class, WeepingVinesPlantBlock.class,
                 TwistingVinesBlock.class, TwistingVinesPlantBlock.class);
 
         // 死珊瑚（需过滤非珊瑚方块）
-        register(CoralGuide.class);
+        register(CoralGuide::new);
 
         // ============================================================
         // 默认指南（最低优先级，兜底所有未被上面接管的方块）
         // ============================================================
-        register(DefaultGuide.class);
+        register(DefaultGuide::new);
     }
 
     @SafeVarargs
-    public final void register(Class<? extends Guide> guideClass, Class<? extends Block>... supportedBlocks) {
-        registrations.add(new GuideRegistration(guideClass, supportedBlocks));
+    public final void register(
+            Function<SchematicBlockContext, ? extends Guide> factory,
+            Class<? extends Block>... supportedBlocks
+    ) {
+        this.registrations.add(new GuideRegistration(factory, supportedBlocks));
+        this.registrationsByBlockClass.clear();
     }
 
     public final Optional<Action> buildAction(SchematicBlockContext context) {
         BlockMatchResult blockMatchResult = BlockMatchResult.compare(context);
-        for (GuideRegistration registration : this.registrations) {
-            if (!registration.matches(context.requiredState.getBlock())) {
-                continue;
-            }
-            Guide guide;
-            try {
-                guide = registration.create(context);
-            } catch (ReflectiveOperationException exception) {
-                Reference.LOGGER.error("Failed to create printer guide {}", registration.guideName(), exception);
-                continue;
-            }
+        Block requiredBlock = context.requiredState.getBlock();
+        List<GuideRegistration> matching = this.registrationsByBlockClass.computeIfAbsent(
+                requiredBlock.getClass(),
+                ignored -> this.registrations.stream()
+                        .filter(registration -> registration.matches(requiredBlock))
+                        .toList()
+        );
+        for (GuideRegistration registration : matching) {
+            Guide guide = registration.create(context);
             if (!guide.canExecute()) {
                 continue;
             }
@@ -256,21 +259,19 @@ public class Guides {
 
     @SuppressWarnings("ClassCanBeRecord")
     private static class GuideRegistration {
-        private final Constructor<? extends Guide> constructor;
+        private final Function<SchematicBlockContext, ? extends Guide> factory;
         public final Class<? extends Block>[] blockClass;
 
-        public GuideRegistration(Class<? extends Guide> guideClass, Class<? extends Block>[] blockClass) {
-            try {
-                this.constructor = guideClass.getConstructor(SchematicBlockContext.class);
-            } catch (NoSuchMethodException e) {
-                throw new IllegalArgumentException("Guide must expose a SchematicBlockContext constructor: "
-                        + guideClass.getName(), e);
-            }
+        public GuideRegistration(
+                Function<SchematicBlockContext, ? extends Guide> factory,
+                Class<? extends Block>[] blockClass
+        ) {
+            this.factory = factory;
             this.blockClass = blockClass;
         }
 
-        public Guide create(SchematicBlockContext context) throws ReflectiveOperationException {
-            return this.constructor.newInstance(context);
+        public Guide create(SchematicBlockContext context) {
+            return this.factory.apply(context);
         }
 
         public boolean matches(Block block) {
@@ -285,8 +286,5 @@ public class Guides {
             return false;
         }
 
-        public String guideName() {
-            return this.constructor.getDeclaringClass().getName();
-        }
     }
 }

@@ -54,9 +54,7 @@ public final class MaterialSelector {
                 }
             }
         }
-        for (Item item : items) {
-            QuickShulkerBridge.requestItem(item, MaterialRequest.Source.PRINT);
-        }
+        QuickShulkerBridge.requestItems(items, MaterialRequest.Source.PRINT);
         return false;
     }
 

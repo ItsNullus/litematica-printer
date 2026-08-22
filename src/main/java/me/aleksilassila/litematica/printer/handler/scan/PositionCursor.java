@@ -5,9 +5,7 @@ import net.minecraft.core.BlockPos;
 interface PositionCursor extends AutoCloseable {
     enum PollResult {
         AVAILABLE,
-        PENDING,
-        COMPLETE,
-        FAILED
+        COMPLETE
     }
 
     PollResult poll(BlockPos.MutableBlockPos target);

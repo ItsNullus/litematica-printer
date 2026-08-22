@@ -4,7 +4,6 @@ import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.handler.handlers.MineDebugLog;
 import me.aleksilassila.litematica.printer.mixin_extension.BlockBreakResult;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
-import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.NetworkUtils;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -22,6 +21,7 @@ public final class MiningInteractionController {
 
     private final MiningInteractionPort port;
     private final MiningFeedback feedback;
+    private final ToolSwitchService toolSwitchService;
     private BlockPos delayedDestroyPos;
     private boolean hasDelayedDestroy;
     private boolean delayedDestroyLocalPrediction;
@@ -29,8 +29,9 @@ public final class MiningInteractionController {
     private BlockPos lastLoggedProgressPos;
     private long lastLoggedProgressTick = Long.MIN_VALUE;
 
-    public MiningInteractionController(MiningInteractionPort port) {
+    public MiningInteractionController(MiningInteractionPort port, ToolSwitchService toolSwitchService) {
         this.port = port;
+        this.toolSwitchService = toolSwitchService;
         this.feedback = new MiningFeedback(port.client());
     }
 
@@ -91,12 +92,10 @@ public final class MiningInteractionController {
         if (this.port.isInventorySwitchPending()) {
             return BlockBreakResult.IN_PROGRESS;
         }
-        if (!allowToolSwitch || !InteractionUtils.trySwitchToEffectiveTool(pos, state)) this.port.ensureCarriedItemSent();
-        if (this.port.isInventorySwitchPending()) {
+        if (this.toolSwitchService.prepareForBreak(pos, state, allowToolSwitch)
+                != ToolPreparationResult.READY) {
             return BlockBreakResult.IN_PROGRESS;
         }
-        if (!InteractionUtils.protectCurrentToolBeforeBreak(state)
-                || !InteractionUtils.isRecoveryToolReadyForBreak(state)) return BlockBreakResult.FAILED;
         this.port.ensureCarriedItemSent();
         float progress = state.getDestroyProgress(player, level, pos);
         boolean fast = player.getAbilities().instabuild || progress >= FAST_FINISH_PROGRESS;
@@ -104,7 +103,10 @@ public final class MiningInteractionController {
             if (this.hasDelayedDestroy) return pos.equals(this.delayedDestroyPos)
                     ? BlockBreakResult.IN_PROGRESS : BlockBreakResult.ABORTED;
             if (this.feedback.hasPending(pos)) return BlockBreakResult.IN_PROGRESS;
-            BlockBreakResult result = this.continueDestroy(false, pos, direction, false, allowToolSwitch);
+            // Mine uses the same local prediction path as vanilla. Besides avoiding a stale
+            // client world, this advances the local ItemStack durability after every accepted
+            // block so Tweakeroo can evaluate its nearly-broken threshold before the next packet.
+            BlockBreakResult result = this.continueDestroy(true, pos, direction, false, allowToolSwitch);
             if (result == BlockBreakResult.FAILED) return result;
             return this.hasDelayedDestroy && pos.equals(this.delayedDestroyPos) || this.feedback.hasPending(pos)
                     ? BlockBreakResult.IN_PROGRESS : result;
@@ -114,6 +116,10 @@ public final class MiningInteractionController {
         this.feedback.playHitSound(player, level, state, pos, true);
         this.send(Action.START_DESTROY_BLOCK, pos, direction);
         if (!player.getAbilities().instabuild) this.send(Action.STOP_DESTROY_BLOCK, pos, direction);
+        // Vanilla's local destroy path applies the tool damage immediately. Sending only packets
+        // let an unlimited mining tick enqueue many breaks against the same stale durability,
+        // which bypassed Tweakeroo's own pre-break swap hook and could consume whole tools.
+        this.port.destroyBlock(pos);
         this.feedback.resetHitSound();
         return BlockBreakResult.COMPLETED_WAIT;
     }
@@ -153,13 +159,10 @@ public final class MiningInteractionController {
             this.feedback.resetHitSound();
             return BlockBreakResult.COMPLETED;
         }
-        if (allowToolSwitch) InteractionUtils.trySwitchToEffectiveTool(pos, state);
-        if (this.port.isInventorySwitchPending()) {
+        if (this.toolSwitchService.prepareForBreak(pos, state, allowToolSwitch)
+                != ToolPreparationResult.READY) {
             return BlockBreakResult.IN_PROGRESS;
         }
-        this.port.ensureCarriedItemSent();
-        if (!InteractionUtils.protectCurrentToolBeforeBreak(state)
-                || !InteractionUtils.isRecoveryToolReadyForBreak(state)) return BlockBreakResult.FAILED;
         this.port.ensureCarriedItemSent();
         boolean useDelayed = forceDelayedDestroy || Configs.Break.BREAK_USE_DELAYED_DESTROY.getBooleanValue();
         if (this.feedback.hasPending(pos) && (!this.hasDelayedDestroy || !pos.equals(this.delayedDestroyPos))) {

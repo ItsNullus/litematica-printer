@@ -188,7 +188,7 @@ public abstract class FeatureModuleBase extends ConfigUtils implements RuntimeCo
             boolean didWork,
             boolean foundCandidate,
             boolean completedPass,
-            boolean waitingForSource
+            boolean scanPaused
     ) {
     }
 

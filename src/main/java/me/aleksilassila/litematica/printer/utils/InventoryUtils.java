@@ -28,14 +28,6 @@ import java.util.function.Predicate;
 
 import me.aleksilassila.litematica.printer.runtime.RuntimeAccess;
 
-//#if MC >= 12005
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.world.item.alchemy.PotionContents;
-//#else
-//$$ import net.minecraft.world.item.alchemy.PotionUtils;
-//#endif
-import net.minecraft.world.item.alchemy.Potions;
-
 import static fi.dy.masa.malilib.util.InventoryUtils.*;
 
 @SuppressWarnings({"DataFlowIssue", "SpellCheckingInspection", "GrazieInspection"})
@@ -100,9 +92,7 @@ public class InventoryUtils {
                 }
             }
         }
-        for (Item item : items) {
-            QuickShulkerBridge.requestItem(item, MaterialRequest.Source.PRINT);
-        }
+        QuickShulkerBridge.requestItems(items, MaterialRequest.Source.PRINT);
         return false;
     }
 
@@ -294,9 +284,7 @@ public class InventoryUtils {
             return false;
         }
         for (ItemStack stack : getMainStacks(player.getInventory())) {
-            if (!stack.isEmpty()
-                    && InteractionUtils.isToolAllowedByDurabilityProtection(stack)
-                    && ToolSelectionUtils.hasSilkTouch(stack)) {
+            if (!stack.isEmpty() && ToolSelectionUtils.hasSilkTouch(stack)) {
                 return true;
             }
         }
@@ -398,57 +386,6 @@ public class InventoryUtils {
             int reserveCount
     ) {
         return MaterialSelector.findReserveBlockedStack(player, items, requiredStackPredicate, reserveCount);
-    }
-
-    public static ItemStack createWaterPotionStack() {
-        //#if MC >= 12005
-        return PotionContents.createItemStack(Items.POTION, Potions.WATER);
-        //#else
-        //$$ return PotionUtils.setPotion(new ItemStack(Items.POTION), Potions.WATER);
-        //#endif
-    }
-
-    public static boolean isWaterPotion(ItemStack stack) {
-        if (stack == null || !stack.is(Items.POTION)) {
-            return false;
-        }
-        //#if MC >= 12005
-        PotionContents contents = stack.get(DataComponents.POTION_CONTENTS);
-        return contents != null && contents.is(Potions.WATER);
-        //#else
-        //$$ return PotionUtils.getPotion(stack) == Potions.WATER;
-        //#endif
-    }
-
-    /**
-     * 检查是否能切换到目标物品（配合槽位检查，仅判断不执行切换）
-     *
-     * @param player 本地玩家实例
-     * @param items  目标物品数组（null/空则视为AIR）
-     * @return PickResult 检查结果
-     */
-    public PickResult checkCanSwitchToItems(LocalPlayer player, Item[] items) {
-        if (player == null) {
-            return PickResult.FAIL;
-        }
-        Item[] targetItems = items;
-        if (targetItems == null || targetItems.length == 0) {
-            targetItems = new Item[]{Items.AIR};
-        }
-        Inventory inv = player.getInventory();
-        boolean isCreativeMode = PlayerUtils.getAbilities(player).instabuild;
-        if (isCreativeMode) {
-            return InventoryUtils.checkPickSlotAvailable(-1, client);
-        }
-        for (Item item : targetItems) {
-            for (int i = 0; i < inv.getContainerSize(); i++) {
-                ItemStack itemStack = inv.getItem(i);
-                if (itemStack.getItem().equals(item)) {
-                    return InventoryUtils.checkPickSlotAvailable(i, client);
-                }
-            }
-        }
-        return PickResult.FAIL;
     }
 
     public enum PickResult {

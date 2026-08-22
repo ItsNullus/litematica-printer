@@ -4,6 +4,7 @@ import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
 import net.minecraft.world.item.Item;
 
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -32,14 +33,42 @@ public final class MaterialRequestCoordinator implements RuntimeComponent {
         if (item == null) {
             throw new IllegalArgumentException("item must not be null");
         }
-        if (this.active != null && this.active.request.item() != item) {
+        return this.request(List.of(item), item, source);
+    }
+
+    public MaterialReservation request(Item[] acceptedItems, MaterialRequest.Source source) {
+        if (acceptedItems == null || acceptedItems.length == 0) {
+            throw new IllegalArgumentException("acceptedItems must not be empty");
+        }
+        return this.request(Arrays.asList(acceptedItems), acceptedItems[0], source);
+    }
+
+    public MaterialReservation request(
+            List<Item> acceptedItems,
+            Item preferredItem,
+            MaterialRequest.Source source
+    ) {
+        MaterialRequest requested = new MaterialRequest(
+                this.nextToken,
+                acceptedItems,
+                preferredItem,
+                1,
+                source
+        );
+        if (this.active != null && !sameRequirement(this.active.request, requested)) {
             MaterialReservation current = this.advance();
             if (current.state() == MaterialReservation.State.PENDING) {
                 return current;
             }
         }
         if (this.active == null) {
-            MaterialRequest request = new MaterialRequest(this.nextToken++, item, 1, source);
+            MaterialRequest request = new MaterialRequest(
+                    this.nextToken++,
+                    acceptedItems,
+                    preferredItem,
+                    1,
+                    source
+            );
             this.active = new ActiveRequest(request, 0, false, this.tick);
         }
         return this.advance();
@@ -61,7 +90,11 @@ public final class MaterialRequestCoordinator implements RuntimeComponent {
     }
 
     public Item activeItem() {
-        return this.active == null ? null : this.active.request.item();
+        return this.active == null ? null : this.active.request.preferredItem();
+    }
+
+    public List<Item> activeItems() {
+        return this.active == null ? List.of() : this.active.request.acceptedItems();
     }
 
     @Override
@@ -102,6 +135,13 @@ public final class MaterialRequestCoordinator implements RuntimeComponent {
         long token = this.active == null ? 0L : this.active.request.token();
         this.active = null;
         return new MaterialReservation(token, MaterialReservation.State.UNAVAILABLE);
+    }
+
+    private static boolean sameRequirement(MaterialRequest left, MaterialRequest right) {
+        return left.source() == right.source()
+                && left.minimumCount() == right.minimumCount()
+                && left.preferredItem() == right.preferredItem()
+                && left.acceptedItems().equals(right.acceptedItems());
     }
 
     private record ActiveRequest(

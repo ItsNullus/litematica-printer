@@ -121,7 +121,10 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 .build();
 
         public static final ConfigBoolean ASYNC_SCAN = bool("asyncScan")
-                .defaultValue(true)
+                // Compatibility-only key. Coordinate-only prefetch failed the equivalence and
+                // continuity gates, so it is hidden and ignored by the scan engine.
+                .defaultValue(false)
+                .setVisible(() -> false)
                 .build();
 
         public static final ConfigInteger LAZY_ENTER_TICKS = integer("lazyEnterTicks")

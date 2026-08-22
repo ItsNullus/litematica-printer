@@ -32,6 +32,13 @@ public final class QuickShulkerBridge {
         return RuntimeAccess.get().materialRequests().request(item, source);
     }
 
+    public static MaterialReservation requestItems(Item[] items, MaterialRequest.Source source) {
+        if (items == null || items.length == 0) {
+            return new MaterialReservation(0L, MaterialReservation.State.UNAVAILABLE);
+        }
+        return RuntimeAccess.get().materialRequests().request(items, source);
+    }
+
     /** Handles the optional inventory fallback for both vanilla and Litematica pick-block hooks. */
     public static boolean handlePickBlock(LocalPlayer player, Item item) {
         if (player == null || item == null || item == Items.AIR

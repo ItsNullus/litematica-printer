@@ -20,12 +20,9 @@ import java.util.List;
 
 public final class BedrockCandidatePlanner {
     private static final Direction[] NEIGHBOR_DIRECTIONS = Direction.values();
-    private static final int CANDIDATE_SOFT_CAP = 256;
-    private static final int CANDIDATE_COLLECT_CAP = CANDIDATE_SOFT_CAP * 4;
     private final ScanEngine scanEngine;
     private final LitematicaAdapter litematica;
-    private final BedrockCandidateBacklog<CandidateInfo> candidateBacklog =
-            new BedrockCandidateBacklog<>(CANDIDATE_COLLECT_CAP);
+    private final BedrockCandidateBacklog<BedrockCandidatePlan> candidateBacklog = new BedrockCandidateBacklog<>();
     private boolean sourceHasMore;
 
     public BedrockCandidatePlanner(ScanEngine scanEngine, LitematicaAdapter litematica) {
@@ -39,47 +36,51 @@ public final class BedrockCandidatePlanner {
                 sourceBox,
                 level,
                 player,
-                scanGuardLimit,
-                this.candidateBacklog.remainingCapacity()
+                scanGuardLimit
         );
         this.sourceHasMore = shard.hasMoreSource();
-        for (CandidateInfo candidate : shard.candidates()) {
+        for (BedrockCandidatePlan candidate : shard.candidates()) {
             this.candidateBacklog.offer(candidate.pos(), candidate);
         }
 
-        List<CandidateInfo> candidates = this.getEligibleCandidates();
+        List<BedrockCandidatePlan> candidates = this.getEligibleCandidates();
 
-        List<CandidateInfo> selectedCandidates;
+        List<BedrockCandidatePlan> selectedCandidates;
         if (candidates.size() <= 1) {
             selectedCandidates = candidates;
         } else {
             candidates.sort(Comparator
-                    .comparingInt(CandidateInfo::priority)
-                    .thenComparingInt(CandidateInfo::neighborTargetCount));
+                    .comparingInt(BedrockCandidatePlan::priority)
+                    .thenComparingInt(BedrockCandidatePlan::neighborTargetCount));
 
             selectedCandidates = candidates;
         }
 
         int selectionLimit = Math.min(selectedCandidates.size(), this.getCandidateSelectionLimit(maxEffectiveExecutions));
-        List<CandidateInfo> liveSelection = new ArrayList<>(selectionLimit);
-        for (CandidateInfo cachedCandidate : selectedCandidates) {
+        List<BedrockCandidatePlan> liveSelection = new ArrayList<>(selectionLimit);
+        BedrockCandidateConflictIndex conflicts = new BedrockCandidateConflictIndex();
+        for (BedrockCandidatePlan cachedCandidate : selectedCandidates) {
             if (liveSelection.size() >= selectionLimit) {
                 break;
             }
-            CandidateInfo candidate = this.buildModeledCandidate(level, cachedCandidate.pos(), Configs.Bedrock.BEDROCK_ALLOW_SIDE.getBooleanValue());
+            BedrockCandidatePlan candidate = this.refreshModeledCandidate(
+                    level,
+                    cachedCandidate,
+                    Configs.Bedrock.BEDROCK_ALLOW_SIDE.getBooleanValue()
+            );
             if (candidate == null) {
                 this.candidateBacklog.remove(cachedCandidate.pos());
                 continue;
             }
             this.candidateBacklog.offer(candidate.pos(), candidate);
-            if (conflictsWithSelected(candidate, liveSelection)) {
+            if (!conflicts.tryReserve(candidate)) {
                 continue;
             }
             liveSelection.add(candidate);
         }
 
         List<BlockPos> filtered = new ArrayList<>(liveSelection.size() + 1);
-        for (CandidateInfo candidate : liveSelection) {
+        for (BedrockCandidatePlan candidate : liveSelection) {
             BedrockController.primeSubmissionPlan(candidate.pos(), candidate.layout(), candidate.placement(), candidate.slimePos());
             filtered.add(candidate.pos());
         }
@@ -113,10 +114,10 @@ public final class BedrockCandidatePlanner {
         this.sourceHasMore = false;
     }
 
-    private List<CandidateInfo> getEligibleCandidates() {
-        List<CandidateInfo> verticalCandidates = new ArrayList<>();
-        List<CandidateInfo> sideCandidates = new ArrayList<>();
-        for (CandidateInfo candidate : this.candidateBacklog.snapshot()) {
+    private List<BedrockCandidatePlan> getEligibleCandidates() {
+        List<BedrockCandidatePlan> verticalCandidates = new ArrayList<>();
+        List<BedrockCandidatePlan> sideCandidates = new ArrayList<>();
+        for (BedrockCandidatePlan candidate : this.candidateBacklog.snapshot()) {
             if (BedrockController.isPositionOnRetryCooldown(candidate.pos())) {
                 continue;
             }
@@ -131,7 +132,6 @@ public final class BedrockCandidatePlanner {
 
     private void pruneCandidateBacklog(PrinterBox sourceBox, ClientLevel level) {
         this.candidateBacklog.removeIf((pos, ignored) -> !sourceBox.contains(pos)
-                || !BedrockEnvironment.canInteract(pos)
                 || !this.litematica.isWithinSelectionRange(pos)
                 || !BedrockTargetBlocks.isTargetBlock(level.getBlockState(pos)));
     }
@@ -140,26 +140,24 @@ public final class BedrockCandidatePlanner {
             PrinterBox sourceBox,
             ClientLevel level,
             LocalPlayer player,
-            int scanGuardLimit,
-            int collectCapacity
+            int scanGuardLimit
     ) {
-        if (collectCapacity <= 0) {
-            return new CandidateShard(List.of(), true);
-        }
         int scanLimit = this.getCandidateScanLimit(scanGuardLimit);
         Iterable<BlockPos> source = this.scanEngine.iterable(
                 "bedrock",
-                sourceBox,
+                List.of(sourceBox),
                 level,
                 null,
                 player,
                 scanLimit,
-                ScanIntent.MINE,
-                pos -> this.passesCheapFilters(level, pos) && !this.candidateBacklog.contains(pos)
+                ScanIntent.BEDROCK,
+                pos -> true,
+                pos -> this.passesCheapFilters(level, pos) && !this.candidateBacklog.contains(pos),
+                ScanEngine.PassPolicy.INVALIDATIONS_ONLY
         );
         Iterator<BlockPos> iterator = source.iterator();
-        List<CandidateInfo> verticalCandidates = new ArrayList<>();
-        List<CandidateInfo> sideCandidates = new ArrayList<>();
+        List<BedrockCandidatePlan> verticalCandidates = new ArrayList<>();
+        List<BedrockCandidatePlan> sideCandidates = new ArrayList<>();
         boolean allowSide = Configs.Bedrock.BEDROCK_ALLOW_SIDE.getBooleanValue();
         int scanned = 0;
         int modeled = 0;
@@ -167,8 +165,7 @@ public final class BedrockCandidatePlanner {
         long modelingStart = System.nanoTime();
         long modelingBudgetNanos = Math.max(1L, Configs.Core.SCAN_TIME_BUDGET_MS.getIntegerValue()) * 1_000_000L;
 
-        while (scanned < scanLimit
-                && verticalCandidates.size() + sideCandidates.size() < collectCapacity) {
+        while (scanned < scanLimit) {
             // Always model at least one candidate so a very small budget cannot
             // deadlock progress. After that, yield cooperatively to the next tick.
             if (modeled > 0 && System.nanoTime() - modelingStart >= modelingBudgetNanos) {
@@ -177,7 +174,7 @@ public final class BedrockCandidatePlanner {
             }
             if (!iterator.hasNext()) {
                 if (source instanceof ScanCandidateIterable scanSource
-                        && scanSource.availability() == ScanAvailability.WAITING_FOR_BATCH) {
+                        && scanSource.availability() == ScanAvailability.PAUSED) {
                     hasMoreSource = true;
                 }
                 break;
@@ -185,7 +182,7 @@ public final class BedrockCandidatePlanner {
             BlockPos pos = iterator.next();
             scanned++;
             modeled++;
-            CandidateInfo candidate = this.buildModeledCandidate(level, pos, allowSide);
+            BedrockCandidatePlan candidate = this.buildModeledCandidate(level, pos, allowSide);
             if (candidate != null) {
                 if (candidate.layout() != null && candidate.layout().isHorizontal()) {
                     sideCandidates.add(candidate);
@@ -195,11 +192,10 @@ public final class BedrockCandidatePlanner {
             }
         }
 
-        if (scanned >= scanLimit
-                || verticalCandidates.size() + sideCandidates.size() >= collectCapacity) {
+        if (scanned >= scanLimit) {
             hasMoreSource = true;
         }
-        List<CandidateInfo> candidates = new ArrayList<>(verticalCandidates.size() + sideCandidates.size());
+        List<BedrockCandidatePlan> candidates = new ArrayList<>(verticalCandidates.size() + sideCandidates.size());
         candidates.addAll(verticalCandidates);
         candidates.addAll(sideCandidates);
         return new CandidateShard(candidates, hasMoreSource);
@@ -218,14 +214,16 @@ public final class BedrockCandidatePlanner {
         if (!BedrockTargetBlocks.isTargetBlock(level.getBlockState(pos))) {
             return false;
         }
-        return !BedrockController.isPositionOnRetryCooldown(pos);
+        // Cooldown is an admission concern. Keeping the target in the backlog lets it become
+        // eligible as soon as the deadline expires without requiring movement or another scan.
+        return true;
     }
 
     /**
      * 重型建模阶段:调用方需保证已通过 {@link #passesCheapFilters}。计入建模预算。
      */
-    private CandidateInfo buildModeledCandidate(ClientLevel level, BlockPos pos, boolean allowSide) {
-        CandidateInfo candidate = buildCandidate(level, pos.immutable());
+    private BedrockCandidatePlan buildModeledCandidate(ClientLevel level, BlockPos pos, boolean allowSide) {
+        BedrockCandidatePlan candidate = buildCandidate(level, pos.immutable());
         if (candidate.layout() == null) {
             return null;
         }
@@ -235,8 +233,22 @@ public final class BedrockCandidatePlanner {
         return candidate;
     }
 
+    private BedrockCandidatePlan refreshModeledCandidate(
+            ClientLevel level,
+            BedrockCandidatePlan cached,
+            boolean allowSide
+    ) {
+        var dirty = this.scanEngine.dirtySnapshotAfter(cached.planRevision(), cached.footprint());
+        if (dirty.boxes().isEmpty()) {
+            return cached.planRevision() == dirty.version()
+                    ? cached
+                    : cached.withPlanRevision(dirty.version());
+        }
+        return this.buildModeledCandidate(level, cached.pos(), allowSide);
+    }
+
     private int getCandidateSelectionLimit(int maxEffectiveExecutions) {
-        return Math.max(1, Math.min(CANDIDATE_SOFT_CAP, maxEffectiveExecutions));
+        return Math.max(1, maxEffectiveExecutions);
     }
 
     private int getCandidateScanLimit(int scanGuardLimit) {
@@ -246,14 +258,14 @@ public final class BedrockCandidatePlanner {
         return scanGuardLimit > 0 ? scanGuardLimit : Integer.MAX_VALUE;
     }
 
-    private CandidateInfo buildCandidate(ClientLevel level, BlockPos pos) {
+    private BedrockCandidatePlan buildCandidate(ClientLevel level, BlockPos pos) {
         BedrockMachineLayout layout = BedrockMachineLayout.find(level, pos);
         PlacementSelection placementSelection = layout == null ? null : findPlacementSelection(level, layout, pos);
         BedrockTorchPlacement placement = placementSelection == null ? null : placementSelection.placement();
         BlockPos slimePos = placementSelection == null ? null : placementSelection.slimePos();
         int priority = candidatePriority(level, pos, layout, placement);
         int neighborTargetCount = neighborTargetCount(level, pos);
-        return new CandidateInfo(
+        return new BedrockCandidatePlan(
                 pos,
                 layout,
                 placement,
@@ -261,7 +273,22 @@ public final class BedrockCandidatePlanner {
                 buildStructuralPositions(pos, layout),
                 buildPowerReservationPositions(placement),
                 priority,
-                neighborTargetCount
+                neighborTargetCount,
+                footprint(pos),
+                this.scanEngine.dirtyVersion()
+        );
+    }
+
+    private static PrinterBox footprint(BlockPos pos) {
+        // Layout search reaches at most three blocks from the bedrock target. One extra block
+        // covers neighbor-dependent support and torch-face changes at the boundary.
+        return new PrinterBox(
+                pos.getX() - 4,
+                pos.getY() - 4,
+                pos.getZ() - 4,
+                pos.getX() + 4,
+                pos.getY() + 4,
+                pos.getZ() + 4
         );
     }
 
@@ -285,43 +312,6 @@ public final class BedrockCandidatePlanner {
             return controllerPenalty + 1_000;
         }
         return controllerPenalty + 10_000;
-    }
-
-    private static boolean conflictsWithSelected(CandidateInfo candidate, List<CandidateInfo> selected) {
-        for (CandidateInfo existing : selected) {
-            if (candidatesConflict(candidate, existing)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean candidatesConflict(CandidateInfo left, CandidateInfo right) {
-        if (left.layout() == null || right.layout() == null) {
-            return false;
-        }
-        if (intersects(left.structuralPositions(), right.structuralPositions())
-                || intersects(left.structuralPositions(), right.powerReservationPositions())
-                || intersects(left.powerReservationPositions(), right.structuralPositions())) {
-            return true;
-        }
-        if (left.placement() != null && right.placement() != null
-                && sameTorchPlacement(left.placement(), right.placement())) {
-            return false;
-        }
-        return isTorchPoweredBy(left.layout().getPistonPos(), right.placement())
-                || isTorchPoweredBy(right.layout().getPistonPos(), left.placement());
-    }
-
-    private static boolean intersects(Iterable<BlockPos> left, Iterable<BlockPos> right) {
-        for (BlockPos leftPos : left) {
-            for (BlockPos rightPos : right) {
-                if (leftPos.equals(rightPos)) {
-                    return true;
-                }
-            }
-        }
-        return false;
     }
 
     private static List<BlockPos> buildStructuralPositions(BlockPos bedrockPos, BedrockMachineLayout layout) {
@@ -384,34 +374,7 @@ public final class BedrockCandidatePlanner {
         return count;
     }
 
-    private static boolean sameTorchPlacement(BedrockTorchPlacement left, BedrockTorchPlacement right) {
-        return left.getClickedFace() == right.getClickedFace()
-                && left.getSupportPos() != null
-                && left.getSupportPos().equals(right.getSupportPos())
-                && left.getTorchPos() != null
-                && left.getTorchPos().equals(right.getTorchPos());
-    }
-
-    private static boolean isTorchPoweredBy(BlockPos pistonPos, BedrockTorchPlacement placement) {
-        return pistonPos != null
-                && placement != null
-                && placement.getTorchPos() != null
-                && BedrockEnvironment.getTorchInfluencePositions(pistonPos).contains(placement.getTorchPos());
-    }
-
-    private record CandidateShard(List<CandidateInfo> candidates, boolean hasMoreSource) {
-    }
-
-    private record CandidateInfo(
-            BlockPos pos,
-            BedrockMachineLayout layout,
-            BedrockTorchPlacement placement,
-            BlockPos slimePos,
-            List<BlockPos> structuralPositions,
-            List<BlockPos> powerReservationPositions,
-            int priority,
-            int neighborTargetCount
-    ) {
+    private record CandidateShard(List<BedrockCandidatePlan> candidates, boolean hasMoreSource) {
     }
 
     private record PlacementSelection(BedrockTorchPlacement placement, BlockPos slimePos) {

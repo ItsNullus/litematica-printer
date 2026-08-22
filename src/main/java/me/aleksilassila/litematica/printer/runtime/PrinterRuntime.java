@@ -23,7 +23,11 @@ import me.aleksilassila.litematica.printer.integration.inventory.PlayerInventory
 import me.aleksilassila.litematica.printer.integration.inventory.TakeItOutAdapter;
 import me.aleksilassila.litematica.printer.integration.litematica.LitematicaAdapter;
 import me.aleksilassila.litematica.printer.integration.quickshulker.QuickShulkerAdapter;
+import me.aleksilassila.litematica.printer.integration.tweakeroo.TweakerooAdapter;
 import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockEngine;
+import me.aleksilassila.litematica.printer.interaction.ToolSwitchService;
+import me.aleksilassila.litematica.printer.interaction.StrippableBlockPort;
+import me.aleksilassila.litematica.printer.integration.inventory.StrippableBlockAdapter;
 import net.minecraft.client.Minecraft;
 import java.util.List;
 
@@ -54,6 +58,9 @@ public final class PrinterRuntime {
     private final InventorySwitchGuard inventorySwitchGuard;
     private final InventoryMessageCooldown inventoryMessageCooldown;
     private final LitematicaAdapter litematica;
+    private final TweakerooAdapter tweakeroo;
+    private final ToolSwitchService toolSwitchService;
+    private final StrippableBlockPort strippableBlocks;
 
     public PrinterRuntime() {
         Minecraft client = Minecraft.getInstance();
@@ -67,6 +74,9 @@ public final class PrinterRuntime {
         this.scope.register(this.actionBroker);
         this.inventorySwitchGuard = new InventorySwitchGuard(client, this::currentTick);
         this.scope.register(new InventorySwitchRuntime(this.inventorySwitchGuard));
+        this.tweakeroo = new TweakerooAdapter();
+        this.toolSwitchService = new ToolSwitchService(client, this.tweakeroo, this.inventorySwitchGuard);
+        this.strippableBlocks = new StrippableBlockAdapter();
         this.inventoryMessageCooldown = new InventoryMessageCooldown();
         this.scope.register(this.inventoryMessageCooldown);
         this.scanEngine = new ScanEngine(this);
@@ -152,6 +162,18 @@ public final class PrinterRuntime {
 
     public LitematicaAdapter litematica() {
         return this.litematica;
+    }
+
+    public TweakerooAdapter tweakeroo() {
+        return this.tweakeroo;
+    }
+
+    public ToolSwitchService toolSwitchService() {
+        return this.toolSwitchService;
+    }
+
+    public StrippableBlockPort strippableBlocks() {
+        return this.strippableBlocks;
     }
 
     public Minecraft client() {

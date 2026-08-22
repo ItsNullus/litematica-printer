@@ -138,7 +138,7 @@ final class ModuleScanCoordinator {
 
     private boolean runFull(PrinterBox interactionBox) {
         FeatureModuleBase.IterationOutcome outcome = this.host.runIteration(interactionBox);
-        if (outcome.waitingForSource()) {
+        if (outcome.scanPaused()) {
             this.lifecycle.setState(ScanState.FULL);
             return true;
         }
@@ -168,8 +168,10 @@ final class ModuleScanCoordinator {
             }
             FeatureModuleBase.IterationOutcome outcome = this.host.runIteration(interactionBox);
             this.pendingDirtyRegionCount = 0;
-            if (outcome.waitingForSource()) {
-                this.lifecycle.setState(ScanState.FULL);
+            if (outcome.scanPaused()) {
+                // A time-budget pause keeps the same cursor. It is not a new world/selection
+                // revision and must not promote a completed lazy feature into a fresh full pass.
+                this.lifecycle.setState(ScanState.LAZY);
                 return true;
             }
             if (this.lifecycle.idlePolicy().recordLazyProbe(outcome.didWork(), outcome.foundCandidate())) {

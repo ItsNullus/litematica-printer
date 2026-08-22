@@ -4,6 +4,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Item;
 
 /** First provider in the chain; it never mutates inventory state. */
 public final class PlayerInventoryProvider implements InventoryProvider {
@@ -25,14 +26,16 @@ public final class PlayerInventoryProvider implements InventoryProvider {
             return unavailable(request);
         }
         Inventory inventory = player.getInventory();
-        int count = 0;
         int size = Math.min(36, inventory.getContainerSize());
-        for (int slot = 0; slot < size; slot++) {
-            ItemStack stack = inventory.getItem(slot);
-            if (stack.is(request.item())) {
-                count += stack.getCount();
-                if (count >= request.minimumCount()) {
-                    return new MaterialReservation(request.token(), MaterialReservation.State.AVAILABLE);
+        for (Item acceptedItem : request.acceptedItems()) {
+            int count = 0;
+            for (int slot = 0; slot < size; slot++) {
+                ItemStack stack = inventory.getItem(slot);
+                if (stack.is(acceptedItem)) {
+                    count += stack.getCount();
+                    if (count >= request.minimumCount()) {
+                        return MaterialReservation.available(request, acceptedItem);
+                    }
                 }
             }
         }

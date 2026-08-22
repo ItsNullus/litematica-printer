@@ -1,26 +1,22 @@
 package me.aleksilassila.litematica.printer.utils.mods;
 
+import me.aleksilassila.litematica.printer.Reference;
 import net.fabricmc.loader.api.FabricLoader;
 import fi.dy.masa.malilib.util.restrictions.UsageRestriction;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Method;
 import java.util.List;
 
 public class TweakerooUtils {
-    private static final int FALLBACK_ITEM_SWAP_DURABILITY_THRESHOLD = 5;
-
     private static @Nullable Object tweakToolSwitchEnum;
     private static @Nullable Object tweakSwapAlmostBrokenToolsEnum;
     private static @Nullable Object disableBlockBreakCooldownConfig;
-    private static @Nullable Object itemSwapDurabilityThresholdConfig;
     private static @Nullable Method trySwitchToEffectiveToolMethod;
     private static @Nullable Method trySwapCurrentToolIfNearlyBrokenMethod;
     private static @Nullable Method getBooleanValueMethod;
-    private static @Nullable Method getIntegerValueMethod;
     private static @Nullable Object blockTypeBreakRestriction;
     private static @Nullable Object blockTypeBreakRestrictionBlacklist;
     private static @Nullable Object blockTypeBreakRestrictionWhitelist;
@@ -30,54 +26,99 @@ public class TweakerooUtils {
     private static boolean cachedToolSwitchEnabled;
     private static boolean cachedSwapAlmostBrokenToolsEnabled;
     private static boolean cachedDisableBlockBreakCooldownEnabled;
-    private static int cachedItemSwapDurabilityThreshold = FALLBACK_ITEM_SWAP_DURABILITY_THRESHOLD;
+    private static boolean bindingWarningLogged;
 
     static {
         if (FabricLoader.getInstance().isModLoaded("tweakeroo")) {
-            try {
-                Class<?> featureToggleClass = Class.forName("fi.dy.masa.tweakeroo.config.FeatureToggle");
-                tweakToolSwitchEnum = featureToggleClass.getField("TWEAK_TOOL_SWITCH").get(null);
-                tweakSwapAlmostBrokenToolsEnum = featureToggleClass.getField("TWEAK_SWAP_ALMOST_BROKEN_TOOLS").get(null);
-
-                Class<?> disableConfigsClass = Class.forName("fi.dy.masa.tweakeroo.config.Configs$Disable");
-                disableBlockBreakCooldownConfig = disableConfigsClass.getField("DISABLE_BLOCK_BREAK_COOLDOWN").get(null);
-
-                Class<?> genericConfigsClass = Class.forName("fi.dy.masa.tweakeroo.config.Configs$Generic");
-                itemSwapDurabilityThresholdConfig = genericConfigsClass.getField("ITEM_SWAP_DURABILITY_THRESHOLD").get(null);
-
-                Class<?> iConfigBooleanClass = Class.forName("fi.dy.masa.malilib.config.IConfigBoolean");
-                getBooleanValueMethod = iConfigBooleanClass.getDeclaredMethod("getBooleanValue");
-                getIntegerValueMethod = itemSwapDurabilityThresholdConfig.getClass().getMethod("getIntegerValue");
-
-                Class<?> inventoryUtilsClass = Class.forName("fi.dy.masa.tweakeroo.util.InventoryUtils");
-                trySwitchToEffectiveToolMethod = inventoryUtilsClass.getDeclaredMethod("trySwitchToEffectiveTool", BlockPos.class);
-                trySwapCurrentToolIfNearlyBrokenMethod = inventoryUtilsClass.getDeclaredMethod("trySwapCurrentToolIfNearlyBroken");
-
-                Class<?> placementTweaksClass = Class.forName("fi.dy.masa.tweakeroo.tweaks.PlacementTweaks");
-                blockTypeBreakRestriction = placementTweaksClass.getField("BLOCK_TYPE_BREAK_RESTRICTION").get(null);
-
-                Class<?> listConfigsClass = Class.forName("fi.dy.masa.tweakeroo.config.Configs$Lists");
-                blockTypeBreakRestrictionBlacklist = listConfigsClass.getField("BLOCK_TYPE_BREAK_RESTRICTION_BLACKLIST").get(null);
-                blockTypeBreakRestrictionWhitelist = listConfigsClass.getField("BLOCK_TYPE_BREAK_RESTRICTION_WHITELIST").get(null);
-                getListTypeMethod = blockTypeBreakRestriction.getClass().getMethod("getListType");
-                getStringsMethod = blockTypeBreakRestrictionBlacklist.getClass().getMethod("getStrings");
-
-            } catch (Exception e) {
-                tweakToolSwitchEnum = null;
-                tweakSwapAlmostBrokenToolsEnum = null;
-                disableBlockBreakCooldownConfig = null;
-                itemSwapDurabilityThresholdConfig = null;
-                trySwitchToEffectiveToolMethod = null;
-                trySwapCurrentToolIfNearlyBrokenMethod = null;
-                getBooleanValueMethod = null;
-                getIntegerValueMethod = null;
-                blockTypeBreakRestriction = null;
-                blockTypeBreakRestrictionBlacklist = null;
-                blockTypeBreakRestrictionWhitelist = null;
-                getListTypeMethod = null;
-                getStringsMethod = null;
-                e.printStackTrace();
+            Class<?> featureToggleClass = loadClass("fi.dy.masa.tweakeroo.config.FeatureToggle");
+            if (featureToggleClass != null) {
+                tweakToolSwitchEnum = loadField(featureToggleClass, "TWEAK_TOOL_SWITCH");
+                tweakSwapAlmostBrokenToolsEnum = loadField(featureToggleClass, "TWEAK_SWAP_ALMOST_BROKEN_TOOLS");
             }
+
+            Class<?> disableConfigsClass = loadClass("fi.dy.masa.tweakeroo.config.Configs$Disable");
+            if (disableConfigsClass != null) {
+                disableBlockBreakCooldownConfig = loadField(disableConfigsClass, "DISABLE_BLOCK_BREAK_COOLDOWN");
+            }
+
+            Class<?> iConfigBooleanClass = loadClass("fi.dy.masa.malilib.config.IConfigBoolean");
+            if (iConfigBooleanClass != null) {
+                try {
+                    getBooleanValueMethod = iConfigBooleanClass.getMethod("getBooleanValue");
+                } catch (ReflectiveOperationException exception) {
+                    logBindingWarning("IConfigBoolean.getBooleanValue", exception);
+                }
+            }
+            Class<?> inventoryUtilsClass = loadClass("fi.dy.masa.tweakeroo.util.InventoryUtils");
+            if (inventoryUtilsClass != null) {
+                try {
+                    trySwitchToEffectiveToolMethod = inventoryUtilsClass.getDeclaredMethod(
+                            "trySwitchToEffectiveTool", BlockPos.class);
+                } catch (ReflectiveOperationException exception) {
+                    logBindingWarning("Tweakeroo effective tool switch", exception);
+                }
+                try {
+                    trySwapCurrentToolIfNearlyBrokenMethod = inventoryUtilsClass.getDeclaredMethod(
+                            "trySwapCurrentToolIfNearlyBroken");
+                } catch (ReflectiveOperationException exception) {
+                    logBindingWarning("Tweakeroo nearly-broken tool switch", exception);
+                }
+            }
+
+            Class<?> placementTweaksClass = loadClass("fi.dy.masa.tweakeroo.tweaks.PlacementTweaks");
+            if (placementTweaksClass != null) {
+                blockTypeBreakRestriction = loadField(placementTweaksClass, "BLOCK_TYPE_BREAK_RESTRICTION");
+            }
+
+            Class<?> listConfigsClass = loadClass("fi.dy.masa.tweakeroo.config.Configs$Lists");
+            if (listConfigsClass != null) {
+                blockTypeBreakRestrictionBlacklist = loadField(
+                        listConfigsClass, "BLOCK_TYPE_BREAK_RESTRICTION_BLACKLIST");
+                blockTypeBreakRestrictionWhitelist = loadField(
+                        listConfigsClass, "BLOCK_TYPE_BREAK_RESTRICTION_WHITELIST");
+            }
+
+            if (blockTypeBreakRestriction != null) {
+                try {
+                    getListTypeMethod = blockTypeBreakRestriction.getClass().getMethod("getListType");
+                } catch (ReflectiveOperationException exception) {
+                    logBindingWarning("Tweakeroo break restriction type", exception);
+                }
+            }
+            if (blockTypeBreakRestrictionBlacklist != null) {
+                try {
+                    getStringsMethod = blockTypeBreakRestrictionBlacklist.getClass().getMethod("getStrings");
+                } catch (ReflectiveOperationException exception) {
+                    logBindingWarning("Tweakeroo break restriction list", exception);
+                }
+            }
+        }
+    }
+
+    @Nullable
+    private static Class<?> loadClass(String name) {
+        try {
+            return Class.forName(name);
+        } catch (ReflectiveOperationException exception) {
+            logBindingWarning(name, exception);
+            return null;
+        }
+    }
+
+    @Nullable
+    private static Object loadField(Class<?> owner, String name) {
+        try {
+            return owner.getField(name).get(null);
+        } catch (ReflectiveOperationException exception) {
+            logBindingWarning(owner.getName() + "." + name, exception);
+            return null;
+        }
+    }
+
+    private static void logBindingWarning(String binding, Exception exception) {
+        if (!bindingWarningLogged) {
+            bindingWarningLogged = true;
+            Reference.LOGGER.warn("Tweakeroo integration partially unavailable; missing {}. That optional capability is disabled", binding);
         }
     }
 
@@ -127,22 +168,6 @@ public class TweakerooUtils {
         }
     }
 
-    public static boolean isToolTooDamagedForBreaking(ItemStack stack) {
-        if (stack == null || stack.isEmpty() || !stack.isDamageableItem() || !isSwapAlmostBrokenToolsEnabled()) {
-            return false;
-        }
-        int remainingDurability = stack.getMaxDamage() - stack.getDamageValue();
-        return remainingDurability <= getMinDurability(stack);
-    }
-
-    public static int getSafeBreakBudget(ItemStack stack) {
-        if (stack == null || stack.isEmpty() || !stack.isDamageableItem() || !isSwapAlmostBrokenToolsEnabled()) {
-            return Integer.MAX_VALUE;
-        }
-        int remainingDurability = stack.getMaxDamage() - stack.getDamageValue();
-        return Math.max(0, remainingDurability - getMinDurability(stack));
-    }
-
     public static UsageRestriction.ListType getBreakRestrictionListType() {
         if (getListTypeMethod == null || blockTypeBreakRestriction == null) {
             return UsageRestriction.ListType.NONE;
@@ -177,20 +202,6 @@ public class TweakerooUtils {
         }
     }
 
-    private static int getMinDurability(ItemStack stack) {
-        int threshold = getItemSwapDurabilityThreshold();
-        int maxDamage = stack.getMaxDamage();
-        if (maxDamage <= 100 && threshold <= 20 && (double) threshold / (double) maxDamage > 0.08D) {
-            threshold = (int) Math.ceil((double) maxDamage * 0.08D);
-        }
-        return threshold;
-    }
-
-    private static int getItemSwapDurabilityThreshold() {
-        refreshConfigCache();
-        return cachedItemSwapDurabilityThreshold;
-    }
-
     /**
      * Tweakeroo exposes these values through reflection. They are configuration values, not
      * per-block state, so resolving them once per client tick avoids repeated reflective calls
@@ -207,31 +218,21 @@ public class TweakerooUtils {
         cachedToolSwitchEnabled = readBoolean(tweakToolSwitchEnum);
         cachedSwapAlmostBrokenToolsEnabled = readBoolean(tweakSwapAlmostBrokenToolsEnum);
         cachedDisableBlockBreakCooldownEnabled = readBoolean(disableBlockBreakCooldownConfig);
-        cachedItemSwapDurabilityThreshold = readInteger(
-                itemSwapDurabilityThresholdConfig,
-                FALLBACK_ITEM_SWAP_DURABILITY_THRESHOLD
-        );
     }
 
     private static boolean readBoolean(@Nullable Object config) {
-        if (getBooleanValueMethod == null || config == null) {
+        if (config == null) {
             return false;
         }
         try {
-            return (boolean) getBooleanValueMethod.invoke(config);
+            Method method = getBooleanValueMethod != null
+                    && getBooleanValueMethod.getDeclaringClass().isInstance(config)
+                    ? getBooleanValueMethod
+                    : config.getClass().getMethod("getBooleanValue");
+            return (boolean) method.invoke(config);
         } catch (ReflectiveOperationException exception) {
             return false;
         }
     }
 
-    private static int readInteger(@Nullable Object config, int fallback) {
-        if (getIntegerValueMethod == null || config == null) {
-            return fallback;
-        }
-        try {
-            return (int) getIntegerValueMethod.invoke(config);
-        } catch (ReflectiveOperationException exception) {
-            return fallback;
-        }
-    }
 }

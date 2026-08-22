@@ -3,7 +3,6 @@ package me.aleksilassila.litematica.printer.handler.scan;
 import fi.dy.masa.litematica.world.WorldSchematic;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
-import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.core.runtime.RuntimeEpoch;
 import me.aleksilassila.litematica.printer.handler.scan.SectionScanSession.Candidate;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
@@ -30,6 +29,7 @@ final class ScanCandidateSourceFactory {
 
     private final ScanSessionStore sessions;
     private final ScanBudget budget;
+    private final SectionSnapshotStore snapshots;
     private final RuntimeEpoch runtimeEpoch;
     private final LongSupplier snapshotRevision;
     private final LongSupplier generationSequence;
@@ -38,6 +38,7 @@ final class ScanCandidateSourceFactory {
     ScanCandidateSourceFactory(
             ScanSessionStore sessions,
             ScanBudget budget,
+            SectionSnapshotStore snapshots,
             RuntimeEpoch runtimeEpoch,
             LongSupplier snapshotRevision,
             LongSupplier generationSequence,
@@ -45,6 +46,7 @@ final class ScanCandidateSourceFactory {
     ) {
         this.sessions = sessions;
         this.budget = budget;
+        this.snapshots = snapshots;
         this.runtimeEpoch = runtimeEpoch;
         this.snapshotRevision = snapshotRevision;
         this.generationSequence = generationSequence;
@@ -67,12 +69,10 @@ final class ScanCandidateSourceFactory {
     ) {
         int scanLimit = unbounded ? Integer.MAX_VALUE : this.getScanLimit(scanGuardLimit);
         ScanMetricsAccumulator metrics = this.sessions.metrics(metricsOwnerKey);
-        this.budget.registerOwner(metricsOwnerKey);
         PrinterBox sourceBounds = enclosingBox(sourceBoxes);
         if (sourceBounds == null) {
             return List.of();
         }
-        boolean asynchronous = Configs.Core.ASYNC_SCAN.getBooleanValue();
         SectionScanSession session = this.sessions.getOrCreate(
                 cacheOwnerKey,
                 metrics,
@@ -80,7 +80,6 @@ final class ScanCandidateSourceFactory {
                 sourceBounds,
                 sourceBoxes,
                 player,
-                asynchronous,
                 this.runtimeEpoch,
                 this.snapshotRevision,
                 this.generationSequence
@@ -99,7 +98,10 @@ final class ScanCandidateSourceFactory {
                     private final LongSet emitted = new LongOpenHashSet();
                     private final WorldObservationPort observation = level == null
                             ? null
-                            : new LiveWorldObservation(level, schematic);
+                            : new SnapshotWorldObservation(
+                                    ScanCandidateSourceFactory.this.snapshots,
+                                    new LiveWorldObservation(level, schematic)
+                            );
                     private BlockPos next;
                     private boolean prepared;
                     private int considered;
@@ -139,7 +141,7 @@ final class ScanCandidateSourceFactory {
                                 if (candidate == null) {
                                     if (session.wasPaused()) {
                                         budgetHit = true;
-                                        state[0] = ScanAvailability.WAITING_FOR_BATCH;
+                                        state[0] = ScanAvailability.PAUSED;
                                     }
                                     break;
                                 }
@@ -171,9 +173,12 @@ final class ScanCandidateSourceFactory {
                         if (budgetHit) {
                             metrics.budgetPauses++;
                         }
+                        if (state[0] == ScanAvailability.PAUSED) {
+                            return;
+                        }
                         boolean pending = session.hasPendingSource(tickTime, passPolicy == ScanCache.PassPolicy.RESTART);
                         if (pending && (budgetHit || this.considered >= scanLimit)) {
-                            state[0] = ScanAvailability.WAITING_FOR_BATCH;
+                            state[0] = ScanAvailability.PAUSED;
                         } else if (!pending) {
                             state[0] = ScanAvailability.COMPLETE;
                         }

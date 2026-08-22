@@ -11,6 +11,7 @@ import me.aleksilassila.litematica.printer.printer.action.ActionPort;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.item.Item;
 
 /** Public adapter around the Quick Shulker request and ordered-restore controllers. */
 public final class QuickShulkerAdapter implements InventoryProvider, RuntimeComponent {
@@ -40,7 +41,7 @@ public final class QuickShulkerAdapter implements InventoryProvider, RuntimeComp
         if (!this.acquireResources()) {
             return new MaterialReservation(request.token(), MaterialReservation.State.PENDING);
         }
-        this.requests.requestItem(request.item());
+        this.requests.requestItems(request.acceptedItems());
         this.attemptedToken = request.token();
         MaterialReservation.State state = this.requests.hasPendingSwitchRequest()
                 ? MaterialReservation.State.PENDING : MaterialReservation.State.UNAVAILABLE;
@@ -49,9 +50,10 @@ public final class QuickShulkerAdapter implements InventoryProvider, RuntimeComp
 
     @Override
     public MaterialReservation status(MaterialRequest request) {
-        if (InventoryUtils.playerHasItemInInventory(Minecraft.getInstance().player, request.item())) {
+        Item availableItem = findAvailableItem(request);
+        if (availableItem != null) {
             this.releaseResources();
-            return new MaterialReservation(request.token(), MaterialReservation.State.AVAILABLE);
+            return MaterialReservation.available(request, availableItem);
         }
         if (!this.resourcesAcquired && this.attemptedToken != request.token()) {
             return this.request(request);
@@ -143,5 +145,14 @@ public final class QuickShulkerAdapter implements InventoryProvider, RuntimeComp
             this.actionBroker.releaseOwner(LEASE_OWNER);
             this.resourcesAcquired = false;
         }
+    }
+
+    private static Item findAvailableItem(MaterialRequest request) {
+        for (Item item : request.acceptedItems()) {
+            if (InventoryUtils.playerHasItemInInventory(Minecraft.getInstance().player, item)) {
+                return item;
+            }
+        }
+        return null;
     }
 }

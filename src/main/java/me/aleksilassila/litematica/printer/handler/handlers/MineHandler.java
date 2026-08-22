@@ -26,7 +26,7 @@ import java.util.function.Predicate;
 public class MineHandler extends FeatureModuleBase {
     public static final String NAME = "mine";
     private final MineBreakExecutor analyzer;
-    private final TweakerooAdapter tweakeroo = new TweakerooAdapter();
+    private final TweakerooAdapter tweakeroo;
     private final MineToolSession toolSession = new MineToolSession();
     private final MineCandidateQueue candidates = new MineCandidateQueue();
     @Nullable
@@ -34,6 +34,7 @@ public class MineHandler extends FeatureModuleBase {
 
     public MineHandler(PrinterRuntime runtime) {
         super(runtime, NAME, PrintModeType.MINE, Configs.Core.MINE, Configs.Mine.MINE_SELECTION_TYPE, true);
+        this.tweakeroo = runtime.tweakeroo();
         this.analyzer = new MineBreakExecutor(runtime.client(), this.tweakeroo);
     }
 
@@ -176,12 +177,19 @@ public class MineHandler extends FeatureModuleBase {
             this.activeMinePos = null;
             return;
         }
+        if (!this.toolSession.hasInstantBudget()) {
+            this.activeMinePos = null;
+            return;
+        }
         BlockBreakResult result = InteractionUtils.getRuntime().continueDestroyBlockForMine(pos, Direction.DOWN, true);
         MineResultReporter.record(pos, result);
         if (result == BlockBreakResult.IN_PROGRESS
                 || result == BlockBreakResult.COMPLETED
                 || result == BlockBreakResult.COMPLETED_WAIT) {
             this.toolSession.consumeAction();
+        }
+        if (result == BlockBreakResult.COMPLETED || result == BlockBreakResult.COMPLETED_WAIT) {
+            this.toolSession.consumeInstantBudget();
         }
         this.toolSession.onTargetResolved(result, pos);
         if (result != BlockBreakResult.IN_PROGRESS) {
@@ -224,9 +232,6 @@ public class MineHandler extends FeatureModuleBase {
     private void executeToolSession(MineBreakExecutor.Target firstTarget, double nearestDistance,
                                     List<MineBreakExecutor.Target> orderedCandidates) {
         this.toolSession.startSession(firstTarget);
-        if (!this.toolSession.ensureHandToolProtected(this.player, firstTarget)) {
-            return;
-        }
         BlockBreakResult result = this.executeSessionTarget(firstTarget, !this.analyzer.isCurrentToolEffective(firstTarget));
         if (this.toolSession.shouldStop(result, this.activeMinePos != null)) {
             return;
@@ -249,9 +254,6 @@ public class MineHandler extends FeatureModuleBase {
                 continue;
             }
             if (!this.toolSession.isInsideFrontier(this.player, target, nearestDistance)) {
-                break;
-            }
-            if (!this.toolSession.ensureHandToolProtected(this.player, target)) {
                 break;
             }
             result = this.executeSessionTarget(target, false);

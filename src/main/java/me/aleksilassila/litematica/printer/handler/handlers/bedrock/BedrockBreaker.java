@@ -2,7 +2,8 @@ package me.aleksilassila.litematica.printer.handler.handlers.bedrock;
 
 import me.aleksilassila.litematica.printer.mixin_extension.MultiPlayerGameModeExtension;
 import me.aleksilassila.litematica.printer.mixin_extension.BlockBreakResult;
-import me.aleksilassila.litematica.printer.utils.InteractionUtils;
+import me.aleksilassila.litematica.printer.runtime.RuntimeAccess;
+import me.aleksilassila.litematica.printer.interaction.ToolPreparationResult;
 import me.aleksilassila.litematica.printer.utils.minecraft.NetworkUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -40,7 +41,8 @@ public final class BedrockBreaker {
         if (!switched) {
             return false;
         }
-        if (!InteractionUtils.protectCurrentToolBeforeBreak(state)) {
+        if (RuntimeAccess.get().toolSwitchService().prepareForBreak(pos, state, false)
+                != ToolPreparationResult.READY) {
             return false;
         }
 
@@ -62,8 +64,11 @@ public final class BedrockBreaker {
                 || pistonState == null || pistonState.isAir()) {
             return false;
         }
-        return BedrockInventory.switchToBestTool(pistonState)
-                && InteractionUtils.protectCurrentToolBeforeBreak(pistonState);
+        if (!BedrockInventory.switchToBestTool(pistonState)) {
+            return false;
+        }
+        return RuntimeAccess.get().toolSwitchService().prepareForBreak(pistonPos, pistonState, false)
+                == ToolPreparationResult.READY;
     }
 
     static void sendCriticalBreakPackets(BlockPos pos, Direction direction) {

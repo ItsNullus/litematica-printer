@@ -7,11 +7,10 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.NonNullList;
 import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 
-/** Selects and equips the best currently safe tool for one block state. */
+/** Selects and equips the most effective tool for one block state. */
 public final class ToolInventorySelector {
     private ToolInventorySelector() {
     }
@@ -26,22 +25,16 @@ public final class ToolInventorySelector {
         }
 
         ItemStack currentStack = player.getMainHandItem();
-        boolean currentToolAllowed = InteractionUtils.isToolAllowedByDurabilityProtection(currentStack);
-        float currentProgress = currentToolAllowed
-                ? destroyProgress(player, blockState, currentStack)
-                : 0.0F;
-        float bestProgress = currentProgress;
+        float bestProgress = destroyProgress(player, blockState, currentStack);
         boolean preferSilkTouch = ToolSelectionUtils.prefersSilkTouchForDrops(blockState);
-        boolean bestHasSilkTouch = preferSilkTouch
-                && currentToolAllowed
-                && ToolSelectionUtils.hasSilkTouch(currentStack);
+        boolean bestHasSilkTouch = preferSilkTouch && ToolSelectionUtils.hasSilkTouch(currentStack);
         int bestSlot = -1;
         ItemStack bestStack = ItemStack.EMPTY;
 
         NonNullList<ItemStack> stacks = InventoryUtils.getMainStacks(player.getInventory());
         for (int slot = 0; slot < stacks.size(); slot++) {
             ItemStack stack = stacks.get(slot);
-            if (stack.isEmpty() || !InteractionUtils.isToolAllowedByDurabilityProtection(stack)) {
+            if (stack.isEmpty()) {
                 continue;
             }
             float progress = destroyProgress(player, blockState, stack);
@@ -60,7 +53,7 @@ public final class ToolInventorySelector {
             return false;
         }
         if (!Inventory.isHotbarSlot(bestSlot)) {
-            RuntimeAccess.get().inventorySwitchGuard().markSwitchIfNeeded(bestStack.getItem());
+            RuntimeAccess.get().inventorySwitchGuard().markSwitchIfNeeded(bestStack);
         }
         return true;
     }

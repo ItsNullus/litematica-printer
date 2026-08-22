@@ -8,6 +8,7 @@ import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
 import me.aleksilassila.litematica.printer.printer.action.ClickAction;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
+import me.aleksilassila.litematica.printer.utils.PotionStackUtils;
 import net.minecraft.world.level.block.LayeredCauldronBlock;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.item.ItemStack;
@@ -70,15 +71,15 @@ public class CauldronGuide extends Guide {
                 && InventoryUtils.playerHasItemInInventory(client.player, Items.WATER_BUCKET)) {
             return Result.success(new ClickAction().setItem(Items.WATER_BUCKET));
         }
-        ItemStack waterPotion = InventoryUtils.createWaterPotionStack();
+        ItemStack waterPotion = PotionStackUtils.createWaterPotionStack();
         if (InventoryUtils.playerHasAccessToMatchingStack(
                 client.player,
                 waterPotion,
-                InventoryUtils::isWaterPotion
+                PotionStackUtils::isWaterPotion
         )) {
             return Result.success(new ClickAction()
                     .setItem(Items.POTION)
-                    .setRequiredStackPredicate(InventoryUtils::isWaterPotion)
+                    .setRequiredStackPredicate(PotionStackUtils::isWaterPotion)
                     .setRequiredCreativeStack(waterPotion));
         }
         if (requiredLevel == LayeredCauldronBlock.MAX_FILL_LEVEL) {

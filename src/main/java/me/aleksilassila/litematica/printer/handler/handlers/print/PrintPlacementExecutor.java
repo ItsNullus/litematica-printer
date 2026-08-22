@@ -39,6 +39,7 @@ public final class PrintPlacementExecutor {
     private final HudStatsManager hudStats;
     private final MissingMaterialTracker missingMaterials;
     private final LitematicaAdapter litematica;
+    private final FallingPlacementTracker fallingPlacements;
     private static final Item[] EMPTY_HAND_ITEMS = {Items.AIR};
     private static final long RESERVE_NOTICE_COOLDOWN_TICKS = 100L;
     private long lastReserveNoticeTick = Long.MIN_VALUE;
@@ -49,7 +50,8 @@ public final class PrintPlacementExecutor {
             InventorySwitchGuard inventorySwitchGuard,
             HudStatsManager hudStats,
             MissingMaterialTracker missingMaterials,
-            LitematicaAdapter litematica
+            LitematicaAdapter litematica,
+            FallingPlacementTracker fallingPlacements
     ) {
         this.actionBroker = actionBroker;
         this.cooldownUtils = cooldownUtils;
@@ -57,6 +59,7 @@ public final class PrintPlacementExecutor {
         this.hudStats = hudStats;
         this.missingMaterials = missingMaterials;
         this.litematica = litematica;
+        this.fallingPlacements = fallingPlacements;
     }
 
     public PrintPlacementResult execute(SchematicBlockContext context, Action action, @Nullable PrintTaskAction taskAction) {
@@ -113,7 +116,15 @@ public final class PrintPlacementExecutor {
                     : ItemStack.EMPTY;
             if (retrievalPending) {
                 this.hudStats.recordDeferred(HudStatsManager.Mode.PRINT, "等待取货");
-                this.missingMaterials.resolve(requiredItems, requiredStackPredicate);
+                // The HUD describes what is currently absent from the player inventory. Keep the
+                // requirement visible while an external material provider is working; tick() removes it
+                // as soon as the requested stack actually arrives.
+                this.missingMaterials.recordMissing(
+                        requiredItems,
+                        requiredStackPredicate,
+                        action.getRequiredCreativeStack(),
+                        context.level.getGameTime()
+                );
             } else if (reserveBlockedStack.isEmpty()) {
                 this.hudStats.recordDeferred(HudStatsManager.Mode.PRINT, "缺少材料");
                 this.missingMaterials.recordMissing(
@@ -168,7 +179,7 @@ public final class PrintPlacementExecutor {
                 return;
             }
             if (sendResult.isSent()) {
-                this.recordPlacementSent(context);
+                this.recordPlacementSent(context, action, taskAction);
                 if (cooldownTicks > 0) {
                     this.cooldownUtils.setCooldown(
                             context.level,
@@ -219,7 +230,7 @@ public final class PrintPlacementExecutor {
             return PrintPlacementResult.cancelled(true);
         }
 
-        this.recordPlacementSent(context);
+        this.recordPlacementSent(context, action, taskAction);
 
         return new PrintPlacementResult(
                 consumedEffectiveExecution,
@@ -229,17 +240,30 @@ public final class PrintPlacementExecutor {
         );
     }
 
-    private void recordPlacementSent(SchematicBlockContext context) {
+    private void recordPlacementSent(
+            SchematicBlockContext context,
+            Action action,
+            @Nullable PrintTaskAction taskAction
+    ) {
         if (context.requiredState.getBlock() instanceof SignBlock) {
             this.actionBroker.confirmPrintSignEditSent(context.blockPos);
         }
         this.hudStats.trackExpectedBlockState(
                 HudStatsManager.Mode.PRINT,
                 context.blockPos,
-                context.requiredState
+                taskAction == null
+                        ? context.requiredState
+                        : taskAction.expectedBlockState(context, action)
         );
         this.hudStats.recordRateUnit(HudStatsManager.Mode.PRINT, 1);
         this.hudStats.recordStatus(HudStatsManager.Mode.PRINT, "运行中");
+        if (context.requiredState.getBlock() instanceof FallingBlock) {
+            this.fallingPlacements.mark(
+                    context.blockPos,
+                    context.requiredState,
+                    context.level.getGameTime()
+            );
+        }
     }
 
     private static String describeSendFailure(ActionPort.SendResult result) {

@@ -5,6 +5,7 @@ import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import me.aleksilassila.litematica.printer.core.action.ResourceLease;
 import me.aleksilassila.litematica.printer.printer.action.ActionPort;
 import net.minecraft.client.Minecraft;
+import net.minecraft.world.item.Item;
 import java.util.EnumSet;
 
 /** Reflection-backed Take It Out capability isolated from feature code. */
@@ -12,6 +13,8 @@ public final class TakeItOutAdapter implements InventoryProvider {
     private static final String LEASE_OWNER = "take_it_out";
     private final ActionPort actionBroker;
     private boolean resourcesAcquired;
+    private long activeToken;
+    private Item requestedItem;
 
     public TakeItOutAdapter(ActionPort actionBroker) {
         this.actionBroker = actionBroker;
@@ -27,8 +30,17 @@ public final class TakeItOutAdapter implements InventoryProvider {
         if (!this.acquireResources()) {
             return pending(request);
         }
-        if (TakeItOutUtils.tryRequestItem(request.item())) {
-            return pending(request);
+        Item availableItem = findAvailableItem(request);
+        if (availableItem != null) {
+            this.releaseResources();
+            return MaterialReservation.available(request, availableItem);
+        }
+        for (Item item : request.acceptedItems()) {
+            if (TakeItOutUtils.tryRequestItem(item)) {
+                this.activeToken = request.token();
+                this.requestedItem = item;
+                return pending(request);
+            }
         }
         this.releaseResources();
         return unavailable(request);
@@ -36,14 +48,17 @@ public final class TakeItOutAdapter implements InventoryProvider {
 
     @Override
     public MaterialReservation status(MaterialRequest request) {
-        if (InventoryUtils.playerHasItemInInventory(Minecraft.getInstance().player, request.item())) {
+        Item availableItem = findAvailableItem(request);
+        if (availableItem != null) {
             this.releaseResources();
-            return new MaterialReservation(request.token(), MaterialReservation.State.AVAILABLE);
+            return MaterialReservation.available(request, availableItem);
         }
         if (!this.resourcesAcquired) {
             return this.request(request);
         }
-        if (TakeItOutUtils.isAwaitingItem(request.item())) {
+        if (this.activeToken == request.token()
+                && this.requestedItem != null
+                && TakeItOutUtils.isAwaitingItem(this.requestedItem)) {
             return pending(request);
         }
         this.releaseResources();
@@ -53,6 +68,8 @@ public final class TakeItOutAdapter implements InventoryProvider {
     @Override
     public void reset() {
         TakeItOutUtils.resetPending();
+        this.activeToken = 0L;
+        this.requestedItem = null;
         this.releaseResources();
     }
 
@@ -82,5 +99,16 @@ public final class TakeItOutAdapter implements InventoryProvider {
         }
         this.actionBroker.releaseOwner(LEASE_OWNER);
         this.resourcesAcquired = false;
+        this.activeToken = 0L;
+        this.requestedItem = null;
+    }
+
+    private static Item findAvailableItem(MaterialRequest request) {
+        for (Item item : request.acceptedItems()) {
+            if (InventoryUtils.playerHasItemInInventory(Minecraft.getInstance().player, item)) {
+                return item;
+            }
+        }
+        return null;
     }
 }

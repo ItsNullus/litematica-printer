@@ -210,6 +210,9 @@ abstract class ModPlugin : Plugin<Project> {
                                     && lineCount > 400) {
                                     violations += "$relative: ordered-storage orchestrator has $lineCount lines (maximum 400)"
                                 }
+                                if (relative.endsWith("/utils/InventoryUtils.java") && lineCount > 400) {
+                                    violations += "$relative: inventory facade has $lineCount lines (maximum 400)"
+                                }
                                 if (relative.contains("/handler/handlers/bedrock/")
                                     && listOf(
                                         "BedrockEngine.java",
@@ -241,6 +244,26 @@ abstract class ModPlugin : Plugin<Project> {
                                     && listOf("ClientLevel", "WorldSchematic", "LocalPlayer", "Connection")
                                         .any(text::contains)) {
                                     violations += "$relative: async traversal must not access live client state"
+                                }
+
+                                if (!relative.endsWith("/config/Configs.java")
+                                    && text.contains("ASYNC_SCAN")) {
+                                    violations += "$relative: removed coordinate-prefetch setting must remain compatibility-only"
+                                }
+
+                                if (listOf(
+                                        "switchToSafeTool",
+                                        "getCurrentToolSafeBreakBudget",
+                                        "protectCurrentToolBeforeBreak",
+                                        "isToolAllowedByDurabilityProtection",
+                                        "ITEM_SWAP_DURABILITY_THRESHOLD"
+                                    ).any(text::contains)) {
+                                    violations += "$relative: local durability policy is forbidden; delegate to Tweakeroo"
+                                }
+
+                                if (relative.endsWith("/guide/Guides.java")
+                                    && (text.contains("java.lang.reflect") || text.contains("newInstance("))) {
+                                    violations += "$relative: guide hot path must use cached factories, not reflection"
                                 }
 
                                 if (relative.contains("/handler/handlers/")

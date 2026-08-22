@@ -29,15 +29,12 @@ final class SectionScanSession {
 
     private final ScanIntent intent;
     private final ScanMetricsAccumulator metrics;
-    private final AsyncPositionCursorScheduler asyncScheduler;
     private ScanRegion region;
     private List<PrinterBox> sourceBoxes;
     private PositionCursor distanceCursor;
-    private final boolean configuredAsync;
     private final RuntimeEpoch epoch;
     private final LongSupplier snapshotRevision;
     private final LongSupplier generationSequence;
-    private boolean asynchronous;
     private long sourceRevision;
     private long cursorRevision;
     private long exhaustedUntilTick = Long.MIN_VALUE;
@@ -50,14 +47,13 @@ final class SectionScanSession {
     private int lastChunkX = Integer.MIN_VALUE;
     private int lastChunkZ = Integer.MIN_VALUE;
     private boolean lastChunkLoaded;
+    private final ChunkCandidateCache chunkCandidateCache = new ChunkCandidateCache();
 
     SectionScanSession(
             ScanRegion region,
             List<PrinterBox> sourceBoxes,
             ScanIntent intent,
             ScanMetricsAccumulator metrics,
-            AsyncPositionCursorScheduler asyncScheduler,
-            boolean asynchronous,
             RuntimeEpoch epoch,
             LongSupplier snapshotRevision,
             LongSupplier generationSequence
@@ -66,12 +62,9 @@ final class SectionScanSession {
         this.sourceBoxes = List.copyOf(sourceBoxes);
         this.intent = intent;
         this.metrics = metrics;
-        this.asyncScheduler = asyncScheduler;
-        this.configuredAsync = asynchronous;
         this.epoch = epoch;
         this.snapshotRevision = snapshotRevision;
         this.generationSequence = generationSequence;
-        this.asynchronous = asynchronous;
         this.scanHandle = this.createScanHandle();
         this.distanceCursor = this.createDistanceCursor();
     }
@@ -82,16 +75,12 @@ final class SectionScanSession {
             ScanIntent intent,
             ScanMetricsAccumulator metrics
     ) {
-        this(region, sourceBoxes, intent, metrics, null, false, RuntimeEpoch.INITIAL, () -> 0L, () -> 0L);
+        this(region, sourceBoxes, intent, metrics, RuntimeEpoch.INITIAL, () -> 0L, () -> 0L);
     }
 
     boolean canReuse(ScanRegion region) {
         return this.region.sameSectionWindow(region)
                 && this.region.maxDistanceBand() == region.maxDistanceBand();
-    }
-
-    boolean usesAsyncTraversal() {
-        return this.configuredAsync;
     }
 
     void updateRegion(ScanRegion region, List<PrinterBox> sourceBoxes) {
@@ -148,17 +137,6 @@ final class SectionScanSession {
     }
 
     private PositionCursor createDistanceCursor() {
-        if (this.asynchronous) {
-            return new AsyncPositionCursor(
-                    this.asyncScheduler,
-                    this.sourceBoxes,
-                    this.region.centerX(),
-                    this.region.centerY(),
-                    this.region.centerZ(),
-                    this.region.maxDistanceBand(),
-                    this.scanHandle
-            );
-        }
         return new SynchronousPositionCursor(
                 this.sourceBoxes,
                 this.region.centerX(),
@@ -186,13 +164,18 @@ final class SectionScanSession {
     }
 
     void invalidate(BlockPos pos) {
+        this.chunkCandidateCache.invalidate(
+                ScanGeometry.sectionCoord(pos.getX()),
+                ScanGeometry.sectionCoord(pos.getZ())
+        );
         this.addDirtyPosition(pos);
-        if (this.intent == ScanIntent.FILL) {
-            // Placement changes support availability for adjacent fill targets. Revisit those
-            // cells after the server confirms the changed block. Fluid does not need this:
-            // the server already broadcasts the neighboring block updates it produces, so the
-            // explicit 6-neighbor expansion only multiplied dirty positions and kept
-            // INVALIDATIONS_ONLY sessions permanently unpaused.
+        if (this.intent == ScanIntent.FILL
+                || this.intent == ScanIntent.PRINT
+                || this.intent == ScanIntent.BEDROCK) {
+            // Support, waterlogging and bedrock-machine exposure are neighbor-dependent.
+            // Revisit exactly the six affected targets rather than restarting the selection.
+            // Fluid does not need this expansion because flowing liquid already produces the
+            // neighboring updates it needs.
             for (Direction direction : DIRECTIONS) {
                 this.addDirtyPosition(pos.relative(direction));
             }
@@ -262,17 +245,6 @@ final class SectionScanSession {
                 this.liveMutable.set(x, y, z);
             } else {
                 PositionCursor.PollResult pollResult = this.distanceCursor.poll(this.liveMutable);
-                if (pollResult == PositionCursor.PollResult.PENDING) {
-                    this.paused = true;
-                    return null;
-                }
-                if (pollResult == PositionCursor.PollResult.FAILED) {
-                    // A worker failure must never stop a feature. Restart this pass through the
-                    // synchronous cursor and keep all live-world reads on the client thread.
-                    this.asynchronous = false;
-                    this.rebuildDistanceCursor();
-                    continue;
-                }
                 if (pollResult == PositionCursor.PollResult.COMPLETE) {
                     if (this.finishPass(tickTime)) {
                         return null;
@@ -294,7 +266,20 @@ final class SectionScanSession {
             if (chunkX != this.lastChunkX || chunkZ != this.lastChunkZ) {
                 this.lastChunkX = chunkX;
                 this.lastChunkZ = chunkZ;
-                this.lastChunkLoaded = observation.hasChunk(chunkX, chunkZ);
+                if (!observation.hasChunk(chunkX, chunkZ)) {
+                    this.lastChunkLoaded = false;
+                } else {
+                    this.lastChunkLoaded = this.chunkCandidateCache.getOrCompute(
+                            chunkX,
+                            chunkZ,
+                            () -> observation.hasCandidatesInChunk(
+                                this.intent,
+                                chunkX,
+                                chunkZ,
+                                Configs.Print.BREAK_EXTRA_BLOCK.getBooleanValue()
+                            )
+                    );
+                }
             }
             if (!this.lastChunkLoaded) {
                 continue;
@@ -303,21 +288,13 @@ final class SectionScanSession {
             this.metrics.recordScannedSection(ScanGeometry.sectionKey(
                     chunkX, ScanGeometry.sectionCoord(y), chunkZ));
 
-            BlockState state = observation.worldState(this.liveMutable);
             this.metrics.scannedBlocks++;
             if (this.intent == ScanIntent.CUSTOM) {
                 return new Candidate(new BlockPos(x, y, z), (byte) 0);
             }
-            BlockState schematicState = this.intent == ScanIntent.PRINT
-                    ? observation.schematicState(this.liveMutable)
-                    : null;
-            boolean hasFillSupport = this.intent == ScanIntent.FILL
-                    && observation.hasFillSupport(this.liveMutable);
-            byte flags = ScanClassifier.flags(
+            byte flags = observation.classify(
                     this.intent,
-                    state,
-                    schematicState,
-                    hasFillSupport,
+                    this.liveMutable,
                     Configs.Print.BREAK_EXTRA_BLOCK.getBooleanValue()
             );
             if (flags != 0) {
@@ -363,6 +340,7 @@ final class SectionScanSession {
         this.distanceCursor.close();
         this.dirtyPositions.clear();
         this.dirtyPositionKeys.clear();
+        this.chunkCandidateCache.clear();
     }
 
     private ScanHandle createScanHandle() {

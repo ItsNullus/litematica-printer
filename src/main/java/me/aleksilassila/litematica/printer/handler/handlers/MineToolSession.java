@@ -2,7 +2,6 @@ package me.aleksilassila.litematica.printer.handler.handlers;
 
 import me.aleksilassila.litematica.printer.mixin_extension.BlockBreakResult;
 import me.aleksilassila.litematica.printer.config.Configs;
-import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Item;
@@ -16,14 +15,12 @@ final class MineToolSession {
 
     private Item sessionToolItem;
     private int remainingInstantBudget;
-    private int remainingSafeToolBreaks;
     private int toolSessionRemaining;
     private BlockPos lastSessionPos;
 
     void reset() {
         this.sessionToolItem = null;
         this.remainingInstantBudget = 0;
-        this.remainingSafeToolBreaks = 0;
         this.toolSessionRemaining = 0;
         this.lastSessionPos = null;
     }
@@ -31,7 +28,6 @@ final class MineToolSession {
     void beginTick() {
         int configuredBudget = Configs.Break.BREAK_BLOCKS_PER_TICK.getIntegerValue();
         this.remainingInstantBudget = configuredBudget <= 0 ? -1 : configuredBudget;
-        this.remainingSafeToolBreaks = InteractionUtils.getCurrentToolSafeBreakBudget();
     }
 
     Comparator<MineBreakExecutor.Target> comparator(LocalPlayer player) {
@@ -109,14 +105,10 @@ final class MineToolSession {
         if (this.remainingInstantBudget > 0) {
             this.remainingInstantBudget--;
         }
-        if (this.remainingSafeToolBreaks != Integer.MAX_VALUE && this.remainingSafeToolBreaks > 0) {
-            this.remainingSafeToolBreaks--;
-        }
     }
 
     boolean hasInstantBudget() {
-        return (this.remainingInstantBudget < 0 || this.remainingInstantBudget > 0)
-                && this.remainingSafeToolBreaks != 0;
+        return this.remainingInstantBudget < 0 || this.remainingInstantBudget > 0;
     }
 
     boolean isInsideFrontier(LocalPlayer player, MineBreakExecutor.Target target, double nearestDistance) {
@@ -137,23 +129,4 @@ final class MineToolSession {
         return Vec3.atCenterOf(target.pos()).distanceToSqr(eye);
     }
 
-    /**
-     * 在真正发包破坏之前,用当前手持工具的实时耐久重新闸门一次。
-     * 候选集在 tick 起点 analyze 时已做过耐久判断,但一个会话会连续破坏多块且 allowToolSwitch=false,
-     * 手持工具可能在破坏过程中掉到 Tweakeroo 的保护阈值以下。这里每次破坏前实时校验,先尝试换到安全工具,
-     * 仍不安全则拒绝本次破坏(交由调用方结束会话)。未开启耐久保护时该方法恒返回 true,无副作用。
-     */
-    boolean ensureHandToolProtected(LocalPlayer player, MineBreakExecutor.Target target) {
-        if (player == null || player.getAbilities().instabuild) {
-            return true;
-        }
-        if (InteractionUtils.isToolAllowedByDurabilityProtection(player.getMainHandItem())) {
-            return true;
-        }
-        boolean protectedTool = InteractionUtils.protectCurrentToolBeforeBreak(target == null ? null : target.state());
-        if (protectedTool) {
-            this.remainingSafeToolBreaks = InteractionUtils.getCurrentToolSafeBreakBudget();
-        }
-        return protectedTool;
-    }
 }

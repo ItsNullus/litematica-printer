@@ -5,10 +5,9 @@ import net.minecraft.core.BlockPos;
 /**
  * Candidate stream with an explicit lifecycle status.
  *
- * <p>The old implementation encoded a paused asynchronous scan as a {@code null}
- * element. That made every consumer treat worker back-pressure as a feature
- * interruption. Consumers can now finish the currently available batch and inspect
- * {@link #availability()} without confusing waiting with completion.</p>
+ * <p>A budget pause is distinct from completion. Consumers can finish the currently
+ * available candidates and inspect {@link #availability()} without rebuilding the
+ * resumable cursor.</p>
  */
 public interface ScanCandidateIterable extends Iterable<BlockPos> {
     ScanAvailability availability();

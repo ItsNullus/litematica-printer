@@ -9,7 +9,6 @@ import me.aleksilassila.litematica.printer.mixin_extension.MultiPlayerGameModeEx
 import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
 import me.aleksilassila.litematica.printer.utils.mods.ModLoadUtils;
 import me.aleksilassila.litematica.printer.utils.mods.TweakerooUtils;
-import me.aleksilassila.litematica.printer.utils.minecraft.ToolSelectionUtils;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
@@ -19,7 +18,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -79,101 +77,6 @@ public final class InteractionUtils implements RuntimeComponent {
                     Configs.Break.BREAK_BLACKLIST.getStrings(),
                     Configs.Break.BREAK_WHITELIST.getStrings(),
                     blockState);
-        }
-    }
-
-    public static boolean trySwitchToEffectiveTool(BlockPos pos, BlockState blockState) {
-        if (pos == null || blockState == null || blockState.isAir() || blockState.getBlock() instanceof LiquidBlock) {
-            return false;
-        }
-        LocalPlayer player = client.player;
-        boolean tweakerooToolSwitch = ModLoadUtils.isTweakerooLoaded() && TweakerooUtils.isToolSwitchEnabled();
-        if (player != null
-                && (Configs.Break.BREAK_AUTO_TOOL.getBooleanValue() || tweakerooToolSwitch)
-                && ToolSelectionUtils.prefersSilkTouchForDrops(blockState)
-                && (!isToolAllowedByDurabilityProtection(player.getMainHandItem())
-                || !ToolSelectionUtils.hasSilkTouch(player.getMainHandItem()))
-                && InventoryUtils.hasUsableSilkTouchTool(player)) {
-            return InventoryUtils.switchToBestTool(player, blockState);
-        }
-        if (Configs.Break.BREAK_AUTO_TOOL.getBooleanValue()) {
-            return player != null && InventoryUtils.switchToBestTool(player, blockState);
-        }
-        if (tweakerooToolSwitch) {
-            ItemStack before = player == null ? ItemStack.EMPTY : player.getMainHandItem().copy();
-            TweakerooUtils.trySwitchToEffectiveTool(pos);
-            markToolSwitchIfChanged(before, player);
-            return protectCurrentToolBeforeBreak(blockState);
-        }
-        return false;
-    }
-
-    public static boolean isToolAllowedByDurabilityProtection(ItemStack stack) {
-        return !TweakerooUtils.isToolTooDamagedForBreaking(stack);
-    }
-
-    public static boolean isRecoveryToolReadyForBreak(BlockState blockState) {
-        LocalPlayer player = client.player;
-        if (player == null || player.getAbilities().instabuild
-                || !ToolSelectionUtils.prefersSilkTouchForDrops(blockState)) {
-            return true;
-        }
-        boolean toolSwitchEnabled = Configs.Break.BREAK_AUTO_TOOL.getBooleanValue()
-                || ModLoadUtils.isTweakerooLoaded() && TweakerooUtils.isToolSwitchEnabled();
-        if (!toolSwitchEnabled) {
-            return true;
-        }
-        if (isToolAllowedByDurabilityProtection(player.getMainHandItem())
-                && ToolSelectionUtils.hasSilkTouch(player.getMainHandItem())) {
-            return true;
-        }
-        return !InventoryUtils.hasUsableSilkTouchTool(player);
-    }
-
-    public static int getCurrentToolSafeBreakBudget() {
-        LocalPlayer player = client.player;
-        if (player == null || player.getAbilities().instabuild) {
-            return Integer.MAX_VALUE;
-        }
-        return TweakerooUtils.getSafeBreakBudget(player.getMainHandItem());
-    }
-
-    public static boolean protectCurrentToolBeforeBreak() {
-        return protectCurrentToolBeforeBreak(null);
-    }
-
-    public static boolean protectCurrentToolBeforeBreak(@Nullable BlockState blockState) {
-        LocalPlayer player = client.player;
-        if (player == null || player.getAbilities().instabuild) {
-            return true;
-        }
-        if (isToolAllowedByDurabilityProtection(player.getMainHandItem())) {
-            return true;
-        }
-        ItemStack before = player.getMainHandItem().copy();
-        TweakerooUtils.trySwapCurrentToolIfNearlyBroken();
-        markToolSwitchIfChanged(before, player);
-        if (isToolAllowedByDurabilityProtection(player.getMainHandItem())) {
-            return true;
-        }
-        if (blockState != null && InventoryUtils.switchToBestTool(player, blockState)) {
-            return isToolAllowedByDurabilityProtection(player.getMainHandItem());
-        }
-        return false;
-    }
-
-    private static void markToolSwitchIfChanged(ItemStack before, LocalPlayer player) {
-        if (player == null) {
-            return;
-        }
-        ItemStack after = player.getMainHandItem();
-        if (before.isEmpty() && after.isEmpty()) {
-            return;
-        }
-        if (before.getItem() != after.getItem()
-                || before.getDamageValue() != after.getDamageValue()
-                || before.getCount() != after.getCount()) {
-            RuntimeAccess.get().inventorySwitchGuard().markSwitchIfNeeded(after.getItem());
         }
     }
 
