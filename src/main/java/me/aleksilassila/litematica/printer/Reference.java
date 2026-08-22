@@ -24,7 +24,19 @@ public class Reference {
             .getModContainer(MOD_ID)
             .map(container -> container.getMetadata().getVersion().getFriendlyString())
             .orElse("unknown");
+    public static final String GUI_TITLE = MOD_NAME + " - Hana - " + displayBuildVersion(VERSION);
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
+
+    private static String displayBuildVersion(String version) {
+        int separator = version.lastIndexOf('-');
+        if (separator >= 0 && separator + 1 < version.length()) {
+            String suffix = version.substring(separator + 1);
+            if (suffix.equals("local") || suffix.startsWith("dev") || suffix.startsWith("beta")) {
+                return suffix;
+            }
+        }
+        return version;
+    }
 
     public static final Item[] COMPOSTABLE_ITEMS = Arrays.stream(ComposterBlock.COMPOSTABLES.keySet().toArray(ItemLike[]::new)).map(ItemLike::asItem).toArray(Item[]::new);
     public static final Item[] HOE_ITEMS = {Items.DIAMOND_HOE, Items.IRON_HOE, Items.GOLDEN_HOE, Items.NETHERITE_HOE, Items.STONE_HOE, Items.WOODEN_HOE};

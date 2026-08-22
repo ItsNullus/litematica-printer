@@ -144,7 +144,6 @@ jobs:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
           MODRINTH_FILE_DIR: release-artifacts
           MODRINTH_VERSION_TYPE: beta
-          MODRINTH_VERSION_NAME: ${{ inputs.target_release_tag }}
           MODRINTH_CHANGELOG: |
             Beta release `${{ inputs.target_release_tag }}`.
 
