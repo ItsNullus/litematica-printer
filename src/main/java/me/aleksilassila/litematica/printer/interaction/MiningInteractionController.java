@@ -17,6 +17,8 @@ import net.minecraft.world.level.block.state.BlockState;
 /** Stateful mining protocol. The Mixin only exposes Minecraft fields through {@link MiningInteractionPort}. */
 public final class MiningInteractionController {
     private static final float FAST_FINISH_PROGRESS = 0.5F;
+    private static final int MIN_PENDING_DESTROY_TICKS = 8;
+    private static final int MAX_PENDING_DESTROY_TICKS = 200;
 
     private final MiningInteractionPort port;
     private final MiningFeedback feedback;
@@ -71,7 +73,14 @@ public final class MiningInteractionController {
         // the server's delayed-destroy slot occupied until the block update arrives; using a
         // local progress prediction here lets the next target overwrite that slot and causes
         // the familiar crackle/flash without a successful break.
-        if (!this.delayedDestroyLocalPrediction) return;
+        if (!this.delayedDestroyLocalPrediction) {
+            int elapsed = (int) (this.clientTick() - this.delayedDestroyStartTick);
+            if (elapsed >= this.pendingDestroyTimeout(player, level, this.delayedDestroyPos, state)) {
+                this.feedback.removePending(this.delayedDestroyPos);
+                this.clearDelayed();
+            }
+            return;
+        }
         int elapsed = (int) (this.clientTick() - this.delayedDestroyStartTick);
         if (state.getDestroyProgress(player, level, this.delayedDestroyPos) * elapsed >= 1.0F) {
             if (this.delayedDestroyLocalPrediction) this.port.destroyBlock(this.delayedDestroyPos);
@@ -119,7 +128,7 @@ public final class MiningInteractionController {
                 }
             }
             this.feedback.resetHitSound();
-            return player.getAbilities().instabuild
+            return player.getAbilities().instabuild || progress >= 1.0F
                     ? BlockBreakResult.COMPLETED
                     : BlockBreakResult.COMPLETED_WAIT;
         }
@@ -263,6 +272,20 @@ public final class MiningInteractionController {
         MineDebugLog.write("mine break delayed_completed pos=" + MineDebugLog.pos(this.delayedDestroyPos)
                 + " elapsedTicks=" + elapsed);
         this.finishDelayed(player);
+    }
+
+    private int pendingDestroyTimeout(
+            LocalPlayer player,
+            ClientLevel level,
+            BlockPos pos,
+            BlockState state
+    ) {
+        float progress = state.getDestroyProgress(player, level, pos);
+        if (progress <= 0.0F) {
+            return MAX_PENDING_DESTROY_TICKS;
+        }
+        int estimatedTicks = (int) Math.ceil(1.0F / progress);
+        return Math.max(MIN_PENDING_DESTROY_TICKS, Math.min(estimatedTicks + 10, MAX_PENDING_DESTROY_TICKS));
     }
 
     private void abortPrevious(LocalPlayer player, BlockPos next, Direction direction) {

@@ -49,7 +49,8 @@ public final class InteractionUtils implements RuntimeComponent {
         LocalPlayer player = client.player;
         if (world == null || player == null || client.gameMode == null) return false;
         BlockState currentState = world.getBlockState(pos);
-        if (Configs.Break.BREAK_CHECK_HARDNESS.getBooleanValue() && currentState.getBlock().defaultDestroyTime() < 0) {
+        if (Configs.Break.BREAK_CHECK_HARDNESS.getBooleanValue()
+                && currentState.getDestroySpeed(world, pos) < 0.0F) {
             return false;
         }
         return !currentState.isAir() &&

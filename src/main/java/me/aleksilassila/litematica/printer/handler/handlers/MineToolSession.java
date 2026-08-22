@@ -2,6 +2,7 @@ package me.aleksilassila.litematica.printer.handler.handlers;
 
 import me.aleksilassila.litematica.printer.mixin_extension.BlockBreakResult;
 import me.aleksilassila.litematica.printer.config.Configs;
+import me.aleksilassila.litematica.printer.integration.tweakeroo.TweakerooAdapter;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Item;
@@ -15,19 +16,24 @@ final class MineToolSession {
 
     private Item sessionToolItem;
     private int remainingInstantBudget;
+    private int remainingTweakerooBreaks;
     private int toolSessionRemaining;
     private BlockPos lastSessionPos;
 
     void reset() {
         this.sessionToolItem = null;
         this.remainingInstantBudget = 0;
+        this.remainingTweakerooBreaks = 0;
         this.toolSessionRemaining = 0;
         this.lastSessionPos = null;
     }
 
-    void beginTick() {
+    void beginTick(LocalPlayer player, TweakerooAdapter tweakeroo) {
         int configuredBudget = Configs.Break.BREAK_BLOCKS_PER_TICK.getIntegerValue();
         this.remainingInstantBudget = configuredBudget <= 0 ? -1 : configuredBudget;
+        this.remainingTweakerooBreaks = player == null
+                ? 0
+                : tweakeroo.safeBreakBudget(player.getMainHandItem());
     }
 
     Comparator<MineBreakExecutor.Target> comparator(LocalPlayer player) {
@@ -105,10 +111,14 @@ final class MineToolSession {
         if (this.remainingInstantBudget > 0) {
             this.remainingInstantBudget--;
         }
+        if (this.remainingTweakerooBreaks != Integer.MAX_VALUE && this.remainingTweakerooBreaks > 0) {
+            this.remainingTweakerooBreaks--;
+        }
     }
 
     boolean hasInstantBudget() {
-        return this.remainingInstantBudget < 0 || this.remainingInstantBudget > 0;
+        return (this.remainingInstantBudget < 0 || this.remainingInstantBudget > 0)
+                && this.remainingTweakerooBreaks != 0;
     }
 
     boolean isInsideFrontier(LocalPlayer player, MineBreakExecutor.Target target, double nearestDistance) {

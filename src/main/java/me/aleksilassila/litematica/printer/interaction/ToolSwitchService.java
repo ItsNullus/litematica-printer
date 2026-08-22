@@ -47,7 +47,7 @@ public final class ToolSwitchService {
             if (this.tweakeroo.isEffectiveToolSwitchEnabled()) {
                 this.tweakeroo.switchToEffectiveTool(pos);
             } else if (Configs.Break.BREAK_AUTO_TOOL.getBooleanValue()) {
-                InventoryUtils.switchToBestTool(player, state);
+                InventoryUtils.switchToBestTool(player, state, pos);
             }
         }
         // Tweakeroo checks its own toggle and durability threshold inside this call. Printer

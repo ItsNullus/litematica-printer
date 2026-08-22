@@ -19,6 +19,8 @@ import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
@@ -29,6 +31,7 @@ public class MineHandler extends FeatureModuleBase {
     private final TweakerooAdapter tweakeroo;
     private final MineToolSession toolSession = new MineToolSession();
     private final MineCandidateQueue candidates = new MineCandidateQueue();
+    private final Map<BlockPos, BlockState> candidateStates = new HashMap<>();
     @Nullable
     private BlockPos activeMinePos;
 
@@ -94,7 +97,7 @@ public class MineHandler extends FeatureModuleBase {
                 this.player,
                 this.getScanGuardLimit(),
                 ScanIntent.MINE,
-                this::isMineScanCandidate,
+                pos -> this.isMineScanCandidate(pos, false),
                 pos -> reachPredicate.test(pos) && selectionPredicate.test(pos)
         );
     }
@@ -102,14 +105,16 @@ public class MineHandler extends FeatureModuleBase {
     @Override
     protected void preprocess() {
         this.candidates.clear();
+        this.candidateStates.clear();
         this.analyzer.beginTick();
-        this.toolSession.beginTick();
+        this.toolSession.beginTick(this.player, this.tweakeroo);
         this.continueActiveMineTarget();
     }
 
     @Override
     protected void onRuntimeReset() {
         this.candidates.clear();
+        this.candidateStates.clear();
         this.activeMinePos = null;
         this.analyzer.reset();
         this.toolSession.reset();
@@ -137,12 +142,12 @@ public class MineHandler extends FeatureModuleBase {
 
     @Override
     public boolean canIterationBlockPos(BlockPos pos) {
-        return this.isMineScanCandidate(pos);
+        return this.isMineScanCandidate(pos, true);
     }
 
     @Override
     protected void executeIteration(BlockPos blockPos, AtomicReference<Boolean> skipIteration) {
-        MineBreakExecutor.Target target = this.analyzer.analyze(blockPos);
+        MineBreakExecutor.Target target = this.analyzer.analyze(blockPos, this.candidateStates.remove(blockPos));
         if (target == null) {
             this.setIterationConsumedEffectiveExecution(false);
             return;
@@ -199,7 +204,7 @@ public class MineHandler extends FeatureModuleBase {
                 && mineRestriction(this.level.getBlockState(pos));
     }
 
-    private boolean isMineScanCandidate(BlockPos pos) {
+    private boolean isMineScanCandidate(BlockPos pos, boolean checkReach) {
         if (pos == null || this.level == null || this.player == null || this.gameMode == null) {
             return false;
         }
@@ -214,13 +219,20 @@ public class MineHandler extends FeatureModuleBase {
             return false;
         }
 
-        if (Configs.Break.BREAK_CHECK_HARDNESS.getBooleanValue() && state.getBlock().defaultDestroyTime() < 0) {
+        if (Configs.Break.BREAK_CHECK_HARDNESS.getBooleanValue()
+                && state.getDestroySpeed(this.level, pos) < 0.0F) {
             return false;
         }
 
-        return this.canReachIterationPosition(pos)
-                && !this.player.blockActionRestricted(this.level, pos, this.gameMode.getPlayerMode())
-                && mineRestriction(state);
+        if (checkReach && !this.canReachIterationPosition(pos)) {
+            return false;
+        }
+        if (this.player.blockActionRestricted(this.level, pos, this.gameMode.getPlayerMode())
+                || !mineRestriction(state)) {
+            return false;
+        }
+        this.candidateStates.put(pos.immutable(), state);
+        return true;
     }
 
     private void executeToolSession(MineBreakExecutor.Target firstTarget, double nearestDistance,

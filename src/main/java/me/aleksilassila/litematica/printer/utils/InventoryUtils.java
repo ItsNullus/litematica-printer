@@ -12,8 +12,10 @@ import me.aleksilassila.litematica.printer.utils.minecraft.ToolSelectionUtils;
 import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.NonNullList;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -276,7 +278,13 @@ public class InventoryUtils {
     }
 
     public static boolean switchToBestTool(LocalPlayer player, BlockState blockState) {
-        return ToolInventorySelector.switchToBestTool(client, player, blockState);
+        ClientLevel level = client.level;
+        BlockPos pos = player == null ? null : player.blockPosition();
+        return ToolInventorySelector.switchToBestTool(client, player, blockState, level, pos);
+    }
+
+    public static boolean switchToBestTool(LocalPlayer player, BlockState blockState, BlockPos pos) {
+        return ToolInventorySelector.switchToBestTool(client, player, blockState, client.level, pos);
     }
 
     public static boolean hasUsableSilkTouchTool(LocalPlayer player) {

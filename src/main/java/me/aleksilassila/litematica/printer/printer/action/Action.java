@@ -178,13 +178,23 @@ public class Action {
         }
         Vec3 eye = player.getEyePosition();
         Vec3 center = Vec3.atCenterOf(pos);
-        sides.sort(Comparator.comparingDouble(side -> -getClickedFaceScore(eye, center, side)));
+        for (int i = 1; i < sides.size(); i++) {
+            Direction current = sides.get(i);
+            double currentScore = getClickedFaceScore(eye, center, current);
+            int j = i - 1;
+            while (j >= 0 && getClickedFaceScore(eye, center, sides.get(j)) < currentScore) {
+                sides.set(j + 1, sides.get(j));
+                j--;
+            }
+            sides.set(j + 1, current);
+        }
     }
 
     private static double getClickedFaceScore(Vec3 eye, Vec3 center, Direction side) {
-        Vec3 toEye = eye.subtract(center);
-        Vec3 clickedFaceNormal = Vec3.atLowerCornerOf(DirectionUtils.getVector(side.getOpposite()));
-        return clickedFaceNormal.dot(toEye);
+        var normal = DirectionUtils.getVector(side.getOpposite());
+        return normal.getX() * (eye.x - center.x)
+                + normal.getY() * (eye.y - center.y)
+                + normal.getZ() * (eye.z - center.z);
     }
 
     public Action setItem(Item item) {

@@ -2,7 +2,6 @@ package me.aleksilassila.litematica.printer.handler.handlers;
 
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.integration.tweakeroo.TweakerooAdapter;
-import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.PlayerUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.ToolSelectionUtils;
@@ -52,14 +51,24 @@ final class MineBreakExecutor {
 
     @Nullable
     public Target analyze(BlockPos pos) {
+        return this.analyze(pos, null);
+    }
+
+    @Nullable
+    public Target analyze(BlockPos pos, @Nullable BlockState observedState) {
         LocalPlayer player = this.client.player;
         ClientLevel level = this.client.level;
-        if (player == null || level == null || pos == null) {
+        if (player == null || level == null || this.client.gameMode == null || pos == null) {
             return null;
         }
         this.refreshInventoryCaches(player);
-        BlockState state = level.getBlockState(pos);
-        if (!InteractionUtils.canBreakBlock(pos)) {
+        BlockState state = observedState == null ? level.getBlockState(pos) : observedState;
+        if (state.isAir()
+                || state.getBlock() instanceof net.minecraft.world.level.block.LiquidBlock
+                || !level.getWorldBorder().isWithinBounds(pos)
+                || (Configs.Break.BREAK_CHECK_HARDNESS.getBooleanValue()
+                && state.getDestroySpeed(level, pos) < 0.0F)
+                || player.blockActionRestricted(level, pos, this.client.gameMode.getPlayerMode())) {
             return null;
         }
         ItemStack currentStack = player.getMainHandItem();
@@ -75,8 +84,8 @@ final class MineBreakExecutor {
                     false
             );
         }
-        float currentProgress = this.getCurrentProgress(player, state, currentStack);
-        ToolChoice toolChoice = this.getBestToolChoice(player, state, currentStack, currentProgress);
+        float currentProgress = this.getCurrentProgress(player, level, state, currentStack, pos);
+        ToolChoice toolChoice = this.getBestToolChoice(player, level, state, currentStack, currentProgress, pos);
         float bestProgress = toolChoice.progress();
         if (bestProgress <= 0.0F && !player.getAbilities().instabuild) {
             return null;
@@ -127,7 +136,14 @@ final class MineBreakExecutor {
         return target != null && target.bestToolItem == item;
     }
 
-    private ToolChoice getBestToolChoice(LocalPlayer player, BlockState state, ItemStack currentStack, float currentProgress) {
+    private ToolChoice getBestToolChoice(
+            LocalPlayer player,
+            ClientLevel level,
+            BlockState state,
+            ItemStack currentStack,
+            float currentProgress,
+            BlockPos pos
+    ) {
         ToolChoice cached = this.bestToolCache.get(state);
         if (cached != null) {
             return cached;
@@ -146,7 +162,7 @@ final class MineBreakExecutor {
             if (stack.isEmpty()) {
                 continue;
             }
-            float progress = this.getDestroyProgress(player, state, stack);
+            float progress = this.getDestroyProgress(player, level, state, stack, pos);
             boolean stackPreservesDrops = preferSilkTouch && ToolSelectionUtils.hasSilkTouch(stack);
             if ((stackPreservesDrops && !bestPreservesDrops)
                     || stackPreservesDrops == bestPreservesDrops && progress > bestProgress) {
@@ -177,8 +193,16 @@ final class MineBreakExecutor {
         return target.currentProgress >= target.bestProgress * CURRENT_TOOL_MIN_EFFICIENCY_RATIO;
     }
 
-    private float getDestroyProgress(LocalPlayer player, BlockState state, ItemStack stack) {
-        float hardness = state.getBlock().defaultDestroyTime();
+    private float getDestroyProgress(
+            LocalPlayer player,
+            ClientLevel level,
+            BlockState state,
+            ItemStack stack,
+            BlockPos pos
+    ) {
+        // Use the live state hardness, not Block.defaultDestroyTime(). The latter is only the
+        // block's registered default and becomes stale for state-aware/custom implementations.
+        float hardness = state.getDestroySpeed(level, pos);
         if (hardness < 0.0F) {
             return 0.0F;
         }
@@ -189,12 +213,18 @@ final class MineBreakExecutor {
         return PlayerUtils.getBlockBreakingSpeed(player, state, stack) / hardness / (float) divisor;
     }
 
-    private float getCurrentProgress(LocalPlayer player, BlockState state, ItemStack stack) {
+    private float getCurrentProgress(
+            LocalPlayer player,
+            ClientLevel level,
+            BlockState state,
+            ItemStack stack,
+            BlockPos pos
+    ) {
         Float cached = this.currentProgressCache.get(state);
         if (cached != null) {
             return cached;
         }
-        float progress = this.getDestroyProgress(player, state, stack);
+        float progress = this.getDestroyProgress(player, level, state, stack, pos);
         this.currentProgressCache.put(state, progress);
         return progress;
     }
