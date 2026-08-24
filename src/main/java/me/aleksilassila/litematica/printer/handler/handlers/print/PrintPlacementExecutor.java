@@ -2,30 +2,38 @@ package me.aleksilassila.litematica.printer.handler.handlers.print;
 
 import me.aleksilassila.litematica.printer.I18n;
 import me.aleksilassila.litematica.printer.config.Configs;
-import me.aleksilassila.litematica.printer.core.action.ResourceLease;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.handler.handlers.PrintHandler;
 import me.aleksilassila.litematica.printer.interfaces.Implementation;
-import me.aleksilassila.litematica.printer.printer.action.ActionPort;
-import me.aleksilassila.litematica.printer.printer.MissingMaterialTracker;
+import me.aleksilassila.litematica.printer.printer.ActionManager;
 import me.aleksilassila.litematica.printer.printer.PlayerLook;
 import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
 import me.aleksilassila.litematica.printer.printer.action.Action;
 import me.aleksilassila.litematica.printer.printer.action.ClickAction;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.CooldownUtils;
-import me.aleksilassila.litematica.printer.utils.InventoryUtils;
+import me.aleksilassila.litematica.printer.utils.FilterUtils;
 import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
+import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.DirectionUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.MessageUtils;
-import me.aleksilassila.litematica.printer.integration.litematica.LitematicaAdapter;
+import me.aleksilassila.litematica.printer.utils.mods.LitematicaUtils;
+import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.SignBlock;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -33,41 +41,40 @@ import java.util.function.Predicate;
 import net.minecraft.world.item.ItemStack;
 
 public final class PrintPlacementExecutor {
-    private final ActionPort actionBroker;
-    private final CooldownUtils cooldownUtils;
-    private final InventorySwitchGuard inventorySwitchGuard;
-    private final HudStatsManager hudStats;
-    private final MissingMaterialTracker missingMaterials;
-    private final LitematicaAdapter litematica;
-    private final FallingPlacementTracker fallingPlacements;
     private static final Item[] EMPTY_HAND_ITEMS = {Items.AIR};
     private static final long RESERVE_NOTICE_COOLDOWN_TICKS = 100L;
-    private long lastReserveNoticeTick = Long.MIN_VALUE;
-
-    public PrintPlacementExecutor(
-            ActionPort actionBroker,
-            CooldownUtils cooldownUtils,
-            InventorySwitchGuard inventorySwitchGuard,
-            HudStatsManager hudStats,
-            MissingMaterialTracker missingMaterials,
-            LitematicaAdapter litematica,
-            FallingPlacementTracker fallingPlacements
-    ) {
-        this.actionBroker = actionBroker;
-        this.cooldownUtils = cooldownUtils;
-        this.inventorySwitchGuard = inventorySwitchGuard;
-        this.hudStats = hudStats;
-        this.missingMaterials = missingMaterials;
-        this.litematica = litematica;
-        this.fallingPlacements = fallingPlacements;
-    }
+    private static long lastReserveNoticeTick = Long.MIN_VALUE;
+    private static boolean supportModeBannerLogged;
 
     public PrintPlacementResult execute(SchematicBlockContext context, Action action, @Nullable PrintTaskAction taskAction) {
         BlockPos blockPos = context.blockPos;
+        // 无支撑支撑方块：目标方块无法存活（缺支撑）且支撑位为空（世界+投影均无）→ 先放支撑方块
+        me.aleksilassila.litematica.printer.enums.SupportPlaceModeType supportMode =
+                (me.aleksilassila.litematica.printer.enums.SupportPlaceModeType) Configs.Print.SUPPORT_PLACE_MODE.getOptionListValue();
+        if (!supportModeBannerLogged) {
+            supportModeBannerLogged = true;
+            me.aleksilassila.litematica.printer.Reference.LOGGER.info(
+                    "[Printer] 支撑配置: 模式={} 列表={} 解析物品={}",
+                    supportMode.getI18n().getSimpleKey(),
+                    String.join("|", Configs.Print.SUPPORT_BLOCK_LIST.getStrings()),
+                    resolveSupportItem() == null ? "null" : BuiltInRegistries.ITEM.getKey(resolveSupportItem()));
+        }
+        if (supportMode != me.aleksilassila.litematica.printer.enums.SupportPlaceModeType.NONE) {
+            boolean survivable = context.requiredState.canSurvive(context.level, blockPos);
+            if (!survivable) {
+                me.aleksilassila.litematica.printer.Reference.LOGGER.info(
+                        "[Printer] 无支撑支撑: 模式={} 目标={} 位置={} canSurvive=false",
+                        supportMode.getI18n().getSimpleKey(), context.requiredState.getBlock(), blockPos);
+            }
+            if (!survivable && tryQueueSupportPlacement(context, action, blockPos)) {
+                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "放置支撑");
+                return PrintPlacementResult.cancelled(false);
+            }
+        }
         if (Configs.Placement.FALLING_CHECK.getBooleanValue() && context.requiredState.getBlock() instanceof FallingBlock) {
             BlockPos downPos = blockPos.below();
             if (FallingBlock.isFree(context.level.getBlockState(downPos))) {
-                this.hudStats.recordDeferred(HudStatsManager.Mode.PRINT, "下落方块无支撑");
+                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "下落方块无支撑");
                 MessageUtils.setOverlayMessage(I18n.FALLING_BLOCK_NO_SUPPORT.getName(context.requiredBlockName().getString()));
                 return PrintPlacementResult.failure(false, shouldStopAfterTaskAction(taskAction));
             }
@@ -75,7 +82,7 @@ public final class PrintPlacementExecutor {
 
         Direction side = action.getValidSide(context.level, blockPos);
         if (side == null) {
-            this.hudStats.recordDeferred(HudStatsManager.Mode.PRINT, "无有效放置面");
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "无有效放置面");
             return PrintPlacementResult.failure(false, shouldStopAfterTaskAction(taskAction));
         }
 
@@ -103,9 +110,6 @@ public final class PrintPlacementExecutor {
                     );
         }
         if (!itemReady) {
-            boolean retrievalPending =
-                    this.inventorySwitchGuard.isWaiting()
-                            || this.actionBroker.isResourceHeld(ResourceLease.INVENTORY);
             ItemStack reserveBlockedStack = reserveItems
                     ? InventoryUtils.findReserveBlockedStack(
                             context.client.player,
@@ -114,57 +118,48 @@ public final class PrintPlacementExecutor {
                             reserveCount
                     )
                     : ItemStack.EMPTY;
-            if (retrievalPending) {
-                this.hudStats.recordDeferred(HudStatsManager.Mode.PRINT, "等待取货");
-                // The HUD describes what is currently absent from the player inventory. Keep the
-                // requirement visible while an external material provider is working; tick() removes it
-                // as soon as the requested stack actually arrives.
-                this.missingMaterials.recordMissing(
-                        requiredItems,
-                        requiredStackPredicate,
-                        action.getRequiredCreativeStack(),
-                        context.level.getGameTime()
-                );
-            } else if (reserveBlockedStack.isEmpty()) {
-                this.hudStats.recordDeferred(HudStatsManager.Mode.PRINT, "缺少材料");
-                this.missingMaterials.recordMissing(
-                        requiredItems,
-                        requiredStackPredicate,
-                        action.getRequiredCreativeStack(),
-                        context.level.getGameTime()
-                );
+            boolean awaitingTakeout = TakeItOutUtils.isAwaitingStack();
+            boolean awaitingChestTake = me.aleksilassila.litematica.printer.printer.zxy.chesttracker.ChestTrackerBridge.isAwaitingStack();
+            if (reserveBlockedStack.isEmpty()) {
+                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "缺少材料");
+                // 远程取物由快捷潜影盒流程驱动（switchItem：背包盒子找不到后才取箱子），
+                // 避免与潜影盒抢菜单/重复触发。
+                if (awaitingChestTake) {
+                    HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "远程取物中");
+                }
             } else {
-                this.hudStats.recordDeferred(HudStatsManager.Mode.PRINT, "达到保留数量");
+                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "达到保留数量");
                 showReserveNotice(context, reserveBlockedStack);
             }
-            if (retrievalPending) {
-                // 换槽或外部取货只是暂时未就绪。多阶段任务必须保留当前阶段，
-                // 否则破冰放水会在材料到达前被当成永久失败并丢失目标。
-                return PrintPlacementResult.deferred(true);
-            }
-            // 真正缺少材料属于无效放置，不应消耗每 tick 的有效放置预算。
-            return PrintPlacementResult.failure(false, shouldStopAfterTaskAction(taskAction));
+            // 缺少材料属于无效放置，不应消耗每 tick 的有效放置预算（与重构前行为一致）。
+            // 注意不能因缺料就停止迭代（shouldPauseForSwitchRequest 的 lastNeedItemList 缺料时恒非空），
+            // 否则一个缺料的方块会卡住整个打印——手中有材料的部分也放不了。只有真正占用菜单时才停。
+            return PrintPlacementResult.failure(false,
+                    shouldStopAfterTaskAction(taskAction)
+                            || me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.isOpenHandler
+                            || me.aleksilassila.litematica.printer.printer.zxy.inventory.SwitchItem.hasPendingRestore()
+                            || awaitingTakeout
+                            || awaitingChestTake);
         }
-        this.missingMaterials.resolve(requiredItems, requiredStackPredicate);
         if (!InventoryUtils.isHoldingAnyItem(context.client.player, requiredItems)
                 || requiredStackPredicate != null
                 && !requiredStackPredicate.test(context.client.player.getMainHandItem())) {
-            this.hudStats.recordDeferred(HudStatsManager.Mode.PRINT, "等待物品同步");
-            return PrintPlacementResult.deferred(true);
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "等待物品同步");
+            return PrintPlacementResult.failure(false, true);
         }
 
         boolean useShift = getUseShift(context, action, side);
-        if (!action.queueAction(this.actionBroker, blockPos, side, useShift, context.client.player, requiredItems)) {
-            this.hudStats.recordDeferred(HudStatsManager.Mode.PRINT, "动作队列占用");
+        if (!action.queueAction(blockPos, side, useShift, context.client.player, requiredItems)) {
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "动作队列占用");
             return PrintPlacementResult.cancelled(true);
         }
-        this.actionBroker.setExpectedStackPredicate(requiredStackPredicate);
-        Vec3 hitModifier = this.litematica.usePrecisionPlacement(blockPos, context.requiredState);
+        ActionManager.INSTANCE.setExpectedStackPredicate(requiredStackPredicate);
+        Vec3 hitModifier = LitematicaUtils.usePrecisionPlacement(blockPos, context.requiredState);
         if (hitModifier != null) {
-            this.actionBroker.useProtocolHitModifier(hitModifier);
+            ActionManager.INSTANCE.useProtocolHitModifier(hitModifier);
         }
-        this.actionBroker.setLook(adjustHorizontalLook(action.getPlayerLook(), context));
-        this.actionBroker.setNeedWaitModifyLookFromAction(action.isNeedWaitModifyLook());
+        ActionManager.INSTANCE.setLook(adjustHorizontalLook(action.getPlayerLook(), context));
+        ActionManager.INSTANCE.setNeedWaitModifyLookFromAction(action.isNeedWaitModifyLook());
         boolean consumedEffectiveExecution = action.isConsumeEffectiveExecution();
         int cooldownTicks = action.getCooldownTicksOverride() >= 0
                 ? action.getCooldownTicksOverride()
@@ -172,16 +167,16 @@ public final class PrintPlacementExecutor {
         AtomicBoolean deferred = new AtomicBoolean(false);
         boolean signPlacement = context.requiredState.getBlock() instanceof SignBlock;
         if (signPlacement) {
-            this.actionBroker.armPrintSignEdit(blockPos);
+            ActionManager.INSTANCE.armPrintSignEdit(blockPos);
         }
-        this.actionBroker.setQueueCompletionListener(sendResult -> {
+        ActionManager.INSTANCE.setQueueCompletionListener(sendResult -> {
             if (!deferred.get()) {
                 return;
             }
             if (sendResult.isSent()) {
-                this.recordPlacementSent(context, action, taskAction);
+                recordPlacementSent(context);
                 if (cooldownTicks > 0) {
-                    this.cooldownUtils.setCooldown(
+                    CooldownUtils.INSTANCE.setCooldown(
                             context.level,
                             PrintHandler.NAME,
                             blockPos,
@@ -193,12 +188,12 @@ public final class PrintPlacementExecutor {
                 }
             } else {
                 if (signPlacement) {
-                    this.actionBroker.cancelPrintSignEdit(blockPos);
+                    ActionManager.INSTANCE.cancelPrintSignEdit(blockPos);
                 }
-                if (sendResult == ActionPort.SendResult.RESERVE_LIMIT) {
+                if (sendResult == ActionManager.SendResult.RESERVE_LIMIT) {
                     showReserveNotice(context, context.client.player.getMainHandItem());
                 }
-                this.hudStats.recordDeferred(
+                HudStatsManager.INSTANCE.recordDeferred(
                         HudStatsManager.Mode.PRINT,
                         describeSendFailure(sendResult)
                 );
@@ -208,10 +203,10 @@ public final class PrintPlacementExecutor {
             }
         });
 
-        ActionPort.SendResult sendResult = this.actionBroker.sendQueue(context.client.player);
+        ActionManager.SendResult sendResult = ActionManager.INSTANCE.sendQueue(context.client.player);
         if (sendResult.isWaiting()) {
             deferred.set(true);
-            this.hudStats.recordDeferred(HudStatsManager.Mode.PRINT, "等待转头");
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "等待转头");
             return new PrintPlacementResult(
                     consumedEffectiveExecution,
                     true,
@@ -221,16 +216,16 @@ public final class PrintPlacementExecutor {
         }
         if (!sendResult.isSent()) {
             if (signPlacement) {
-                this.actionBroker.cancelPrintSignEdit(blockPos);
+                ActionManager.INSTANCE.cancelPrintSignEdit(blockPos);
             }
-            if (sendResult == ActionPort.SendResult.RESERVE_LIMIT) {
+            if (sendResult == ActionManager.SendResult.RESERVE_LIMIT) {
                 showReserveNotice(context, context.client.player.getMainHandItem());
             }
-            this.hudStats.recordDeferred(HudStatsManager.Mode.PRINT, describeSendFailure(sendResult));
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, describeSendFailure(sendResult));
             return PrintPlacementResult.cancelled(true);
         }
 
-        this.recordPlacementSent(context, action, taskAction);
+        recordPlacementSent(context);
 
         return new PrintPlacementResult(
                 consumedEffectiveExecution,
@@ -240,33 +235,20 @@ public final class PrintPlacementExecutor {
         );
     }
 
-    private void recordPlacementSent(
-            SchematicBlockContext context,
-            Action action,
-            @Nullable PrintTaskAction taskAction
-    ) {
+    private static void recordPlacementSent(SchematicBlockContext context) {
         if (context.requiredState.getBlock() instanceof SignBlock) {
-            this.actionBroker.confirmPrintSignEditSent(context.blockPos);
+            ActionManager.INSTANCE.confirmPrintSignEditSent(context.blockPos);
         }
-        this.hudStats.trackExpectedBlockState(
+        HudStatsManager.INSTANCE.trackExpectedBlockState(
                 HudStatsManager.Mode.PRINT,
                 context.blockPos,
-                taskAction == null
-                        ? context.requiredState
-                        : taskAction.expectedBlockState(context, action)
+                context.requiredState
         );
-        this.hudStats.recordRateUnit(HudStatsManager.Mode.PRINT, 1);
-        this.hudStats.recordStatus(HudStatsManager.Mode.PRINT, "运行中");
-        if (context.requiredState.getBlock() instanceof FallingBlock) {
-            this.fallingPlacements.mark(
-                    context.blockPos,
-                    context.requiredState,
-                    context.level.getGameTime()
-            );
-        }
+        HudStatsManager.INSTANCE.recordRateUnit(HudStatsManager.Mode.PRINT, 1);
+        HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.PRINT, "运行中");
     }
 
-    private static String describeSendFailure(ActionPort.SendResult result) {
+    private static String describeSendFailure(ActionManager.SendResult result) {
         return switch (result) {
             case STALE_POSITION -> "移动后动作失效";
             case HELD_ITEM_CHANGED -> "手持物品已变化";
@@ -288,7 +270,7 @@ public final class PrintPlacementExecutor {
     }
 
     @Nullable
-    private PlayerLook adjustHorizontalLook(@Nullable PlayerLook playerLook, SchematicBlockContext context) {
+    private static PlayerLook adjustHorizontalLook(@Nullable PlayerLook playerLook, SchematicBlockContext context) {
         if (playerLook == null) {
             return null;
         }
@@ -296,7 +278,7 @@ public final class PrintPlacementExecutor {
         if (primaryLookDirection.getAxis().isHorizontal()) {
             float currentPitch = context.client.player.getXRot();
             currentPitch = Math.max(-40.0F, Math.min(40.0F, currentPitch));
-            this.actionBroker.setWaitForHorizontalLook(false);
+            ActionManager.INSTANCE.setWaitForHorizontalLook(false);
             return new PlayerLook(playerLook.getYaw(), currentPitch);
         }
         return playerLook;
@@ -310,20 +292,151 @@ public final class PrintPlacementExecutor {
         return taskAction != null && taskAction.stopIterationAfterAction();
     }
 
-    private void showReserveNotice(SchematicBlockContext context, ItemStack stack) {
+    private static void showReserveNotice(SchematicBlockContext context, ItemStack stack) {
         if (stack.isEmpty()) {
             return;
         }
         long currentTick = context.level.getGameTime();
-        if (this.lastReserveNoticeTick != Long.MIN_VALUE
-                && currentTick >= this.lastReserveNoticeTick
-                && currentTick - this.lastReserveNoticeTick < RESERVE_NOTICE_COOLDOWN_TICKS) {
+        if (lastReserveNoticeTick != Long.MIN_VALUE
+                && currentTick >= lastReserveNoticeTick
+                && currentTick - lastReserveNoticeTick < RESERVE_NOTICE_COOLDOWN_TICKS) {
             return;
         }
-        this.lastReserveNoticeTick = currentTick;
+        lastReserveNoticeTick = currentTick;
         MessageUtils.setOverlayMessage(I18n.RESERVE_ITEM_SKIP.getName(
                 stack.getHoverName(),
                 Configs.Print.PRINT_RESERVE_ITEM_COUNT.getIntegerValue()
         ));
+    }
+
+    // ========== 无支撑支撑方块 ==========
+    private static final Map<BlockPos, Long> pendingSupportTargets = new HashMap<>();
+    private static Item cachedSupportItem;
+    private static String cachedSupportListKey;
+
+    /**
+     * 目标方块无法存活（缺支撑）时，在支撑位（世界+投影均为空气）放置支撑方块。
+     * 返回 true = 已排队支撑/等待支撑确认/正在切换支撑物品（本体本次不放置）。
+     */
+    private static boolean tryQueueSupportPlacement(SchematicBlockContext context, Action action, BlockPos blockPos) {
+        if (context.client.player == null) {
+            return false;
+        }
+        BlockState target = context.requiredState;
+        // 目标本身能存活 → 不需要支撑
+        if (target.canSurvive(context.level, blockPos)) {
+            return false;
+        }
+        long gameTime = context.level.getGameTime();
+        // 刚排过支撑, 等待服务端确认期间不重复排队（防抖 tick 数可配置, 0=关闭）
+        long pendingTtlTicks = Configs.Print.SUPPORT_PENDING_TTL.getIntegerValue();
+        Long pendingTick = pendingSupportTargets.get(blockPos);
+        if (pendingTtlTicks > 0 && pendingTick != null && gameTime - pendingTick < pendingTtlTicks) {
+            return true;
+        }
+        pendingSupportTargets.remove(blockPos);
+        me.aleksilassila.litematica.printer.enums.SupportPlaceModeType mode =
+                (me.aleksilassila.litematica.printer.enums.SupportPlaceModeType) Configs.Print.SUPPORT_PLACE_MODE.getOptionListValue();
+        List<Direction> dirs = new ArrayList<>();
+        if (mode == me.aleksilassila.litematica.printer.enums.SupportPlaceModeType.DOWN) {
+            dirs.add(Direction.DOWN);
+        } else {
+            for (Direction d : Direction.values()) {
+                dirs.add(d);
+            }
+        }
+        Item supportItem = resolveSupportItem();
+        if (supportItem == null) {
+            me.aleksilassila.litematica.printer.Reference.LOGGER.info("[Printer] 无支撑支撑: 支撑列表无法解析出物品");
+            return false;
+        }
+        me.aleksilassila.litematica.printer.Reference.LOGGER.info(
+                "[Printer] 无支撑支撑: 支撑物品={} 候选方向数={}", BuiltInRegistries.ITEM.getKey(supportItem), dirs.size());
+        for (Direction d : dirs) {
+            BlockPos supportPos = blockPos.relative(d);
+            if (supportPos == null) {
+                continue;
+            }
+            me.aleksilassila.litematica.printer.Reference.LOGGER.info(
+                    "[Printer] 无支撑支撑: 候选方向 {} 位置 {} 世界空气={} 投影方块={}",
+                    d, supportPos, context.level.getBlockState(supportPos).isAir(), LitematicaUtils.isSchematicBlock(supportPos));
+            if (!context.level.getBlockState(supportPos).isAir()) {
+                continue; // 世界已有方块（含已放支撑）
+            }
+            if (LitematicaUtils.isSchematicBlock(supportPos)) {
+                continue; // 投影中有方块 → 交给打印本身放置
+            }
+            if (InventoryUtils.switchToItems(context.client.player, new Item[]{supportItem})) {
+                Direction supportSide = findSupportSide(context.level, supportPos);
+                if (supportSide != null) {
+                    boolean queued = action.queueAction(supportPos, supportSide, false, context.client.player, new Item[]{supportItem});
+                    me.aleksilassila.litematica.printer.Reference.LOGGER.info(
+                            "[Printer] 无支撑支撑: {} 放置 {} 支撑 {} (方向 {}) 排队={}",
+                            supportPos, BuiltInRegistries.ITEM.getKey(supportItem), target.getBlock(), d, queued);
+                    if (queued) {
+                        pendingSupportTargets.put(blockPos, gameTime);
+                        return true;
+                    }
+                } else {
+                    me.aleksilassila.litematica.printer.Reference.LOGGER.info("[Printer] 无支撑支撑: 位置 {} 无可点击相邻面", supportPos);
+                }
+            } else if (InventorySwitchGuard.isWaiting()) {
+                me.aleksilassila.litematica.printer.Reference.LOGGER.info("[Printer] 无支撑支撑: 正在切换支撑物品");
+                return true; // 正在切换支撑物品
+            } else {
+                me.aleksilassila.litematica.printer.Reference.LOGGER.info(
+                        "[Printer] 无支撑支撑: 背包中没有支撑物品 {}", BuiltInRegistries.ITEM.getKey(supportItem));
+            }
+        }
+        return false;
+    }
+
+    /** 为支撑位置找一个可点击的相邻面（优先下方） */
+    private static Direction findSupportSide(net.minecraft.world.level.Level level, BlockPos supportPos) {
+        Direction[] order = {Direction.DOWN, Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST, Direction.UP};
+        for (Direction d : order) {
+            if (!level.getBlockState(supportPos.relative(d)).isAir()) {
+                return d;
+            }
+        }
+        return null;
+    }
+
+    /** 解析支撑方块列表（缓存；支持注册表 id 与显示名/拼音） */
+    private static Item resolveSupportItem() {
+        List<String> list = Configs.Print.SUPPORT_BLOCK_LIST.getStrings();
+        String key = String.join("|", list);
+        if (key.equals(cachedSupportListKey)) {
+            return cachedSupportItem;
+        }
+        cachedSupportListKey = key;
+        cachedSupportItem = null;
+        for (String entry : list) {
+            if (entry == null || entry.isBlank()) {
+                continue;
+            }
+            String id = entry.trim();
+            if (id.contains(":")) {
+                // 注册表 id 精确匹配（版本无关：不直接用 Registry.get/ResourceLocation 类型）
+                for (Item item : BuiltInRegistries.ITEM) {
+                    if (id.equals(BuiltInRegistries.ITEM.getKey(item).toString())) {
+                        cachedSupportItem = item;
+                        break;
+                    }
+                }
+            }
+            if (cachedSupportItem == null) {
+                for (Item item : BuiltInRegistries.ITEM) {
+                    if (FilterUtils.matchItemName(entry, new ItemStack(item))) {
+                        cachedSupportItem = item;
+                        break;
+                    }
+                }
+            }
+            if (cachedSupportItem != null) {
+                break;
+            }
+        }
+        return cachedSupportItem;
     }
 }

@@ -1,27 +1,43 @@
 package me.aleksilassila.litematica.printer.config;
 
+import java.io.File;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.function.BooleanSupplier;
+
 import com.google.common.collect.ImmutableList;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import fi.dy.masa.malilib.config.*;
-import fi.dy.masa.malilib.config.options.*;
+
+import fi.dy.masa.malilib.config.ConfigManager;
+import fi.dy.masa.malilib.config.ConfigUtils;
+import fi.dy.masa.malilib.config.IConfigBase;
+import fi.dy.masa.malilib.config.IConfigHandler;
+import fi.dy.masa.malilib.config.options.ConfigBoolean;
+import fi.dy.masa.malilib.config.options.ConfigBooleanHotkeyed;
+import fi.dy.masa.malilib.config.options.ConfigHotkey;
+import fi.dy.masa.malilib.config.options.ConfigInteger;
+import fi.dy.masa.malilib.config.options.ConfigOptionList;
+import fi.dy.masa.malilib.config.options.ConfigStringList;
 import fi.dy.masa.malilib.event.InputEventHandler;
 import fi.dy.masa.malilib.hotkeys.IHotkey;
 import fi.dy.masa.malilib.hotkeys.KeyAction;
 import fi.dy.masa.malilib.hotkeys.KeybindSettings;
 import fi.dy.masa.malilib.util.data.json.JsonUtils;
 import fi.dy.masa.malilib.util.restrictions.UsageRestriction;
-import fi.dy.masa.malilib.config.ConfigManager;
 import me.aleksilassila.litematica.printer.Reference;
-import me.aleksilassila.litematica.printer.enums.*;
+import me.aleksilassila.litematica.printer.enums.ExcavateListMode;
+import me.aleksilassila.litematica.printer.enums.FillBlockModeType;
+import me.aleksilassila.litematica.printer.enums.FillModeFacingType;
+import me.aleksilassila.litematica.printer.enums.PrintModeType;
+import me.aleksilassila.litematica.printer.enums.QuickShulkerModeType;
+import me.aleksilassila.litematica.printer.enums.RadiusShapeType;
+import me.aleksilassila.litematica.printer.enums.SelectionType;
+import me.aleksilassila.litematica.printer.enums.WorkingModeType;
 import me.aleksilassila.litematica.printer.gui.ConfigUi;
 import me.aleksilassila.litematica.printer.utils.mods.ModLoadUtils;
 import net.minecraft.world.level.block.Blocks;
-
-import java.io.File;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
 
 public class Configs extends ConfigBuilders implements IConfigHandler {
     private static final Configs INSTANCE = new Configs();
@@ -30,6 +46,21 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
     private static final File CONFIG_DIR = new File("./config");
 
     private static final KeybindSettings GUI_NO_ORDER = KeybindSettings.create(KeybindSettings.Context.GUI, KeyAction.PRESS, false, false, false, true);
+
+    // 配置页面是否可视(函数式, 动态获取, 全局统一使用)
+    private static final BooleanSupplier isSingle = () -> Core.WORK_MODE.getOptionListValue().equals(WorkingModeType.SINGLE);
+    private static final BooleanSupplier isMulti = () -> Core.WORK_MODE.getOptionListValue().equals(WorkingModeType.MULTI);
+
+    private static final BooleanSupplier isBreakCustom = () -> Break.BREAK_LIMITER.getOptionListValue().equals(ExcavateListMode.CUSTOM);
+    private static final BooleanSupplier isBreakWhitelist = () -> isBreakCustom.getAsBoolean() && Break.BREAK_LIMIT.getOptionListValue().equals(UsageRestriction.ListType.WHITELIST);
+    private static final BooleanSupplier isBreakBlacklist = () -> isBreakCustom.getAsBoolean() && Break.BREAK_LIMIT.getOptionListValue().equals(UsageRestriction.ListType.BLACKLIST);
+
+
+    private static final BooleanSupplier isExcavateCustom = () -> Mine.EXCAVATE_LIMITER.getOptionListValue().equals(ExcavateListMode.CUSTOM);
+    private static final BooleanSupplier isExcavateWhitelist = () -> isExcavateCustom.getAsBoolean() && Mine.EXCAVATE_LIMIT.getOptionListValue().equals(UsageRestriction.ListType.WHITELIST);
+    private static final BooleanSupplier isExcavateBlacklist = () -> isExcavateCustom.getAsBoolean() && Mine.EXCAVATE_LIMIT.getOptionListValue().equals(UsageRestriction.ListType.BLACKLIST);
+    private static final BooleanSupplier isBlocklist = () -> Fill.FILL_BLOCK_MODE.getOptionListValue().equals(FillBlockModeType.BLOCKLIST);
+
 
     public static final ImmutableList<IConfigBase> OPTIONS;
     public static final ImmutableList<IHotkey> HOTKEYS;
@@ -59,14 +90,6 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
     }
 
     public static class Core {
-        private static boolean isSingleMode() {
-            return WORK_MODE.getOptionListValue().equals(WorkingModeType.SINGLE);
-        }
-
-        private static boolean isMultiMode() {
-            return WORK_MODE.getOptionListValue().equals(WorkingModeType.MULTI);
-        }
-
         // 打印状态
         public static final ConfigBooleanHotkeyed WORK_SWITCH = booleanHotkey("workingSwitch")
                 .defaultValue(false)
@@ -82,31 +105,31 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
         // 多模 - 打印
         public static final ConfigBooleanHotkeyed PRINT = booleanHotkey("print")
                 .defaultValue(false)
-                .setVisible(Core::isMultiMode) // 仅多模式时显示
+                .setVisible(isMulti) // 仅多模式时显示
                 .build();
 
         // 多模 - 挖掘
         public static final ConfigBooleanHotkeyed MINE = booleanHotkey("mine")
                 .defaultValue(false)
-                .setVisible(Core::isMultiMode) // 仅多模式时显示
+                .setVisible(isMulti) // 仅多模式时显示
                 .build();
 
         // 多模 - 填充
         public static final ConfigBooleanHotkeyed FILL = booleanHotkey("fill")
                 .defaultValue(false)
-                .setVisible(Core::isMultiMode) // 仅多模式时显示
+                .setVisible(isMulti) // 仅多模式时显示
                 .build();
 
         // 多模 - 排流体
         public static final ConfigBooleanHotkeyed FLUID = booleanHotkey("fluid")
                 .defaultValue(false)
-                .setVisible(Core::isMultiMode) // 仅多模式时显示
+                .setVisible(isMulti) // 仅多模式时显示
                 .build();
 
         // 核心 - 单模模式
         public static final ConfigOptionList WORK_MODE_TYPE = optionList("printerMode")
                 .defaultValue(PrintModeType.PRINTER)
-                .setVisible(Core::isSingleMode) // 仅单模式时显示
+                .setVisible(isSingle) // 仅单模式时显示
                 .build();
 
         // 核心 - 工作半径
@@ -151,31 +174,31 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 .defaultValue(false)
                 .build();
 
-        // 核心 - 显示执行过程中实际缺少的材料
-        public static final ConfigBoolean MISSING_MATERIAL_HUD = bool("missingMaterialHud")
-                .defaultValue(true)
-                .build();
-
         public static final ConfigInteger RENDER_HUD_X = integer("renderHudX")
                 .defaultValue(10)
                 .range(0, 4096)
-                .setVisible(() -> RENDER_HUD.getBooleanValue() || MISSING_MATERIAL_HUD.getBooleanValue())
+                .setVisible(RENDER_HUD::getBooleanValue)
                 .build();
 
         public static final ConfigInteger RENDER_HUD_Y = integer("renderHudY")
                 .defaultValue(10)
                 .range(0, 4096)
-                .setVisible(() -> RENDER_HUD.getBooleanValue() || MISSING_MATERIAL_HUD.getBooleanValue())
+                .setVisible(RENDER_HUD::getBooleanValue)
                 .build();
 
         public static final ConfigInteger RENDER_HUD_SCALE = integer("renderHudScale")
                 .defaultValue(100)
                 .range(50, 200)
-                .setVisible(() -> RENDER_HUD.getBooleanValue() || MISSING_MATERIAL_HUD.getBooleanValue())
+                .setVisible(RENDER_HUD::getBooleanValue)
                 .build();
 
         // 核心 - 自动禁用打印机
         public static final ConfigBoolean AUTO_DISABLE_PRINTER = bool("printerAutoDisable")
+                .defaultValue(true)
+                .build();
+
+        // 核心 - 检查更新
+        public static final ConfigBoolean UPDATE_CHECK = bool("updateCheck")
                 .defaultValue(true)
                 .build();
 
@@ -192,7 +215,6 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 SCAN_TIME_BUDGET_MS,
                 LAZY_ENTER_TICKS,
                 RENDER_HUD,
-                MISSING_MATERIAL_HUD,
                 RENDER_HUD_X,
                 RENDER_HUD_Y,
                 RENDER_HUD_SCALE,
@@ -200,7 +222,8 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 LAG_CHECK_MAX,
                 CHECK_PLAYER_INTERACTION_RANGE,
                 ITERATOR_SHAPE,
-                AUTO_DISABLE_PRINTER
+                AUTO_DISABLE_PRINTER,
+                UPDATE_CHECK
         );
     }
 
@@ -283,6 +306,21 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 .defaultValue(false)
                 .build();
 
+        // 放置 - 轻松放置协议
+        public static final ConfigBoolean EASY_PLACE_PROTOCOL = bool("easyPlaceProtocol")
+                .defaultValue(false)
+                .build();
+
+        // 放置 - 启用 Carpet 准确放置协议 (V2)
+        public static final ConfigBoolean USE_CARPET_PROTOCOL = bool("useCarpetProtocol")
+                .defaultValue(false)
+                .build();
+
+        // 放置 - 两者同时开启时, Carpet 协议优先于 EasyPlace 协议
+        public static final ConfigBoolean CARPET_PROTOCOL_PRIORITY = bool("carpetProtocolPriority")
+                .defaultValue(true)
+                .build();
+
         public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
                 PLACE_INTERVAL,
                 PLACE_BLOCKS_PER_TICK,
@@ -293,23 +331,14 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 STORE_ORDERLY,
                 QUICK_SHULKER,
                 QUICK_SHULKER_MODE,
-                QUICK_SHULKER_COOLDOWN
+                QUICK_SHULKER_COOLDOWN,
+                EASY_PLACE_PROTOCOL,
+                USE_CARPET_PROTOCOL,
+                CARPET_PROTOCOL_PRIORITY
         );
     }
 
     public static class Break {
-        private static boolean isCustom() {
-            return BREAK_LIMITER.getOptionListValue().equals(ExcavateListMode.CUSTOM);
-        }
-
-        private static boolean isWhitelist() {
-            return isCustom() && BREAK_LIMIT.getOptionListValue().equals(UsageRestriction.ListType.WHITELIST);
-        }
-
-        private static boolean isBlacklist() {
-            return isCustom() && BREAK_LIMIT.getOptionListValue().equals(UsageRestriction.ListType.BLACKLIST);
-        }
-
         public static final ConfigBoolean BREAK_USE_DELAYED_DESTROY = bool("breakUseDelayedDestroy")
                 .defaultValue(false)
                 .build();
@@ -342,6 +371,16 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 .defaultValue(false)
                 .build();
 
+        // B方案: 累积破坏时,进度>=0.7即发STOP(服务端阈值),不等>=1.0
+        public static final ConfigBoolean FASTBREAK_EARLY_STOP = bool("fastbreakEarlyStop")
+                .defaultValue(false)
+                .build();
+
+        // C方案: 新方块首tick若delta>=0.7,直接START+STOP,不等累积
+        public static final ConfigBoolean FASTBREAK_INSTANT_STOP = bool("fastbreakInstantStop")
+                .defaultValue(false)
+                .build();
+
         // 模式限制器
         public static final ConfigOptionList BREAK_LIMITER = optionList("breakLimiter")
                 .defaultValue(ExcavateListMode.CUSTOM)
@@ -350,17 +389,17 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
         // 模式限制
         public static final ConfigOptionList BREAK_LIMIT = optionList("breakLimit")
                 .defaultValue(UsageRestriction.ListType.NONE)
-                .setVisible(Break::isCustom)
+                .setVisible(isBreakCustom)
                 .build();
 
         // 白名单
         public static final ConfigStringList BREAK_WHITELIST = stringList("breakWhitelist")
-                .setVisible(Break::isWhitelist)
+                .setVisible(isBreakWhitelist)
                 .build();
 
         // 黑名单
         public static final ConfigStringList BREAK_BLACKLIST = stringList("breakBlacklist")
-                .setVisible(Break::isBlacklist)
+                .setVisible(isBreakBlacklist)
                 .build();
 
         public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
@@ -371,6 +410,8 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 BREAK_USE_DELAYED_DESTROY,
                 BREAK_COOLDOWN,
                 BREAK_PROGRESS_THRESHOLD,
+                FASTBREAK_EARLY_STOP,
+                FASTBREAK_INSTANT_STOP,
                 // 限制器
                 BREAK_LIMITER,
                 BREAK_LIMIT,
@@ -382,12 +423,12 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
     public static class Bedrock {
         public static final ConfigInteger BEDROCK_INTERVAL = integer("bedrockInterval")
                 .defaultValue(2)
-                .range(1, 20)
+                .range(0, 20)
                 .build();
 
         public static final ConfigInteger BEDROCK_BLOCKS_PER_TICK = integer("bedrockBlocksPerTick")
                 .defaultValue(6)
-                .range(1, 8)
+                .range(1, 32)
                 .build();
 
         public static final ConfigBoolean BEDROCK_ALLOW_SIDE = bool("bedrockAllowSide")
@@ -397,11 +438,77 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
         public static final ConfigStringList BEDROCK_WHITELIST = stringList("bedrockWhitelist")
                 .build();
 
+        // 清理压力节流开关 (关闭后 submitCap 不再因清理压力降低)
+        public static final ConfigBoolean BEDROCK_CLEANUP_PRESSURE_THROTTLE = bool("bedrockCleanupPressureThrottle")
+                .defaultValue(true)
+                .build();
+
+        // 各类重试冷却 (ticks)
+        public static final ConfigInteger BEDROCK_SUBMIT_RETRY_COOLDOWN = integer("bedrockSubmitRetryCooldown")
+                .defaultValue(6)
+                .range(0, 40)
+                .build();
+
+        public static final ConfigInteger BEDROCK_OVERLAP_RETRY_COOLDOWN = integer("bedrockOverlapRetryCooldown")
+                .defaultValue(4)
+                .range(0, 40)
+                .build();
+
+        public static final ConfigInteger BEDROCK_EXPOSURE_RETRY_COOLDOWN = integer("bedrockExposureRetryCooldown")
+                .defaultValue(4)
+                .range(0, 40)
+                .build();
+
+        public static final ConfigInteger BEDROCK_FAILURE_RETRY_COOLDOWN = integer("bedrockFailureRetryCooldown")
+                .defaultValue(12)
+                .range(0, 60)
+                .build();
+
+        public static final ConfigInteger BEDROCK_BACKPRESSURE_TICKS = integer("bedrockBackpressureTicks")
+                .defaultValue(1)
+                .range(0, 10)
+                .build();
+
+        // 流水线深度倍率: active target cap = throughput * pipelineDepth
+        // 每个 target 的状态机周期约 4-5 tick, 倍率越大同时飞行中的 target 越多, 吞吐越高
+        public static final ConfigInteger BEDROCK_PIPELINE_DEPTH = integer("bedrockPipelineDepth")
+                .defaultValue(4)
+                .range(1, 16)
+                .build();
+
+        // 初始放置后等待活塞方块落定的宽限 tick 数 (非转头等待, 是等待服务器确认活塞方块)
+        public static final ConfigInteger BEDROCK_INIT_GRACE_TICKS = integer("bedrockInitGraceTicks")
+                .defaultValue(2)
+                .range(0, 10)
+                .build();
+
+        // 执行后等待新活塞延伸+破基岩+回收的安定 tick 数
+        public static final ConfigInteger BEDROCK_POST_EXECUTE_SETTLE_TICKS = integer("bedrockPostExecuteSettleTicks")
+                .defaultValue(4)
+                .range(0, 20)
+                .build();
+
+        // 活塞有电源但未延伸时, 等多久后尝试重建
+        public static final ConfigInteger BEDROCK_STALL_RECOVERY_TICKS = integer("bedrockStallRecoveryTicks")
+                .defaultValue(2)
+                .range(0, 10)
+                .build();
+
         public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
                 BEDROCK_INTERVAL,
                 BEDROCK_BLOCKS_PER_TICK,
                 BEDROCK_ALLOW_SIDE,
-                BEDROCK_WHITELIST
+                BEDROCK_WHITELIST,
+                BEDROCK_CLEANUP_PRESSURE_THROTTLE,
+                BEDROCK_SUBMIT_RETRY_COOLDOWN,
+                BEDROCK_OVERLAP_RETRY_COOLDOWN,
+                BEDROCK_EXPOSURE_RETRY_COOLDOWN,
+                BEDROCK_FAILURE_RETRY_COOLDOWN,
+                BEDROCK_BACKPRESSURE_TICKS,
+                BEDROCK_PIPELINE_DEPTH,
+                BEDROCK_INIT_GRACE_TICKS,
+                BEDROCK_POST_EXECUTE_SETTLE_TICKS,
+                BEDROCK_STALL_RECOVERY_TICKS
         );
     }
 
@@ -409,11 +516,6 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
         // 选区类型
         public static final ConfigOptionList PRINT_SELECTION_TYPE = optionList("printSelectionType")
                 .defaultValue(SelectionType.LITEMATICA_RENDER_LAYER)
-                .build();
-
-        // 投影轻松放置协议
-        public static final ConfigBoolean EASY_PLACE_PROTOCOL = bool("easyPlaceProtocol")
-                .defaultValue(false)
                 .build();
 
         // 凭空放置
@@ -424,6 +526,21 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
         // 打印目标排序
         public static final ConfigBoolean PRINT_SORT_TARGETS = bool("printSortTargets")
                 .defaultValue(false)
+                .build();
+
+        // 从底往上构建
+        public static final ConfigBoolean PRINT_BOTTOM_UP = bool("printBottomUp")
+                .defaultValue(false)
+                .build();
+
+        // 只打印选中的原理图
+        public static final ConfigBoolean PRINT_ONLY_SELECTED = bool("printOnlySelected")
+                .defaultValue(false)
+                .build();
+
+        // 索引扫描时按区块半径过滤远处桶(C方案)
+        public static final ConfigBoolean PRINT_INDEX_CHUNK_FILTER = bool("printIndexChunkFilter")
+                .defaultValue(true)
                 .build();
 
         // 放置面排序
@@ -524,6 +641,22 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 .setVisible(BONEMEAL_CROPS::getBooleanValue)
                 .build();
 
+        // 无支撑支撑方块 - 模式 (关闭/仅正下方/所有方向)
+        public static final ConfigOptionList SUPPORT_PLACE_MODE = optionList("supportPlaceMode")
+                .defaultValue(me.aleksilassila.litematica.printer.enums.SupportPlaceModeType.NONE)
+                .build();
+
+        // 无支撑支撑方块 - 方块列表 (类似 bedrockWhitelist, 默认玻璃)
+        public static final ConfigStringList SUPPORT_BLOCK_LIST = stringList("supportBlockList")
+                .defaultValue(java.util.List.of("minecraft:glass"))
+                .build();
+
+        // 无支撑支撑方块 - 支撑防抖 (tick, 0=关闭)
+        public static final ConfigInteger SUPPORT_PENDING_TTL = integer("supportPendingTtl")
+                .defaultValue(20)
+                .range(0, 20)
+                .build();
+
         // 破坏错误方块
         public static final ConfigBoolean BREAK_WRONG_BLOCK = bool("printBreakWrongBlock")
                 .defaultValue(false)
@@ -534,16 +667,13 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 .defaultValue(false)
                 .build();
 
-        // 破坏错误状态方块（实验性）
-        public static final ConfigBoolean BREAK_WRONG_STATE_BLOCK = bool("printBreakWrongStateBlock")
-                .defaultValue(false)
-                .build();
-
         public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
                 PRINT_SELECTION_TYPE,
-                EASY_PLACE_PROTOCOL,
                 PLACE_IN_AIR,
                 PRINT_SORT_TARGETS,
+                PRINT_BOTTOM_UP,
+                PRINT_ONLY_SELECTED,
+                PRINT_INDEX_CHUNK_FILTER,
                 PRINT_SORT_SIDES,
                 REPAIR_RAIL_SHAPE,
                 PRINT_FORCED_SNEAK,
@@ -551,7 +681,6 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 PRINT_RESERVE_ITEM_COUNT,
                 BREAK_WRONG_BLOCK,
                 BREAK_EXTRA_BLOCK,
-                BREAK_WRONG_STATE_BLOCK,
                 PRINT_SKIP,
                 PRINT_SKIP_LIST,
                 PRINT_REPLACE,
@@ -566,22 +695,13 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 FILL_COMPOSTER_WHITELIST,
                 BONEMEAL_CROPS
                 , BONEMEAL_CROPS_CLICKS
+                , SUPPORT_PLACE_MODE
+                , SUPPORT_BLOCK_LIST
+                , SUPPORT_PENDING_TTL
         );
     }
 
     public static class Mine {
-        private static boolean isCustom() {
-            return EXCAVATE_LIMITER.getOptionListValue().equals(ExcavateListMode.CUSTOM);
-        }
-
-        private static boolean isWhitelist() {
-            return isCustom() && EXCAVATE_LIMIT.getOptionListValue().equals(UsageRestriction.ListType.WHITELIST);
-        }
-
-        private static boolean isBlacklist() {
-            return isCustom() && EXCAVATE_LIMIT.getOptionListValue().equals(UsageRestriction.ListType.BLACKLIST);
-        }
-
         // 选区类型
         public static final ConfigOptionList MINE_SELECTION_TYPE = optionList("mineSelectionType")
                 .defaultValue(SelectionType.LITEMATICA_SELECTION)
@@ -595,17 +715,17 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
         // 挖掘模式限制
         public static final ConfigOptionList EXCAVATE_LIMIT = optionList("excavateLimit")
                 .defaultValue(UsageRestriction.ListType.NONE)
-                .setVisible(Mine::isCustom)
+                .setVisible(isExcavateCustom)
                 .build();
 
         // 挖掘白名单
         public static final ConfigStringList EXCAVATE_WHITELIST = stringList("excavateWhitelist")
-                .setVisible(Mine::isWhitelist)
+                .setVisible(isExcavateWhitelist)
                 .build();
 
         // 挖掘黑名单
         public static final ConfigStringList EXCAVATE_BLACKLIST = stringList("excavateBlacklist")
-                .setVisible(Mine::isBlacklist)
+                .setVisible(isExcavateBlacklist)
                 .build();
 
         public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
@@ -618,10 +738,6 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
     }
 
     public static class Fill {
-        private static boolean isBlocklist() {
-            return FILL_BLOCK_MODE.getOptionListValue().equals(FillBlockModeType.BLOCKLIST);
-        }
-
         // 选区类型
         public static final ConfigOptionList FILL_SELECTION_TYPE = optionList("fillSelectionType")
                 .defaultValue(SelectionType.LITEMATICA_SELECTION)
@@ -635,7 +751,7 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
         // 填充方块名单
         public static final ConfigStringList FILL_BLOCK_LIST = stringList("fillBlockList")
                 .defaultValue(Blocks.COBBLESTONE)
-                .setVisible(Fill::isBlocklist)
+                .setVisible(isBlocklist)
                 .build();
 
         // 模式朝向
@@ -695,13 +811,29 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
         // 切换模式
         public static final ConfigHotkey SWITCH_PRINTER_MODE = hotkey("switchPrinterMode")
                 .bindConfig(Core.WORK_MODE_TYPE)
-                .setVisible(Core::isSingleMode) // 仅单模式时显示
+                .setVisible(isSingle) // 仅单模式时显示
                 .build();
 
         // 破基岩
         public static final ConfigBooleanHotkeyed BEDROCK = booleanHotkey("bedrock")
                 .defaultValue(false)
-                .setVisible(Core::isMultiMode) // 仅多模式时显示
+                .setVisible(isMulti) // 仅多模式时显示
+                .build();
+
+        // 远程取物 (Chest Tracker) - 开关
+        public static final ConfigBooleanHotkeyed REMOTE_TAKE = booleanHotkey("remoteTake")
+                .defaultValue(false)
+                .setVisible(ModLoadUtils::isChestTrackerLoaded)
+                .build();
+
+        // 远程取物 (Chest Tracker) - 添加打印机库存
+        public static final ConfigHotkey PRINTER_INVENTORY = hotkey("printerInventory")
+                .setVisible(ModLoadUtils::isChestTrackerLoaded)
+                .build();
+
+        // 远程取物 (Chest Tracker) - 清空打印机库存
+        public static final ConfigHotkey REMOVE_PRINT_INVENTORY = hotkey("removePrintInventory")
+                .setVisible(ModLoadUtils::isChestTrackerLoaded)
                 .build();
 
         public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
@@ -715,7 +847,12 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 Core.MINE,                // 挖掘
                 Core.FILL,                    // 填充
                 Core.FLUID,                  // 排流体
-                BEDROCK                       // 破基岩
+                BEDROCK,                      // 破基岩
+
+                // Chest Tracker 远程取物
+                REMOTE_TAKE,                  // 远程取物开关
+                PRINTER_INVENTORY,            // 添加打印机库存
+                REMOVE_PRINT_INVENTORY        // 清空打印机库存
         );
     }
 

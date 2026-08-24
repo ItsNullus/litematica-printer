@@ -16,15 +16,6 @@ public interface PrintTask {
 
     boolean shouldKeep(ClientLevel level, WorldSchematic schematic);
 
-    default boolean isWaitingForWorldUpdate(ClientLevel level, WorldSchematic schematic) {
-        return false;
-    }
-
-    /** Earliest fallback poll when no matching server block update is received. */
-    default long nextCheckTick() {
-        return Long.MIN_VALUE;
-    }
-
     PrintTaskBuildResult buildAction(SchematicBlockContext context);
 
     @Nullable

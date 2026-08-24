@@ -1,6 +1,5 @@
 package me.aleksilassila.litematica.printer.guide;
 
-import me.aleksilassila.litematica.printer.Reference;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.enums.BlockMatchResult;
 import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
@@ -120,9 +119,9 @@ public class DefaultGuide extends Guide {
         if (printBreakWrongBlock || printBreakExtraBlock) {
             if (InteractionUtils.canBreakBlock(blockPos) && InteractionUtils.breakRestriction(currentState)) {
                 if (printBreakWrongBlock && !requiredState.isAir()) {
-                    InteractionUtils.getRuntime().add(context);
+                    InteractionUtils.INSTANCE.add(context);
                 } else if (printBreakExtraBlock && requiredState.isAir()) {
-                    InteractionUtils.getRuntime().add(context);
+                    InteractionUtils.INSTANCE.add(context);
                 }
             }
         }
@@ -131,22 +130,11 @@ public class DefaultGuide extends Guide {
 
     @Override
     protected Result onBuildActionWrongState(BlockMatchResult state) {
-        if (!Configs.Print.BREAK_WRONG_STATE_BLOCK.getBooleanValue() || shouldIgnoreWrongStateBreak()) {
-            return Result.PASS;
-        }
-        if (InteractionUtils.canBreakBlock(blockPos) && InteractionUtils.breakRestriction(currentState)) {
-            InteractionUtils.getRuntime().add(context);
+        if (Configs.Print.BREAK_WRONG_BLOCK.getBooleanValue()
+                && InteractionUtils.canBreakBlock(blockPos)
+                && InteractionUtils.breakRestriction(currentState)) {
+            InteractionUtils.INSTANCE.add(context);
         }
         return Result.PASS;
-    }
-
-    private boolean shouldIgnoreWrongStateBreak() {
-        return requiredState.hasProperty(BlockStateProperties.UP)
-                || requiredState.hasProperty(BlockStateProperties.DOWN)
-                || requiredState.hasProperty(BlockStateProperties.NORTH)
-                || requiredState.hasProperty(BlockStateProperties.EAST)
-                || requiredState.hasProperty(BlockStateProperties.SOUTH)
-                || requiredState.hasProperty(BlockStateProperties.WEST)
-                || Reference.isIgnoreWrongStateBlock(requiredBlock);
     }
 }

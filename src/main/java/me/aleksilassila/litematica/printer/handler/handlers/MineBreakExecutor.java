@@ -1,10 +1,12 @@
 package me.aleksilassila.litematica.printer.handler.handlers;
 
 import me.aleksilassila.litematica.printer.config.Configs;
-import me.aleksilassila.litematica.printer.integration.tweakeroo.TweakerooAdapter;
+import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.PlayerUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.ToolSelectionUtils;
+import me.aleksilassila.litematica.printer.utils.mods.ModLoadUtils;
+import me.aleksilassila.litematica.printer.utils.mods.TweakerooUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -19,56 +21,36 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 
 final class MineBreakExecutor {
+    private static final Minecraft CLIENT = Minecraft.getInstance();
     private static final float FAST_FINISH_PROGRESS = 0.5F;
     private static final float CURRENT_TOOL_MIN_EFFICIENCY_RATIO = 0.75F;
 
-    private final Minecraft client;
-    private final TweakerooAdapter tweakeroo;
     private final Map<BlockState, Float> currentProgressCache = new IdentityHashMap<>();
     private final Map<BlockState, ToolChoice> bestToolCache = new IdentityHashMap<>();
-    private int inventorySignature;
     private boolean resolveBestTool;
-
-    MineBreakExecutor(Minecraft client, TweakerooAdapter tweakeroo) {
-        this.client = client;
-        this.tweakeroo = tweakeroo;
-    }
 
     public void beginTick() {
         this.currentProgressCache.clear();
         this.bestToolCache.clear();
-        this.inventorySignature = Integer.MIN_VALUE;
         this.resolveBestTool = Configs.Break.BREAK_AUTO_TOOL.getBooleanValue()
-                || this.tweakeroo.isToolSwitchEnabled();
+                || ModLoadUtils.isTweakerooLoaded() && TweakerooUtils.isToolSwitchEnabled();
     }
 
     public void reset() {
         this.currentProgressCache.clear();
         this.bestToolCache.clear();
-        this.inventorySignature = Integer.MIN_VALUE;
         this.resolveBestTool = false;
     }
 
     @Nullable
     public Target analyze(BlockPos pos) {
-        return this.analyze(pos, null);
-    }
-
-    @Nullable
-    public Target analyze(BlockPos pos, @Nullable BlockState observedState) {
-        LocalPlayer player = this.client.player;
-        ClientLevel level = this.client.level;
-        if (player == null || level == null || this.client.gameMode == null || pos == null) {
+        LocalPlayer player = CLIENT.player;
+        ClientLevel level = CLIENT.level;
+        if (player == null || level == null || pos == null) {
             return null;
         }
-        this.refreshInventoryCaches(player);
-        BlockState state = observedState == null ? level.getBlockState(pos) : observedState;
-        if (state.isAir()
-                || state.getBlock() instanceof net.minecraft.world.level.block.LiquidBlock
-                || !level.getWorldBorder().isWithinBounds(pos)
-                || (Configs.Break.BREAK_CHECK_HARDNESS.getBooleanValue()
-                && state.getDestroySpeed(level, pos) < 0.0F)
-                || player.blockActionRestricted(level, pos, this.client.gameMode.getPlayerMode())) {
+        BlockState state = level.getBlockState(pos);
+        if (!InteractionUtils.canBreakBlock(pos)) {
             return null;
         }
         ItemStack currentStack = player.getMainHandItem();
@@ -84,8 +66,8 @@ final class MineBreakExecutor {
                     false
             );
         }
-        float currentProgress = this.getCurrentProgress(player, level, state, currentStack, pos);
-        ToolChoice toolChoice = this.getBestToolChoice(player, level, state, currentStack, currentProgress, pos);
+        float currentProgress = this.getCurrentProgress(player, state, currentStack);
+        ToolChoice toolChoice = this.getBestToolChoice(player, state, currentStack, currentProgress);
         float bestProgress = toolChoice.progress();
         if (bestProgress <= 0.0F && !player.getAbilities().instabuild) {
             return null;
@@ -103,12 +85,12 @@ final class MineBreakExecutor {
     }
 
     public boolean isInstantWithCurrentTool(Target target) {
-        LocalPlayer player = this.client.player;
+        LocalPlayer player = CLIENT.player;
         return player != null && (player.getAbilities().instabuild || target.currentProgress > FAST_FINISH_PROGRESS);
     }
 
     public boolean isInstantWithBestTool(Target target) {
-        LocalPlayer player = this.client.player;
+        LocalPlayer player = CLIENT.player;
         return player != null && (player.getAbilities().instabuild || target.bestProgress > FAST_FINISH_PROGRESS);
     }
 
@@ -122,7 +104,7 @@ final class MineBreakExecutor {
     }
 
     public boolean isCurrentToolEffective(Target target) {
-        LocalPlayer player = this.client.player;
+        LocalPlayer player = CLIENT.player;
         if (player == null || !this.shouldResolveBestTool()) {
             return true;
         }
@@ -136,14 +118,7 @@ final class MineBreakExecutor {
         return target != null && target.bestToolItem == item;
     }
 
-    private ToolChoice getBestToolChoice(
-            LocalPlayer player,
-            ClientLevel level,
-            BlockState state,
-            ItemStack currentStack,
-            float currentProgress,
-            BlockPos pos
-    ) {
+    private ToolChoice getBestToolChoice(LocalPlayer player, BlockState state, ItemStack currentStack, float currentProgress) {
         ToolChoice cached = this.bestToolCache.get(state);
         if (cached != null) {
             return cached;
@@ -151,7 +126,9 @@ final class MineBreakExecutor {
         float bestProgress = currentProgress;
         Item bestItem = currentStack.getItem();
         boolean preferSilkTouch = ToolSelectionUtils.prefersSilkTouchForDrops(state);
-        boolean currentPreservesDrops = preferSilkTouch && ToolSelectionUtils.hasSilkTouch(currentStack);
+        boolean currentPreservesDrops = preferSilkTouch
+                && InteractionUtils.isToolAllowedByDurabilityProtection(currentStack)
+                && ToolSelectionUtils.hasSilkTouch(currentStack);
         boolean bestPreservesDrops = currentPreservesDrops;
         if (!this.shouldResolveBestTool()) {
             ToolChoice choice = new ToolChoice(bestItem, bestProgress, currentPreservesDrops, bestPreservesDrops);
@@ -159,10 +136,10 @@ final class MineBreakExecutor {
             return choice;
         }
         for (ItemStack stack : InventoryUtils.getMainStacks(player.getInventory())) {
-            if (stack.isEmpty()) {
+            if (stack.isEmpty() || !InteractionUtils.isToolAllowedByDurabilityProtection(stack)) {
                 continue;
             }
-            float progress = this.getDestroyProgress(player, level, state, stack, pos);
+            float progress = this.getDestroyProgress(player, state, stack);
             boolean stackPreservesDrops = preferSilkTouch && ToolSelectionUtils.hasSilkTouch(stack);
             if ((stackPreservesDrops && !bestPreservesDrops)
                     || stackPreservesDrops == bestPreservesDrops && progress > bestProgress) {
@@ -193,16 +170,11 @@ final class MineBreakExecutor {
         return target.currentProgress >= target.bestProgress * CURRENT_TOOL_MIN_EFFICIENCY_RATIO;
     }
 
-    private float getDestroyProgress(
-            LocalPlayer player,
-            ClientLevel level,
-            BlockState state,
-            ItemStack stack,
-            BlockPos pos
-    ) {
-        // Use the live state hardness, not Block.defaultDestroyTime(). The latter is only the
-        // block's registered default and becomes stale for state-aware/custom implementations.
-        float hardness = state.getDestroySpeed(level, pos);
+    private float getDestroyProgress(LocalPlayer player, BlockState state, ItemStack stack) {
+        if (!InteractionUtils.isToolAllowedByDurabilityProtection(stack)) {
+            return 0.0F;
+        }
+        float hardness = state.getBlock().defaultDestroyTime();
         if (hardness < 0.0F) {
             return 0.0F;
         }
@@ -213,36 +185,14 @@ final class MineBreakExecutor {
         return PlayerUtils.getBlockBreakingSpeed(player, state, stack) / hardness / (float) divisor;
     }
 
-    private float getCurrentProgress(
-            LocalPlayer player,
-            ClientLevel level,
-            BlockState state,
-            ItemStack stack,
-            BlockPos pos
-    ) {
+    private float getCurrentProgress(LocalPlayer player, BlockState state, ItemStack stack) {
         Float cached = this.currentProgressCache.get(state);
         if (cached != null) {
             return cached;
         }
-        float progress = this.getDestroyProgress(player, level, state, stack, pos);
+        float progress = this.getDestroyProgress(player, state, stack);
         this.currentProgressCache.put(state, progress);
         return progress;
-    }
-
-    /**
-     * A tool can be changed after a target was analyzed in the same client tick. The old caches
-     * were keyed only by BlockState, so the next target reused the broken tool's speed and best
-     * tool choice until the following tick, producing an avoidable pause at tool exhaustion.
-     */
-    private void refreshInventoryCaches(LocalPlayer player) {
-        ItemStack mainHand = player.getMainHandItem();
-        int signature = 31 * InventoryUtils.getSelectedSlot(player.getInventory())
-                + mainHand.hashCode();
-        if (this.inventorySignature != Integer.MIN_VALUE && this.inventorySignature != signature) {
-            this.currentProgressCache.clear();
-            this.bestToolCache.clear();
-        }
-        this.inventorySignature = signature;
     }
 
     public static final class Target {

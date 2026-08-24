@@ -4,9 +4,10 @@ import fi.dy.masa.malilib.interfaces.IInitializationHandler;
 import me.aleksilassila.litematica.printer.gui.ConfigUi;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.enums.PrintModeType;
-import me.aleksilassila.litematica.printer.runtime.RuntimeAccess;
+import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
 import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockController;
-import me.aleksilassila.litematica.printer.integration.quickshulker.HighlightBlockRenderer;
+import me.aleksilassila.litematica.printer.printer.zxy.chesttracker.ChestTrackerBridge;
+import me.aleksilassila.litematica.printer.printer.zxy.utils.HighlightBlockRenderer;
 import me.aleksilassila.litematica.printer.utils.minecraft.MessageUtils;
 
 import static me.aleksilassila.litematica.printer.config.Configs.*;
@@ -20,6 +21,7 @@ public class InitHandler implements IInitializationHandler {
         Configs.init();
         initModConfig();
         initConfigCallback();
+        ChestTrackerBridge.init();  // Chest Tracker 远程取物: 世界加入/退出加载与保存打印机库存
         HighlightBlockRenderer.init();  // 高亮显示方块渲染器
     }
 
@@ -38,7 +40,7 @@ public class InitHandler implements IInitializationHandler {
         // 工作开关
         Core.WORK_SWITCH.setValueChangeCallback(b -> {
             if (!b.getBooleanValue()) {
-                RuntimeAccess.get().reset("work_switch_off");
+                ClientPlayerTickManager.resetRuntime("work_switch_off");
             }
         });
 
@@ -60,7 +62,13 @@ public class InitHandler implements IInitializationHandler {
         Fill.FILL_BLOCK_MODE.setValueChangeCallback(b -> ConfigUi.refresh());
         Core.LAG_CHECK.setValueChangeCallback(b -> ConfigUi.refresh());
         Core.RENDER_HUD.setValueChangeCallback(b -> ConfigUi.refresh());
-        Core.MISSING_MATERIAL_HUD.setValueChangeCallback(b -> ConfigUi.refresh());
         Configs.Placement.RTT_ADAPTIVE_INTERVAL.setValueChangeCallback(b -> ConfigUi.refresh());
+
+        // 远程取物开关关闭时，中断正在进行的取物/添加流程
+        Hotkeys.REMOTE_TAKE.setValueChangeCallback(b -> {
+            if (!b.getBooleanValue()) {
+                ChestTrackerBridge.abortRemoteOps();
+            }
+        });
     }
 }

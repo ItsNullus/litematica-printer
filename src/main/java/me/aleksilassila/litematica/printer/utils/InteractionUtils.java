@@ -9,6 +9,7 @@ import me.aleksilassila.litematica.printer.mixin_extension.MultiPlayerGameModeEx
 import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
 import me.aleksilassila.litematica.printer.utils.mods.ModLoadUtils;
 import me.aleksilassila.litematica.printer.utils.mods.TweakerooUtils;
+import me.aleksilassila.litematica.printer.utils.minecraft.ToolSelectionUtils;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
@@ -18,6 +19,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -25,23 +27,27 @@ import net.minecraft.world.phys.BlockHitResult;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
-import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
-import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
-import me.aleksilassila.litematica.printer.runtime.RuntimeAccess;
+
+import static fi.dy.masa.tweakeroo.config.Configs.Lists.BLOCK_TYPE_BREAK_RESTRICTION_BLACKLIST;
+import static fi.dy.masa.tweakeroo.config.Configs.Lists.BLOCK_TYPE_BREAK_RESTRICTION_WHITELIST;
+import static fi.dy.masa.tweakeroo.tweaks.PlacementTweaks.BLOCK_TYPE_BREAK_RESTRICTION;
 
 @SuppressWarnings({"DataFlowIssue", "BooleanMethodIsAlwaysInverted"})
 @Environment(EnvType.CLIENT)
-public final class InteractionUtils implements RuntimeComponent {
+public class InteractionUtils {
     public static final Minecraft client = Minecraft.getInstance();
+    public static final InteractionUtils INSTANCE = new InteractionUtils();
     private static final UsageRestrictionCache BREAK_RESTRICTION_CACHE = new UsageRestrictionCache();
 
-    private final BreakQueueState breakState = new BreakQueueState();
+    private final Queue<BlockPos> breakQueue = new LinkedList<>();
+    private final Set<BlockPos> queuedBreaks = new HashSet<>();
+    private final Map<BlockPos, Integer> recentlyBroken = new HashMap<>();
+    private final Map<BlockPos, Integer> pendingBroken = new HashMap<>();
+    private BlockPos breakPos;
+    private boolean forceDelayedDestroy;
+    private int externalDestroyLockTicks;
 
-    public InteractionUtils() {
-    }
-
-    public static InteractionUtils getRuntime() {
-        return RuntimeAccess.get().interactionUtils();
+    private InteractionUtils() {
     }
 
     public static boolean canBreakBlock(BlockPos pos) {
@@ -49,8 +55,7 @@ public final class InteractionUtils implements RuntimeComponent {
         LocalPlayer player = client.player;
         if (world == null || player == null || client.gameMode == null) return false;
         BlockState currentState = world.getBlockState(pos);
-        if (Configs.Break.BREAK_CHECK_HARDNESS.getBooleanValue()
-                && currentState.getDestroySpeed(world, pos) < 0.0F) {
+        if (Configs.Break.BREAK_CHECK_HARDNESS.getBooleanValue() && currentState.getBlock().defaultDestroyTime() < 0) {
             return false;
         }
         return !currentState.isAir() &&
@@ -64,10 +69,10 @@ public final class InteractionUtils implements RuntimeComponent {
     public static boolean breakRestriction(BlockState blockState) {
         if (Configs.Break.BREAK_LIMITER.getOptionListValue().equals(ExcavateListMode.TWEAKEROO)) {
             if (!ModLoadUtils.isTweakerooLoaded()) return true;
-            UsageRestriction.ListType listType = TweakerooUtils.getBreakRestrictionListType();
+            UsageRestriction.ListType listType = BLOCK_TYPE_BREAK_RESTRICTION.getListType();
             return BREAK_RESTRICTION_CACHE.allows("break_tweakeroo", listType,
-                    TweakerooUtils.getBreakRestrictionBlacklist(),
-                    TweakerooUtils.getBreakRestrictionWhitelist(),
+                    BLOCK_TYPE_BREAK_RESTRICTION_BLACKLIST.getStrings(),
+                    BLOCK_TYPE_BREAK_RESTRICTION_WHITELIST.getStrings(),
                     blockState);
         } else {
             IConfigOptionListEntry optionListValue = Configs.Break.BREAK_LIMIT.getOptionListValue();
@@ -81,8 +86,92 @@ public final class InteractionUtils implements RuntimeComponent {
         }
     }
 
+    public static boolean trySwitchToEffectiveTool(BlockPos pos, BlockState blockState) {
+        if (pos == null || blockState == null || blockState.isAir() || blockState.getBlock() instanceof LiquidBlock) {
+            return false;
+        }
+        LocalPlayer player = client.player;
+        boolean tweakerooToolSwitch = ModLoadUtils.isTweakerooLoaded() && TweakerooUtils.isToolSwitchEnabled();
+        if (player != null
+                && (Configs.Break.BREAK_AUTO_TOOL.getBooleanValue() || tweakerooToolSwitch)
+                && ToolSelectionUtils.prefersSilkTouchForDrops(blockState)
+                && (!isToolAllowedByDurabilityProtection(player.getMainHandItem())
+                || !ToolSelectionUtils.hasSilkTouch(player.getMainHandItem()))
+                && InventoryUtils.hasUsableSilkTouchTool(player)) {
+            return InventoryUtils.switchToBestTool(player, blockState);
+        }
+        if (Configs.Break.BREAK_AUTO_TOOL.getBooleanValue()) {
+            return player != null && InventoryUtils.switchToBestTool(player, blockState);
+        }
+        if (tweakerooToolSwitch) {
+            TweakerooUtils.trySwitchToEffectiveTool(pos);
+            return protectCurrentToolBeforeBreak(blockState);
+        }
+        return false;
+    }
+
+    public static boolean isToolAllowedByDurabilityProtection(ItemStack stack) {
+        return !TweakerooUtils.isToolTooDamagedForBreaking(stack);
+    }
+
+    public static boolean isRecoveryToolReadyForBreak(BlockState blockState) {
+        LocalPlayer player = client.player;
+        if (player == null || player.getAbilities().instabuild
+                || !ToolSelectionUtils.prefersSilkTouchForDrops(blockState)) {
+            return true;
+        }
+        boolean toolSwitchEnabled = Configs.Break.BREAK_AUTO_TOOL.getBooleanValue()
+                || ModLoadUtils.isTweakerooLoaded() && TweakerooUtils.isToolSwitchEnabled();
+        if (!toolSwitchEnabled) {
+            return true;
+        }
+        if (isToolAllowedByDurabilityProtection(player.getMainHandItem())
+                && ToolSelectionUtils.hasSilkTouch(player.getMainHandItem())) {
+            return true;
+        }
+        return !InventoryUtils.hasUsableSilkTouchTool(player);
+    }
+
+    public static int getCurrentToolSafeBreakBudget() {
+        LocalPlayer player = client.player;
+        if (player == null || player.getAbilities().instabuild) {
+            return Integer.MAX_VALUE;
+        }
+        return TweakerooUtils.getSafeBreakBudget(player.getMainHandItem());
+    }
+
+    public static boolean protectCurrentToolBeforeBreak() {
+        return protectCurrentToolBeforeBreak(null);
+    }
+
+    public static boolean protectCurrentToolBeforeBreak(@Nullable BlockState blockState) {
+        LocalPlayer player = client.player;
+        if (player == null || player.getAbilities().instabuild) {
+            return true;
+        }
+        if (isToolAllowedByDurabilityProtection(player.getMainHandItem())) {
+            return true;
+        }
+        TweakerooUtils.trySwapCurrentToolIfNearlyBroken();
+        if (isToolAllowedByDurabilityProtection(player.getMainHandItem())) {
+            return true;
+        }
+        if (blockState != null && InventoryUtils.switchToBestTool(player, blockState)) {
+            return isToolAllowedByDurabilityProtection(player.getMainHandItem());
+        }
+        return false;
+    }
+
     public void add(BlockPos pos) {
-        this.breakState.add(pos);
+        if (pos == null) return;
+        BlockPos queuedPos = pos.immutable();
+        if (queuedPos.equals(this.breakPos)
+                || this.recentlyBroken.containsKey(queuedPos)
+                || this.pendingBroken.containsKey(queuedPos)
+                || !this.queuedBreaks.add(queuedPos)) {
+            return;
+        }
+        breakQueue.add(queuedPos);
     }
 
     public void add(SchematicBlockContext ctx) {
@@ -90,19 +179,63 @@ public final class InteractionUtils implements RuntimeComponent {
         this.add(ctx.blockPos);
     }
 
+    private void tickRecentlyBroken() {
+        tickBreakMarkerMap(this.recentlyBroken);
+        tickBreakMarkerMap(this.pendingBroken);
+    }
+
+    private void tickBreakMarkerMap(Map<BlockPos, Integer> markerMap) {
+        if (markerMap.isEmpty()) {
+            return;
+        }
+        Iterator<Map.Entry<BlockPos, Integer>> iterator = markerMap.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<BlockPos, Integer> entry = iterator.next();
+            int remainingTicks = entry.getValue() - 1;
+            if (remainingTicks <= 0) {
+                iterator.remove();
+            } else {
+                entry.setValue(remainingTicks);
+            }
+        }
+    }
+
     public void preprocess() {
-        this.breakState.tickMarkers();
-        this.breakState.clearIfDisabled(ConfigUtils.isEnable());
+        this.tickRecentlyBroken();
+        if (this.externalDestroyLockTicks > 0) {
+            this.externalDestroyLockTicks--;
+        }
+        if (!ConfigUtils.isEnable()) {
+            if (!breakQueue.isEmpty()) {
+                breakQueue.clear();
+                queuedBreaks.clear();
+            }
+            if (breakPos != null) {
+                breakPos = null;
+            }
+            if (!this.recentlyBroken.isEmpty()) {
+                this.recentlyBroken.clear();
+            }
+            if (!this.pendingBroken.isEmpty()) {
+                this.pendingBroken.clear();
+            }
+            this.externalDestroyLockTicks = 0;
+            this.forceDelayedDestroy = false;
+        }
     }
 
     public void resetRuntime() {
-        this.breakState.reset();
+        this.breakQueue.clear();
+        this.queuedBreaks.clear();
+        this.recentlyBroken.clear();
+        this.pendingBroken.clear();
+        this.breakPos = null;
+        this.forceDelayedDestroy = false;
+        this.externalDestroyLockTicks = 0;
     }
 
-    @Override public void onEpochChanged(RuntimeEvent.EpochChanged event) { this.resetRuntime(); }
-
     public boolean isNeedHandle() {
-        return this.breakState.hasWork();
+        return !breakQueue.isEmpty() || breakPos != null;
     }
 
     public void onTick() {
@@ -111,15 +244,16 @@ public final class InteractionUtils implements RuntimeComponent {
         if (player == null || level == null) {
             return;
         }
-        if (this.breakState.isLocked()) {
+        if (this.externalDestroyLockTicks > 0) {
             return;
         }
-        if (this.breakState.activePos() == null && !this.breakState.hasQueued()) {
+        if (breakPos == null && breakQueue.isEmpty()) {
             return;
         }
-        if (this.breakState.activePos() == null) {
-            while (this.breakState.hasQueued()) {
-                BlockPos pos = this.breakState.pollQueued();
+        if (breakPos == null) {
+            while (!breakQueue.isEmpty()) {
+                BlockPos pos = breakQueue.poll();
+                queuedBreaks.remove(pos);
                 if (pos == null) {
                     continue;
                 }
@@ -128,7 +262,7 @@ public final class InteractionUtils implements RuntimeComponent {
                 }
                 BlockBreakResult result = continueDestroyBlock(pos, Direction.DOWN);
                 if (result == BlockBreakResult.IN_PROGRESS) {
-                    this.breakState.activePos(pos);
+                    breakPos = pos;
                     break;
                 }
                 if (result == BlockBreakResult.COMPLETED || result == BlockBreakResult.COMPLETED_WAIT) {
@@ -139,53 +273,64 @@ public final class InteractionUtils implements RuntimeComponent {
                 }
             }
         } else {
-            BlockPos activePos = this.breakState.activePos();
             // 检查当前目标是否仍可破坏（如冰挖掘后生成水/流体，流体不可破坏）
-            if (!canBreakBlock(activePos)) {
-                this.breakState.clearActive();
+            if (!canBreakBlock(breakPos)) {
+                breakPos = null;
+                this.forceDelayedDestroy = false;
                 onTick();
                 return;
             }
-            BlockBreakResult result = continueDestroyBlock(activePos, Direction.DOWN);
+            BlockBreakResult result = continueDestroyBlock(breakPos, Direction.DOWN);
             if (result != BlockBreakResult.IN_PROGRESS) {
                 if (result == BlockBreakResult.COMPLETED || result == BlockBreakResult.COMPLETED_WAIT) {
-                    this.markRecentlyBroken(activePos);
+                    this.markRecentlyBroken(breakPos);
                     if (result == BlockBreakResult.COMPLETED_WAIT) {
-                        this.markPendingBroken(activePos, ConfigUtils.getBreakCooldown());
+                        this.markPendingBroken(breakPos, ConfigUtils.getBreakCooldown());
                     }
                 }
-                this.breakState.clearActive();
+                breakPos = null;
+                this.forceDelayedDestroy = false;
                 onTick();
             }
         }
     }
 
     public boolean hasActiveDestroyTarget() {
-        return this.breakState.activePos() != null;
+        return this.breakPos != null;
     }
 
     public void suppressQueuedBreaks(int ticks) {
-        this.breakState.suppress(ticks);
+        this.externalDestroyLockTicks = Math.max(this.externalDestroyLockTicks, ticks);
     }
 
     public void markRecentlyBroken(BlockPos pos) {
-        this.breakState.markRecentlyBroken(pos);
+        if (pos != null) {
+            this.recentlyBroken.put(pos.immutable(), 2);
+        }
     }
 
     public void markPendingBroken(BlockPos pos, int timeoutTicks) {
-        this.breakState.markPendingBroken(pos, timeoutTicks);
+        if (pos != null) {
+            this.pendingBroken.put(pos.immutable(), Math.max(timeoutTicks, 1));
+        }
     }
 
     public void confirmServerBlockUpdate(BlockPos pos) {
-        this.breakState.confirmServerBlockUpdate(pos);
+        if (pos == null) {
+            return;
+        }
+        this.recentlyBroken.remove(pos);
+        this.pendingBroken.remove(pos);
     }
 
     public void clearPendingBroken(BlockPos pos) {
-        this.breakState.clearPendingBroken(pos);
+        if (pos != null) {
+            this.pendingBroken.remove(pos);
+        }
     }
 
     public boolean isRecentlyBroken(BlockPos pos) {
-        return this.breakState.isRecentlyBroken(pos);
+        return pos != null && (this.recentlyBroken.containsKey(pos) || this.pendingBroken.containsKey(pos));
     }
 
     public BlockBreakResult continueDestroyBlock(final BlockPos blockPos, Direction direction, boolean localPrediction, boolean trackBreakPos) {
@@ -193,13 +338,12 @@ public final class InteractionUtils implements RuntimeComponent {
         if (gameMode == null || blockPos == null || direction == null) {
             return BlockBreakResult.FAILED;
         }
-        BlockBreakResult result = gameMode.litematica_printer$continueDestroyBlock(
-                localPrediction, blockPos, direction, this.breakState.forceDelayedDestroy());
+        BlockBreakResult result = gameMode.litematica_printer$continueDestroyBlock(localPrediction, blockPos, direction, this.forceDelayedDestroy);
         if (trackBreakPos && result == BlockBreakResult.IN_PROGRESS) {
-            this.breakState.activePos(blockPos);
+            breakPos = blockPos;
         }
         if (result != BlockBreakResult.IN_PROGRESS) {
-            this.breakState.forceDelayedDestroy(false);
+            this.forceDelayedDestroy = false;
         }
         return result;
     }
@@ -254,14 +398,14 @@ public final class InteractionUtils implements RuntimeComponent {
                 true,
                 blockPos,
                 direction,
-                this.breakState.forceDelayedDestroy(),
+                this.forceDelayedDestroy,
                 false
         );
         if (trackBreakPos && result == BlockBreakResult.IN_PROGRESS) {
-            this.breakState.activePos(blockPos);
+            breakPos = blockPos;
         }
         if (result != BlockBreakResult.IN_PROGRESS) {
-            this.breakState.forceDelayedDestroy(false);
+            this.forceDelayedDestroy = false;
         }
         return result;
     }

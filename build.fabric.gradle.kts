@@ -88,8 +88,6 @@ dependencies {
 
     implementation("net.fabricmc:fabric-loader:$fabricLoaderVersion")
     implementation("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
-    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 
     implementation("com.belerweb:pinyin4j:${prop("pinyin_version")}")?.let { include(it) }
 
@@ -114,10 +112,6 @@ dependencies {
     }
 
     implementation("me.fallenbreath:conditional-mixin-fabric:0.6.4")
-}
-
-tasks.withType<Test>().configureEach {
-    useJUnitPlatform()
 }
 
 loom {

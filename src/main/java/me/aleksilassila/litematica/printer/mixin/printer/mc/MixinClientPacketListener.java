@@ -3,8 +3,8 @@ package me.aleksilassila.litematica.printer.mixin.printer.mc;
 import me.aleksilassila.litematica.printer.I18n;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
-import me.aleksilassila.litematica.printer.runtime.RuntimeAccess;
-import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
+import me.aleksilassila.litematica.printer.handler.scan.DirtyRegionTracker;
+import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.MessageUtils;
 import net.minecraft.client.Minecraft;
@@ -36,21 +36,19 @@ public abstract class MixinClientPacketListener {
 
     @Inject(method = "handleBlockUpdate", at = @At("RETURN"))
     private void invalidateScanCacheBlock(ClientboundBlockUpdatePacket packet, CallbackInfo ci) {
-        RuntimeAccess.get().scanEngine().invalidate(packet.getPos());
-        RuntimeAccess.get().events().publish(new RuntimeEvent.BlockUpdated(
-                packet.getPos().getX(), packet.getPos().getY(), packet.getPos().getZ()));
-        InteractionUtils.getRuntime().confirmServerBlockUpdate(packet.getPos());
-        HudStatsManager.getRuntime().confirmBlockUpdate(packet.getPos());
+        ScanCache.INSTANCE.invalidate(packet.getPos());
+        DirtyRegionTracker.INSTANCE.markDirty(packet.getPos());
+        InteractionUtils.INSTANCE.confirmServerBlockUpdate(packet.getPos());
+        HudStatsManager.INSTANCE.confirmBlockUpdate(packet.getPos());
     }
 
     @Inject(method = "handleChunkBlocksUpdate", at = @At("RETURN"))
     private void invalidateScanCacheSection(ClientboundSectionBlocksUpdatePacket packet, CallbackInfo ci) {
         packet.runUpdates((pos, state) -> {
-            RuntimeAccess.get().scanEngine().invalidate(pos);
-            RuntimeAccess.get().events().publish(new RuntimeEvent.BlockUpdated(
-                    pos.getX(), pos.getY(), pos.getZ()));
-            InteractionUtils.getRuntime().confirmServerBlockUpdate(pos);
-            HudStatsManager.getRuntime().confirmBlockUpdate(pos);
+            ScanCache.INSTANCE.invalidate(pos);
+            DirtyRegionTracker.INSTANCE.markDirty(pos);
+            InteractionUtils.INSTANCE.confirmServerBlockUpdate(pos);
+            HudStatsManager.INSTANCE.confirmBlockUpdate(pos);
         });
     }
 }

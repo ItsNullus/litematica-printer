@@ -1,15 +1,13 @@
 package me.aleksilassila.litematica.printer.mixin.printer.mc;
 
+import me.aleksilassila.litematica.printer.printer.ActionManager;
 import me.aleksilassila.litematica.printer.printer.PlayerLook;
-import me.aleksilassila.litematica.printer.runtime.RuntimeAccess;
 import me.aleksilassila.litematica.printer.utils.minecraft.NetworkUtils;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 
-// Priority rationale: a short-lived printer look lease must be the final packet rotation while
-// leaving every packet byte-identical when no scoped/action look override exists.
 @Mixin(value = ServerboundMovePlayerPacket.class, priority = 1010)
 public class MixinServerboundMovePlayerPacket {
     //#if MC > 12101
@@ -25,7 +23,7 @@ public class MixinServerboundMovePlayerPacket {
         if (scopedLook != null) {
             return scopedLook.yaw;
         }
-        PlayerLook playerLook = RuntimeAccess.get().actionBroker().getLook();
+        PlayerLook playerLook = ActionManager.INSTANCE.look;
         if (playerLook != null) {
             return playerLook.yaw;
         }
@@ -45,7 +43,7 @@ public class MixinServerboundMovePlayerPacket {
         if (scopedLook != null) {
             return scopedLook.pitch;
         }
-        PlayerLook playerLook = RuntimeAccess.get().actionBroker().getLook();
+        PlayerLook playerLook = ActionManager.INSTANCE.look;
         if (playerLook != null) {
             return playerLook.pitch;
         }

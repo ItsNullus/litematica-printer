@@ -10,7 +10,7 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
 /**
  * 水源/含水方块的无状态兜底规则。
- * 破冰放水这类跨 tick 流程由 PrintWorkflowScheduler 接管。
+ * 破冰放水这类跨 tick 流程由 PrintTaskController 接管。
  */
 public class WaterGuide extends Guide {
     public WaterGuide(SchematicBlockContext context) {

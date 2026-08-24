@@ -1,12 +1,13 @@
 package me.aleksilassila.litematica.printer.printer;
 
+import lombok.Setter;
 //#if MC > 12100
 import fi.dy.masa.litematica.util.EasyPlaceUtils;
 //#endif
 import me.aleksilassila.litematica.printer.Reference;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.mixin_extension.MultiPlayerGameModeExtension;
-import me.aleksilassila.litematica.printer.utils.mods.QuickShulkerBridge;
+import me.aleksilassila.litematica.printer.printer.zxy.inventory.SwitchItem;
 import me.aleksilassila.litematica.printer.utils.minecraft.DirectionUtils;
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.NetworkUtils;
@@ -17,12 +18,13 @@ import net.minecraft.util.Mth;
 
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.level.block.AnvilBlock;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import net.minecraft.world.item.ItemStack;
@@ -36,13 +38,20 @@ import net.minecraft.world.entity.player.Input;
 
 @SuppressWarnings("SpellCheckingInspection")
 public class ActionManager {
+    public static final ActionManager INSTANCE = new ActionManager();
     private static final float LOOK_SETTLED_EPSILON_DEGREES = 1.0F;
     private static final double STALE_WAIT_MOVE_DISTANCE_SQR = 0.75D * 0.75D;
+    private static final long PRINT_SIGN_EDIT_ARM_TIMEOUT_NANOS = 30_000_000_000L;
+    private static final long PRINT_SIGN_EDIT_RESPONSE_TIMEOUT_NANOS = 5_000_000_000L;
+    private static final long PRINT_SIGN_EDIT_PRUNE_INTERVAL_NANOS = 1_000_000_000L;
+
     private QueuedClick queuedClick;
-    private final InteractionScreenSessions screenSessions = new InteractionScreenSessions();
+    private final Map<Long, Long> pendingPrintSignEdits = new HashMap<>();
+    private long nextPrintSignEditPruneNanos;
+    @Setter
     @Nullable
-    private PlayerLook look;
-    private boolean needWaitModifyLook = false;
+    public PlayerLook look;
+    public boolean needWaitModifyLook = false;
     private boolean waitForHorizontalLook = true;
     private boolean actionRequiresWaitModifyLook = false;
     private long lastQueuedLookTick = Long.MIN_VALUE;
@@ -79,20 +88,7 @@ public class ActionManager {
         }
     }
 
-    public ActionManager() {
-    }
-
-    public boolean isWaitingForLook() {
-        return this.needWaitModifyLook;
-    }
-
-    @Nullable
-    public PlayerLook getLook() {
-        return this.look;
-    }
-
-    public void setLook(@Nullable PlayerLook look) {
-        this.look = look;
+    private ActionManager() {
     }
 
     public boolean queueClick(@NotNull BlockPos target, @NotNull Direction side, @NotNull Vec3 hitModifier, boolean useShift) {
@@ -157,15 +153,20 @@ public class ActionManager {
         if (shouldDropStaleQueuedClick(player, click)) {
             return this.finish(click, SendResult.STALE_POSITION);
         }
-        if (!needWaitModifyLook && look != null && shouldSendQueuedLook(look)) {
-            NetworkUtils.sendLookPacket(player, look);
-            this.recordQueuedLook(look);
-        }
-        if (shouldWaitForServerLook(player, click)) {
-            needWaitModifyLook = true;
-            return SendResult.WAITING_FOR_LOOK;
-        }
-        if (needWaitModifyLook) {
+        if (!click.useProtocol) {
+            if (!needWaitModifyLook && look != null && shouldSendQueuedLook(look)) {
+                NetworkUtils.sendLookPacket(player, look);
+                this.recordQueuedLook(look);
+            }
+            if (shouldWaitForServerLook(player, click)) {
+                needWaitModifyLook = true;
+                return SendResult.WAITING_FOR_LOOK;
+            }
+            if (needWaitModifyLook) {
+                needWaitModifyLook = false;
+            }
+        } else {
+            // useProtocol=true: hitPos 已编码方向信息，不需要旋转包
             needWaitModifyLook = false;
         }
         if (!isHoldingExpectedItem(player, click)) {
@@ -190,7 +191,7 @@ public class ActionManager {
         } else {
             hitVec = click.hitModifier;
         }
-        QuickShulkerBridge.onMainHandUse(player);
+        SwitchItem.onMainHandUse(player);
         boolean wasSneak = player.isShiftKeyDown();
         if (click.useShift && !wasSneak) {
             setShift(player, true);
@@ -220,14 +221,11 @@ public class ActionManager {
                     break;
                 }
                 boolean interactionAccepted = gameModeExtension.litematica_printer$useItemOn(
-                        true,
+                        false,
                         InteractionHand.MAIN_HAND,
                         blockHitResult
                 ) != net.minecraft.world.InteractionResult.FAIL;
                 accepted |= interactionAccepted;
-                if (interactionAccepted) {
-                    this.armTaskAnvilScreenSuppression(click);
-                }
                 if (interactionAccepted && reserveAllowance != Integer.MAX_VALUE) {
                     reserveAllowance--;
                 }
@@ -244,27 +242,6 @@ public class ActionManager {
             restoreShift(player, click, wasSneak);
         }
         return this.finish(click, accepted ? SendResult.SENT : SendResult.INTERACTION_REJECTED);
-    }
-
-    private void armTaskAnvilScreenSuppression(QueuedClick click) {
-        if (!this.screenSessions.hasManualAnvilScreenAllowance(System.nanoTime())
-                && (click.source == ActionSource.PRINT || click.source == ActionSource.FILL)
-                && Reference.MINECRAFT.level != null
-                && Reference.MINECRAFT.level.getBlockState(click.target).getBlock() instanceof AnvilBlock) {
-            this.screenSessions.armTaskAnvilScreen(System.nanoTime());
-        }
-    }
-
-    public boolean consumeTaskAnvilScreenSuppression() {
-        return this.screenSessions.consumeTaskAnvilScreenSuppression(System.nanoTime());
-    }
-
-    public void prioritizeManualAnvilScreen() {
-        this.screenSessions.prioritizeManualAnvilScreen(System.nanoTime());
-    }
-
-    public boolean consumeManualAnvilScreenAllowance() {
-        return this.screenSessions.consumeManualAnvilScreenAllowance(System.nanoTime());
     }
 
     private static int getReserveAllowance(LocalPlayer player, QueuedClick click) {
@@ -297,23 +274,6 @@ public class ActionManager {
         return result;
     }
 
-    /**
-     * Cancel a queued action and complete its task callback. Inventory/container workflows use
-     * this instead of silently dropping an action that may already have entered a queued state.
-     */
-    public void cancelQueue() {
-        QueuedClick click = this.queuedClick;
-        if (click == null) {
-            this.clearQueue();
-            return;
-        }
-        Consumer<SendResult> completionListener = click.completionListener;
-        this.clearQueue();
-        if (completionListener != null) {
-            completionListener.accept(SendResult.NO_QUEUED_ACTION);
-        }
-    }
-
     public boolean isPrinterInteractionActive() {
         return this.printerInteractionActive;
     }
@@ -330,19 +290,33 @@ public class ActionManager {
 
     public void armPrintSignEdit(BlockPos blockPos) {
         long now = System.nanoTime();
-        this.screenSessions.armPrintSignEdit(blockPos.asLong(), now);
+        this.pruneExpiredPrintSignEdits(now);
+        this.pendingPrintSignEdits.put(blockPos.asLong(), now + PRINT_SIGN_EDIT_ARM_TIMEOUT_NANOS);
     }
 
     public void confirmPrintSignEditSent(BlockPos blockPos) {
-        this.screenSessions.confirmPrintSignEditSent(blockPos.asLong(), System.nanoTime());
+        this.pendingPrintSignEdits.replace(
+                blockPos.asLong(),
+                System.nanoTime() + PRINT_SIGN_EDIT_RESPONSE_TIMEOUT_NANOS
+        );
     }
 
     public void cancelPrintSignEdit(BlockPos blockPos) {
-        this.screenSessions.cancelPrintSignEdit(blockPos.asLong());
+        this.pendingPrintSignEdits.remove(blockPos.asLong());
     }
 
     public boolean consumePrintSignEdit(BlockPos blockPos) {
-        return this.screenSessions.consumePrintSignEdit(blockPos.asLong(), System.nanoTime());
+        long now = System.nanoTime();
+        Long deadline = this.pendingPrintSignEdits.remove(blockPos.asLong());
+        return deadline != null && deadline >= now;
+    }
+
+    private void pruneExpiredPrintSignEdits(long now) {
+        if (now < this.nextPrintSignEditPruneNanos) {
+            return;
+        }
+        this.nextPrintSignEditPruneNanos = now + PRINT_SIGN_EDIT_PRUNE_INTERVAL_NANOS;
+        this.pendingPrintSignEdits.entrySet().removeIf(entry -> entry.getValue() < now);
     }
 
     public void setShift(LocalPlayer player, boolean shift) {
@@ -437,6 +411,7 @@ public class ActionManager {
 
     public void resetRuntime() {
         this.clearQueue();
-        this.screenSessions.reset();
+        this.pendingPrintSignEdits.clear();
+        this.nextPrintSignEditPruneNanos = 0L;
     }
 }

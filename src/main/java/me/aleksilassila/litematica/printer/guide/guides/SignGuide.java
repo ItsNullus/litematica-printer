@@ -81,7 +81,7 @@ public class SignGuide extends Guide {
                     //#endif
                     ;
             if (!isLegitimateSign) {
-                InteractionUtils.getRuntime().add(context);
+                InteractionUtils.INSTANCE.add(context);
             }
         }
         return Result.SKIP;

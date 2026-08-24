@@ -1,8 +1,11 @@
 package me.aleksilassila.litematica.printer.handler.handlers.bedrock;
 
+import me.aleksilassila.litematica.printer.config.Configs;
+import me.aleksilassila.litematica.printer.printer.ActionManager;
 import me.aleksilassila.litematica.printer.printer.PlayerLook;
-import me.aleksilassila.litematica.printer.runtime.RuntimeAccess;
+import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
 import me.aleksilassila.litematica.printer.utils.InteractionUtils;
+import me.aleksilassila.litematica.printer.utils.mods.LitematicaUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.DirectionUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.NetworkUtils;
 import net.minecraft.client.Minecraft;
@@ -14,6 +17,8 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.piston.PistonBaseBlock;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 
@@ -21,45 +26,64 @@ import java.util.HashMap;
 import java.util.Map;
 
 public final class BedrockPlacer {
-    private final Minecraft client;
-    private final Map<BlockPos, PendingHorizontalPlacement> pendingHorizontalPistonPlacements = new HashMap<>();
+    private static final Minecraft CLIENT = Minecraft.getInstance();
+    private static final Map<BlockPos, PendingHorizontalPlacement> pendingHorizontalPistonPlacements = new HashMap<>();
 
-    BedrockPlacer(Minecraft client) {
-        this.client = client;
+    private BedrockPlacer() {
     }
 
-    public void clearHorizontalLookState() {
+    public static void clearHorizontalLookState() {
         pendingHorizontalPistonPlacements.clear();
         NetworkUtils.clearScopedLookOverride();
     }
 
-    public boolean hasPendingHorizontalLook(BlockPos pistonPos) {
+    public static boolean hasPendingHorizontalLook(BlockPos pistonPos) {
         return pistonPos != null && pendingHorizontalPistonPlacements.containsKey(pistonPos.immutable());
     }
 
-    public boolean placeSimple(BlockPos supportPos, Direction clickedFace, Item item) {
-        LocalPlayer player = client.player;
-        if (player == null || client.gameMode == null) {
+    /**
+     * 当 USE_CARPET_PROTOCOL 生效时，所有原本需要转头的放置改用 Carpet 协议编码朝向，
+     * 从而跳过转头包，提升破基岩吞吐量。
+     */
+    static boolean isCarpetProtocolActive() {
+        boolean easyPlace = Configs.Placement.EASY_PLACE_PROTOCOL.getBooleanValue();
+        boolean useCarpetEnabled = Configs.Placement.USE_CARPET_PROTOCOL.getBooleanValue();
+        if (!useCarpetEnabled) {
+            return false;
+        }
+        boolean carpetPriority = Configs.Placement.CARPET_PROTOCOL_PRIORITY.getBooleanValue();
+        return !easyPlace || carpetPriority;
+    }
+
+    public static boolean placeSimple(BlockPos supportPos, Direction clickedFace, Item item) {
+        LocalPlayer player = CLIENT.player;
+        if (player == null || CLIENT.gameMode == null) {
             return false;
         }
         if (!BedrockInventory.switchToOffhand(item)) {
             return false;
         }
-        PlayerLook look = new PlayerLook(clickedFace.getOpposite());
-        NetworkUtils.sendLookPacketIgnoringQueuedLook(player, look);
+        if (!isCarpetProtocolActive()) {
+            PlayerLook look = new PlayerLook(clickedFace.getOpposite());
+            NetworkUtils.sendLookPacketIgnoringQueuedLook(player, look);
+        }
         // Use center of the support block for more reliable interaction
         BlockHitResult hitResult = new BlockHitResult(Vec3.atCenterOf(supportPos), clickedFace, supportPos, false);
         placeBlockAggressively(player, hitResult, true);
         return true;
     }
 
-    public boolean placePiston(BlockPos pistonPos, Direction facing) {
+    public static boolean placePiston(BlockPos pistonPos, Direction facing) {
         return placePiston(pistonPos, facing, pistonPos.relative(facing.getOpposite()));
     }
 
-    public boolean preparePistonPlacementLook(BlockPos pistonPos, Direction facing) {
-        LocalPlayer player = client.player;
-        if (player == null || client.gameMode == null) {
+    public static boolean preparePistonPlacementLook(BlockPos pistonPos, Direction facing) {
+        if (isCarpetProtocolActive()) {
+            // Carpet 协议将朝向编码进 hitPos，无需转头准备
+            return true;
+        }
+        LocalPlayer player = CLIENT.player;
+        if (player == null || CLIENT.gameMode == null) {
             return false;
         }
 
@@ -67,9 +91,9 @@ public final class BedrockPlacer {
         return !ensureHorizontalLookSettled(player, pistonPos, facing, look, false);
     }
 
-    public boolean placePiston(BlockPos pistonPos, Direction facing, BlockPos... preferredAnchors) {
-        LocalPlayer player = client.player;
-        if (player == null || client.gameMode == null) {
+    public static boolean placePiston(BlockPos pistonPos, Direction facing, BlockPos... preferredAnchors) {
+        LocalPlayer player = CLIENT.player;
+        if (player == null || CLIENT.gameMode == null) {
             NetworkUtils.clearScopedLookOverride();
             return false;
         }
@@ -78,43 +102,57 @@ public final class BedrockPlacer {
             return false;
         }
 
-        // Pistons face opposite to the direction the player is looking when placed.
-        // We want the resulting piston facing to match `facing`, so look at the opposite side.
-        PlayerLook look = new PlayerLook(facing.getOpposite());
-        if (ensureHorizontalLookSettled(player, pistonPos, facing, look, true)) {
-            return false;
+        boolean useCarpet = isCarpetProtocolActive();
+
+        if (!useCarpet) {
+            // Pistons face opposite to the direction the player is looking when placed.
+            // We want the resulting piston facing to match `facing`, so look at the opposite side.
+            PlayerLook look = new PlayerLook(facing.getOpposite());
+            if (ensureHorizontalLookSettled(player, pistonPos, facing, look, true)) {
+                return false;
+            }
+            applyPlacementLook(player, look);
         }
-        applyPlacementLook(player, look);
 
         BlockPos clickedPos = pistonPos.relative(facing.getOpposite());
         Direction clickedFace = facing;
-        if (client.level != null) {
+        if (CLIENT.level != null) {
             BlockPos[] anchors = preferredAnchors != null && preferredAnchors.length > 0
                     ? preferredAnchors
                     : new BlockPos[]{clickedPos};
             BedrockEnvironment.PlacementInteraction placementInteraction =
-                    BedrockEnvironment.findPlacementInteraction(client.level, pistonPos, anchors);
+                    BedrockEnvironment.findPlacementInteraction(CLIENT.level, pistonPos, anchors);
             if (placementInteraction != null) {
                 clickedPos = placementInteraction.anchorPos();
                 clickedFace = placementInteraction.clickedFace();
             }
         }
 
-        BlockHitResult hitResult = new BlockHitResult(Vec3.atCenterOf(clickedPos), clickedFace, clickedPos, false);
+        Vec3 hitVec;
+        if (useCarpet) {
+            // 使用 Carpet 协议将活塞朝向编码进 hitPos.x，服务器端 Carpet Extra 据此放置正确朝向
+            BlockState pistonState = Blocks.PISTON.defaultBlockState().setValue(PistonBaseBlock.FACING, facing);
+            Vec3 encoded = LitematicaUtils.usePrecisionPlacement(clickedPos, pistonState);
+            hitVec = encoded != null ? encoded : Vec3.atCenterOf(clickedPos);
+        } else {
+            hitVec = Vec3.atCenterOf(clickedPos);
+        }
+
+        BlockHitResult hitResult = new BlockHitResult(hitVec, clickedFace, clickedPos, false);
 
         placeBlockAggressively(player, hitResult, false);
         NetworkUtils.clearScopedLookOverride();
         return true;
     }
 
-    private void placeBlockAggressively(LocalPlayer player, BlockHitResult hitResult, boolean allowLocalUseFallback) {
-        boolean useShift = client.level != null && BedrockTargetBlocks.requiresSneakPlacement(client.level.getBlockState(hitResult.getBlockPos()));
+    private static void placeBlockAggressively(LocalPlayer player, BlockHitResult hitResult, boolean allowLocalUseFallback) {
+        boolean useShift = CLIENT.level != null && BedrockTargetBlocks.requiresSneakPlacement(CLIENT.level.getBlockState(hitResult.getBlockPos()));
         boolean wasSneak = player.isShiftKeyDown();
         if (useShift && !wasSneak) {
-            RuntimeAccess.get().actionBroker().setShift(player, true);
+            ActionManager.INSTANCE.setShift(player, true);
         }
         try {
-            InteractionUtils.getRuntime().useItemOn(false, InteractionHand.OFF_HAND, hitResult);
+            InteractionUtils.INSTANCE.useItemOn(false, InteractionHand.OFF_HAND, hitResult);
             if (allowLocalUseFallback) {
                 ItemStack offhand = player.getOffhandItem();
                 if (!offhand.isEmpty()) {
@@ -123,12 +161,12 @@ public final class BedrockPlacer {
             }
         } finally {
             if (useShift && !wasSneak) {
-            RuntimeAccess.get().actionBroker().setShift(player, false);
+                ActionManager.INSTANCE.setShift(player, false);
             }
         }
     }
 
-    private boolean ensureHorizontalLookSettled(LocalPlayer player, BlockPos pistonPos, Direction facing, PlayerLook look, boolean consumeReadyPlacement) {
+    private static boolean ensureHorizontalLookSettled(LocalPlayer player, BlockPos pistonPos, Direction facing, PlayerLook look, boolean consumeReadyPlacement) {
         Direction lookDirection = DirectionUtils.orderedByNearest(look.getYaw(), look.getPitch())[0];
         BlockPos pendingKey = pistonPos.immutable();
         if (!lookDirection.getAxis().isHorizontal()) {
@@ -149,25 +187,29 @@ public final class BedrockPlacer {
             return false;
         }
 
-        long sentTick = RuntimeAccess.get().currentTick();
-        pendingHorizontalPistonPlacements.put(pendingKey, new PendingHorizontalPlacement(facing, sentTick));
+        long sentTick = ClientPlayerTickManager.getCurrentHandlerTime();
+        int packetEpoch = ClientPlayerTickManager.getPacketEpoch();
+        pendingHorizontalPistonPlacements.put(pendingKey, new PendingHorizontalPlacement(facing, sentTick, packetEpoch));
         NetworkUtils.setScopedLookOverride(look);
         NetworkUtils.sendLookPacketIgnoringQueuedLook(player, look);
         return true;
     }
 
-    private boolean isHorizontalLookReady(PendingHorizontalPlacement pendingPlacement) {
-        long now = RuntimeAccess.get().currentTick();
-        // Movement and interaction packets share the ordered game connection.  Sending the
-        // placement on the following client tick is sufficient and keeps the original safety
-        // boundary without treating an unrelated inbound packet as an acknowledgement.
-        return now > pendingPlacement.sentTick();
+    private static boolean isHorizontalLookReady(PendingHorizontalPlacement pendingPlacement) {
+        long now = ClientPlayerTickManager.getCurrentHandlerTime();
+        if (now <= pendingPlacement.sentTick()) {
+            return false;
+        }
+        if (ClientPlayerTickManager.getPacketEpoch() > pendingPlacement.packetEpoch()) {
+            return true;
+        }
+        return now - pendingPlacement.sentTick() >= 2L;
     }
 
-    private void applyPlacementLook(LocalPlayer player, PlayerLook look) {
+    private static void applyPlacementLook(LocalPlayer player, PlayerLook look) {
         NetworkUtils.sendLookPacketIgnoringQueuedLook(player, look);
     }
 
-    private record PendingHorizontalPlacement(Direction facing, long sentTick) {
+    private record PendingHorizontalPlacement(Direction facing, long sentTick, int packetEpoch) {
     }
 }

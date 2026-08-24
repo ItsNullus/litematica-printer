@@ -4,7 +4,12 @@ import com.mojang.authlib.GameProfile;
 import fi.dy.masa.litematica.world.SchematicWorldHandler;
 import fi.dy.masa.litematica.world.WorldSchematic;
 import me.aleksilassila.litematica.printer.config.Configs;
-import me.aleksilassila.litematica.printer.runtime.RuntimeAccess;
+import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
+import me.aleksilassila.litematica.printer.printer.ActionManager;
+import me.aleksilassila.litematica.printer.utils.CooldownUtils;
+import me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils;
+import me.aleksilassila.litematica.printer.utils.InteractionUtils;
+import me.aleksilassila.litematica.printer.utils.UpdateCheckerUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
@@ -34,6 +39,8 @@ public class MixinLocalPlayer extends AbstractClientPlayer {
     protected Minecraft minecraft;
 
     @Unique
+    private boolean updateChecked;
+    @Unique
     private boolean litematica_printer$runtimeResetDone;
 
     //#if MC == 11902
@@ -49,9 +56,22 @@ public class MixinLocalPlayer extends AbstractClientPlayer {
     @Inject(at = @At("HEAD"), method = "resetPos")
     public void init(CallbackInfo ci) {
         if (!this.litematica_printer$runtimeResetDone) {
-            RuntimeAccess.get().reset("local_player_init");
+            ClientPlayerTickManager.resetRuntime("local_player_init");
             this.litematica_printer$runtimeResetDone = true;
         }
+        if (Configs.Core.UPDATE_CHECK.getBooleanValue() && !updateChecked) {
+            UpdateCheckerUtils.checkForUpdates();
+        }
+        updateChecked = true;
+    }
+
+    @Inject(at = @At("HEAD"), method = "tick")
+    public void tick(CallbackInfo ci) {
+        CooldownUtils.INSTANCE.tick();
+        InventoryUtils.tick();
+        InteractionUtils.INSTANCE.preprocess();
+        InteractionUtils.INSTANCE.onTick();
+        ClientPlayerTickManager.tick();
     }
 
     @Inject(method = "openTextEdit", at = @At("HEAD"), cancellable = true)
@@ -71,7 +91,7 @@ public class MixinLocalPlayer extends AbstractClientPlayer {
             return;
         }
         getTargetSignEntity(sign)
-                .filter(signBlockEntity -> RuntimeAccess.get().actionBroker().consumePrintSignEdit(sign.getBlockPos()))
+                .filter(signBlockEntity -> ActionManager.INSTANCE.consumePrintSignEdit(sign.getBlockPos()))
                 .ifPresent(signBlockEntity ->
         {
             //#if MC > 11904

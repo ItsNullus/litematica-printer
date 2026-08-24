@@ -3,6 +3,7 @@ package me.aleksilassila.litematica.printer.printer.action;
 import lombok.Getter;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.interfaces.Implementation;
+import me.aleksilassila.litematica.printer.printer.ActionManager;
 import me.aleksilassila.litematica.printer.printer.PlayerLook;
 import me.aleksilassila.litematica.printer.printer.PrinterUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.BlockUtils;
@@ -178,23 +179,13 @@ public class Action {
         }
         Vec3 eye = player.getEyePosition();
         Vec3 center = Vec3.atCenterOf(pos);
-        for (int i = 1; i < sides.size(); i++) {
-            Direction current = sides.get(i);
-            double currentScore = getClickedFaceScore(eye, center, current);
-            int j = i - 1;
-            while (j >= 0 && getClickedFaceScore(eye, center, sides.get(j)) < currentScore) {
-                sides.set(j + 1, sides.get(j));
-                j--;
-            }
-            sides.set(j + 1, current);
-        }
+        sides.sort(Comparator.comparingDouble(side -> -getClickedFaceScore(eye, center, side)));
     }
 
     private static double getClickedFaceScore(Vec3 eye, Vec3 center, Direction side) {
-        var normal = DirectionUtils.getVector(side.getOpposite());
-        return normal.getX() * (eye.x - center.x)
-                + normal.getY() * (eye.y - center.y)
-                + normal.getZ() * (eye.z - center.z);
+        Vec3 toEye = eye.subtract(center);
+        Vec3 clickedFaceNormal = Vec3.atLowerCornerOf(DirectionUtils.getVector(side.getOpposite()));
+        return clickedFaceNormal.dot(toEye);
     }
 
     public Action setItem(Item item) {
@@ -249,33 +240,30 @@ public class Action {
         return this;
     }
 
-    public boolean queueAction(
-            @NotNull ActionPort actionBroker,
-            @NotNull BlockPos blockPos,
-            @NotNull Direction side,
-            boolean useShift,
-            @NotNull LocalPlayer player,
-            @Nullable Item[] expectedItems
-    ) {
+    public boolean queueAction(@NotNull BlockPos blockPos, @NotNull Direction side, boolean useShift, @NotNull LocalPlayer player) {
+        return this.queueAction(blockPos, side, useShift, player, null);
+    }
+
+    public boolean queueAction(@NotNull BlockPos blockPos, @NotNull Direction side, boolean useShift, @NotNull LocalPlayer player, @Nullable Item[] expectedItems) {
         if (Configs.Print.PLACE_IN_AIR.getBooleanValue() && !this.requiresSupport) {
-            return actionBroker.queueClick(
+            return ActionManager.INSTANCE.queueClick(
                     blockPos,
                     side.getOpposite(),
                     getSides().get(side),
                     useShift,
                     1,
                     expectedItems,
-                    ActionPort.ActionSource.PRINT
+                    ActionManager.ActionSource.PRINT
             );
         } else {
-            return actionBroker.queueClick(
+            return ActionManager.INSTANCE.queueClick(
                     blockPos.relative(side),
                     side.getOpposite(),
                     getSides().get(side),
                     useShift,
                     1,
                     expectedItems,
-                    ActionPort.ActionSource.PRINT
+                    ActionManager.ActionSource.PRINT
             );
         }
     }

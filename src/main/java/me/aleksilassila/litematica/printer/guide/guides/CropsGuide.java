@@ -93,7 +93,7 @@ public class CropsGuide extends Guide {
                 && Configs.Print.BREAK_WRONG_BLOCK.getBooleanValue()
                 && InteractionUtils.canBreakBlock(blockPos)
                 && InteractionUtils.breakRestriction(currentState)) {
-            InteractionUtils.getRuntime().add(context);
+            InteractionUtils.INSTANCE.add(context);
             return Result.SKIP;
         }
         return Result.PASS;

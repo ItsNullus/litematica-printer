@@ -1,74 +1,63 @@
 package me.aleksilassila.litematica.printer.utils;
 
+import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
+import me.aleksilassila.litematica.printer.printer.ActionManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
-
-import java.util.function.LongSupplier;
 
 public final class InventorySwitchGuard {
-    // Inventory clicks are client-predicted. Keep a short recovery window for a delayed packet,
-    // but do not freeze the whole printer for a full second when the prediction was rejected.
-    private static final int MAX_SETTLE_TICKS = 4;
-    private final Minecraft client;
-    private final LongSupplier tickClock;
-    private Item pendingItem;
-    private int pendingDamage = -1;
-    private boolean matchDamage;
-    private final SwitchConfirmationWindow confirmationWindow = new SwitchConfirmationWindow(MAX_SETTLE_TICKS);
+    private static final Minecraft client = Minecraft.getInstance();
+    private static final int MAX_WAIT_TICKS = 10;
 
-    public InventorySwitchGuard(Minecraft client, LongSupplier tickClock) {
-        this.client = client;
-        this.tickClock = tickClock;
+    private static Item pendingItem;
+    private static long pendingStartedTick;
+    private static int pendingStartedPacketEpoch;
+
+    private InventorySwitchGuard() {
     }
 
-    public void reset() {
+    public static void reset() {
         clear();
     }
 
-    public boolean markSwitchIfNeeded(Item item) {
+    public static boolean markSwitchIfNeeded(Item item) {
         if (item == null) {
             return false;
         }
         pendingItem = item;
-        pendingDamage = -1;
-        matchDamage = false;
-        this.confirmationWindow.begin(this.tickClock.getAsLong());
+        pendingStartedTick = ClientPlayerTickManager.getCurrentHandlerTime();
+        pendingStartedPacketEpoch = ClientPlayerTickManager.getPacketEpoch();
+        ActionManager.INSTANCE.clearQueue();
         return true;
     }
 
-    /** Records a tool switch where two stacks may contain the same item but different durability. */
-    public boolean markSwitchIfNeeded(ItemStack stack) {
-        if (stack == null || stack.isEmpty()) {
-            return false;
-        }
-        pendingItem = stack.getItem();
-        matchDamage = stack.isDamageableItem();
-        pendingDamage = matchDamage ? stack.getDamageValue() : -1;
-        this.confirmationWindow.begin(this.tickClock.getAsLong());
-        return true;
-    }
-
-    public boolean isWaiting() {
+    public static boolean isWaiting() {
         if (pendingItem == null) {
             return false;
         }
-        return this.confirmationWindow.isWaiting(this.tickClock.getAsLong(), this.isMainHandReady());
-    }
-
-    private void clear() {
-        pendingItem = null;
-        pendingDamage = -1;
-        matchDamage = false;
-        this.confirmationWindow.clear();
-    }
-
-    private boolean isMainHandReady() {
-        if (client.player == null || pendingItem == null) {
+        ActionManager.INSTANCE.clearQueue();
+        long age = ClientPlayerTickManager.getCurrentHandlerTime() - pendingStartedTick;
+        if (age > MAX_WAIT_TICKS) {
+            clear();
             return false;
         }
-        ItemStack hand = client.player.getMainHandItem();
-        return hand.is(pendingItem)
-                && (!this.matchDamage || hand.getDamageValue() == this.pendingDamage);
+        if (age <= 0) {
+            return true;
+        }
+        if (isMainHandReady(pendingItem) && ClientPlayerTickManager.getPacketEpoch() > pendingStartedPacketEpoch) {
+            clear();
+            return false;
+        }
+        return true;
+    }
+
+    private static void clear() {
+        pendingItem = null;
+        pendingStartedTick = 0L;
+        pendingStartedPacketEpoch = 0;
+    }
+
+    private static boolean isMainHandReady(Item item) {
+        return client.player != null && client.player.getMainHandItem().is(item);
     }
 }

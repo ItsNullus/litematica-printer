@@ -2,7 +2,7 @@ package me.aleksilassila.litematica.printer.mixin.printer.mc;
 
 import fi.dy.masa.litematica.util.PlacementHandler;
 import me.aleksilassila.litematica.printer.config.Configs;
-import me.aleksilassila.litematica.printer.runtime.RuntimeAccess;
+import me.aleksilassila.litematica.printer.printer.ActionManager;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.context.BlockPlaceContext;
@@ -14,8 +14,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Priority rationale: placement protocol state must be finalized after the normal BlockItem
-// context has been assembled, while still winning over Litematica's default-priority hook.
 @Mixin(value = BlockItem.class, priority = 1020)
 public abstract class MixinBlockItem extends Item {
     private MixinBlockItem(Item.Properties builder) {
@@ -30,10 +28,11 @@ public abstract class MixinBlockItem extends Item {
 
     @Inject(method = "getPlacementState", at = @At("HEAD"), cancellable = true)
     private void modifyPlacementState(BlockPlaceContext ctx, CallbackInfoReturnable<BlockState> cir) {
-        boolean usePrinterProtocol = Configs.Print.EASY_PLACE_PROTOCOL.getBooleanValue()
-                && RuntimeAccess.get().actionBroker().isEasyPlaceProtocolActive();
+        boolean usePrinterProtocol = (Configs.Placement.EASY_PLACE_PROTOCOL.getBooleanValue()
+                || Configs.Placement.USE_CARPET_PROTOCOL.getBooleanValue())
+                && ActionManager.INSTANCE.isEasyPlaceProtocolActive();
         //#if MC > 12100
-        if (!RuntimeAccess.get().actionBroker().isPrinterInteractionActive()) {
+        if (!ActionManager.INSTANCE.isPrinterInteractionActive()) {
             return;
         }
         //#else

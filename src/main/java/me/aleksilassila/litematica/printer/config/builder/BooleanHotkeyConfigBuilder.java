@@ -6,7 +6,6 @@ import fi.dy.masa.malilib.hotkeys.IHotkeyCallback;
 import fi.dy.masa.malilib.hotkeys.KeybindSettings;
 import fi.dy.masa.malilib.util.StringUtils;
 import me.aleksilassila.litematica.printer.I18n;
-import me.aleksilassila.litematica.printer.config.PrinterConfigOptions;
 import me.aleksilassila.litematica.printer.utils.minecraft.MessageUtils;
 import net.minecraft.network.chat.MutableComponent;
 import org.jetbrains.annotations.Nullable;
@@ -47,7 +46,7 @@ public class BooleanHotkeyConfigBuilder extends BaseConfigBuilder<ConfigBooleanH
 
     @Override
     public ConfigBooleanHotkeyed build() {
-        ConfigBooleanHotkeyed config = new PrinterConfigOptions.BooleanHotkeyOption(
+        ConfigBooleanHotkeyed config = new ConfigBooleanHotkeyed(
                 i18n.getNameKey(),
                 defaultValue,
                 defaultHotkey,

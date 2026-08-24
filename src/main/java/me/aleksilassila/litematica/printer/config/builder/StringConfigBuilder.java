@@ -2,7 +2,6 @@ package me.aleksilassila.litematica.printer.config.builder;
 
 import fi.dy.masa.malilib.config.options.ConfigString;
 import me.aleksilassila.litematica.printer.I18n;
-import me.aleksilassila.litematica.printer.config.PrinterConfigOptions;
 
 public class StringConfigBuilder extends BaseConfigBuilder<ConfigString, StringConfigBuilder> {
     private String defaultValue = "";
@@ -22,7 +21,7 @@ public class StringConfigBuilder extends BaseConfigBuilder<ConfigString, StringC
 
     @Override
     public ConfigString build() {
-        ConfigString config = new PrinterConfigOptions.StringOption(i18n.getNameKey(), defaultValue, descKey);
+        ConfigString config = new ConfigString(i18n.getNameKey(), defaultValue, descKey);
         return buildExtension(config);
     }
 }

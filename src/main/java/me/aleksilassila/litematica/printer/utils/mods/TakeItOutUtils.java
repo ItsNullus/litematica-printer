@@ -4,6 +4,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import me.aleksilassila.litematica.printer.Reference;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.NonNullList;
+import me.aleksilassila.litematica.printer.printer.ActionManager;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
@@ -21,7 +22,14 @@ public final class TakeItOutUtils {
     private static final String SOURCES_CLASS = "net.maxbel.takeitout.client.WorldContainerSources";
     private static final String SHULKER_PAYLOAD_CLASS = "net.maxbel.takeitout.Takeitout$GetShulkerStackPayload";
     private static final String CLIENT_PLAY_NETWORKING_CLASS = "net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking";
+    private static final long MAX_LOCAL_PENDING_MS = 4_000L;
+    private static final int SETTLE_TICKS_AFTER_ARRIVAL = 0;
+
     private static final Minecraft client = Minecraft.getInstance();
+    private static Item localPendingItem;
+    private static long localPendingStartedAtMs;
+    private static int localPendingSettleTicks = -1;
+    private static int localPendingInitialCount;
     private static boolean apiFailureLogged;
 
     private TakeItOutUtils() {
@@ -47,14 +55,10 @@ public final class TakeItOutUtils {
     public static boolean isAwaitingStack() {
         ItemStack awaitingStack = getAwaitingStack();
         if (awaitingStack != null && !awaitingStack.isEmpty()) {
+            beginLocalPending(awaitingStack.getItem());
             return true;
         }
-        return false;
-    }
-
-    public static boolean isAwaitingItem(Item item) {
-        ItemStack awaitingStack = getAwaitingStack();
-        return item != null && !awaitingStack.isEmpty() && awaitingStack.is(item);
+        return isLocalPending();
     }
 
     public static boolean tryRequestItem(Item item) {
@@ -73,6 +77,7 @@ public final class TakeItOutUtils {
     }
 
     public static void resetPending() {
+        clearLocalPending();
         if (!isLoaded()) {
             return;
         }
@@ -106,6 +111,7 @@ public final class TakeItOutUtils {
                 result = requestStack.invoke(null, client, singleStack(required), isSingleItemMode());
             }
             if (Boolean.TRUE.equals(result)) {
+                beginLocalPending(required.getItem());
                 return true;
             }
             return false;
@@ -147,6 +153,7 @@ public final class TakeItOutUtils {
             }
             setAwaitingStack(singleStack(required));
             sendPayload(payload);
+            beginLocalPending(required.getItem());
             return true;
         } catch (ReflectiveOperationException | LinkageError exception) {
             logApiFailure("请求背包潜影盒", exception);
@@ -193,6 +200,64 @@ public final class TakeItOutUtils {
             return false;
         }
         return false;
+    }
+
+    private static void beginLocalPending(Item item) {
+        if (item == null) {
+            return;
+        }
+        if (localPendingItem == null || !localPendingItem.equals(item)) {
+            localPendingItem = item;
+            localPendingStartedAtMs = System.currentTimeMillis();
+            localPendingSettleTicks = -1;
+            localPendingInitialCount = countInventoryItem(item);
+        }
+        ActionManager.INSTANCE.clearQueue();
+    }
+
+    private static boolean isLocalPending() {
+        if (localPendingItem == null) {
+            return false;
+        }
+        ActionManager.INSTANCE.clearQueue();
+        if (System.currentTimeMillis() - localPendingStartedAtMs > MAX_LOCAL_PENDING_MS) {
+            clearLocalPending();
+            return false;
+        }
+        if (countInventoryItem(localPendingItem) <= localPendingInitialCount) {
+            return true;
+        }
+        if (localPendingSettleTicks < 0) {
+            localPendingSettleTicks = SETTLE_TICKS_AFTER_ARRIVAL;
+        }
+        if (localPendingSettleTicks-- > 0) {
+            return true;
+        }
+        clearLocalPending();
+        return false;
+    }
+
+    private static int countInventoryItem(Item item) {
+        if (client.player == null || item == null) {
+            return 0;
+        }
+        Inventory inventory = client.player.getInventory();
+        int size = Math.min(36, inventory.getContainerSize());
+        int count = 0;
+        for (int slot = 0; slot < size; slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            if (!stack.isEmpty() && stack.is(item)) {
+                count += stack.getCount();
+            }
+        }
+        return count;
+    }
+
+    private static void clearLocalPending() {
+        localPendingItem = null;
+        localPendingStartedAtMs = 0L;
+        localPendingSettleTicks = -1;
+        localPendingInitialCount = 0;
     }
 
     private static void sendPayload(Object payload) throws ReflectiveOperationException {

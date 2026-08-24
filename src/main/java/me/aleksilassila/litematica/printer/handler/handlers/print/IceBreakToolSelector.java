@@ -1,6 +1,7 @@
 package me.aleksilassila.litematica.printer.handler.handlers.print;
 
 import me.aleksilassila.litematica.printer.utils.InventoryUtils;
+import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.PlayerUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -60,7 +61,8 @@ final class IceBreakToolSelector {
     }
 
     private static boolean canBreakWithoutSilkTouch(ItemStack stack) {
-        return !hasSilkTouch(stack);
+        return !hasSilkTouch(stack)
+                && InteractionUtils.isToolAllowedByDurabilityProtection(stack);
     }
 
     private static boolean hasSilkTouch(ItemStack stack) {

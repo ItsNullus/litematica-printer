@@ -6,6 +6,8 @@ import me.aleksilassila.litematica.printer.guide.Guide;
 import me.aleksilassila.litematica.printer.guide.Result;
 import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
 import me.aleksilassila.litematica.printer.printer.action.Action;
+import me.aleksilassila.litematica.printer.printer.action.ClickAction;
+import me.aleksilassila.litematica.printer.Reference;
 import net.fabricmc.fabric.mixin.content.registry.AxeItemAccessor;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.Block;
@@ -47,7 +49,10 @@ public class StripLogGuide extends Guide {
 
     @Override
     protected Result onBuildActionWrongBlock(BlockMatchResult state) {
-        // Stateful source-log stripping is exclusively owned by PrintWorkflowScheduler.
-        return Result.PASS;
+        Block stripped = STRIPPED_LOGS.get(currentBlock);
+        if (stripped != null && stripped == requiredBlock) {
+            return Result.success(new ClickAction().setItems(Reference.AXE_ITEMS));
+        }
+        return Result.SKIP;
     }
 }

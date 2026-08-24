@@ -81,7 +81,7 @@ public class RailGuide extends Guide {
 
         repairAttempts.put(key, repairAttempts.getOrDefault(key, 0) + 1);
         pendingRepairs.put(key, level.getGameTime());
-        InteractionUtils.getRuntime().add(key.pos());
+        InteractionUtils.INSTANCE.add(key.pos());
         return Result.SKIP;
     }
 

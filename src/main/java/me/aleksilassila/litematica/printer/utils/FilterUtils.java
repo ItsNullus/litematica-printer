@@ -9,7 +9,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
 
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,15 +27,6 @@ public class FilterUtils {
     private static final char STATE_START = '[';
     private static final char STATE_END = ']';
     private static final char PROPERTY_EQUALS = '=';
-    private static final int MAX_PARSED_FILTER_CACHE_SIZE = 512;
-    private static final Map<String, ParsedFilter> PARSED_FILTER_CACHE = Collections.synchronizedMap(
-            new LinkedHashMap<>(64, 0.75F, true) {
-                @Override
-                protected boolean removeEldestEntry(Map.Entry<String, ParsedFilter> eldest) {
-                    return this.size() > MAX_PARSED_FILTER_CACHE_SIZE;
-                }
-            }
-    );
 
     /**
      * 字符串匹配规则：支持"包含"（c参数）或"精确相等"
@@ -50,13 +41,7 @@ public class FilterUtils {
             return false;
         }
         // 规则1：是否启用"包含"匹配（只要有一个"c"参数就启用）
-        boolean enableContainsMatch = false;
-        for (String rule : matchRules) {
-            if (CONTAINS_FLAG.equals(rule)) {
-                enableContainsMatch = true;
-                break;
-            }
-        }
+        boolean enableContainsMatch = Arrays.asList(matchRules).contains(CONTAINS_FLAG);
         boolean containsMatchResult = enableContainsMatch && targetStr.contains(matchStr);
         // 规则2：精确相等匹配
         boolean exactMatchResult = targetStr.equals(matchStr);
@@ -105,7 +90,7 @@ public class FilterUtils {
         }
 
         if (targetObj instanceof BlockState blockState) {
-            ParsedBlockStateFilter stateFilter = parsedFilter.stateFilter();
+            ParsedBlockStateFilter stateFilter = parseBlockStateFilter(coreName);
             if (stateFilter != null) {
                 return matchBlockStateFilter(blockState, stateFilter, matchRules);
             }
@@ -139,10 +124,6 @@ public class FilterUtils {
     }
 
     private static ParsedFilter parseExpectedName(String expectedName) {
-        ParsedFilter cached = PARSED_FILTER_CACHE.get(expectedName);
-        if (cached != null) {
-            return cached;
-        }
         List<String> parts = splitTopLevel(expectedName, SPLIT_SEPARATOR.charAt(0));
         String coreName = parts.isEmpty() ? "" : parts.get(0).trim();
         String[] matchRules = parts.size() > 1
@@ -150,13 +131,7 @@ public class FilterUtils {
                 .map(String::trim)
                 .toArray(String[]::new)
                 : new String[0];
-        ParsedFilter parsed = new ParsedFilter(coreName, matchRules, parseBlockStateFilter(coreName));
-        PARSED_FILTER_CACHE.put(expectedName, parsed);
-        return parsed;
-    }
-
-    static int parsedFilterCacheSize() {
-        return PARSED_FILTER_CACHE.size();
+        return new ParsedFilter(coreName, matchRules);
     }
 
     private static List<String> splitTopLevel(String input, char separator) {
@@ -330,7 +305,7 @@ public class FilterUtils {
                 .anyMatch(tagFullName -> matchString(tagFullName, tagName, matchRules));
     }
 
-    private record ParsedFilter(String coreName, String[] matchRules, ParsedBlockStateFilter stateFilter) {
+    private record ParsedFilter(String coreName, String[] matchRules) {
     }
 
     private record ParsedBlockStateFilter(String blockName, Map<String, String> propertyFilters, boolean valid) {

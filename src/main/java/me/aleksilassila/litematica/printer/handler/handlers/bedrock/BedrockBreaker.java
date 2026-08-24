@@ -2,14 +2,10 @@ package me.aleksilassila.litematica.printer.handler.handlers.bedrock;
 
 import me.aleksilassila.litematica.printer.mixin_extension.MultiPlayerGameModeExtension;
 import me.aleksilassila.litematica.printer.mixin_extension.BlockBreakResult;
-import me.aleksilassila.litematica.printer.runtime.RuntimeAccess;
-import me.aleksilassila.litematica.printer.interaction.ToolPreparationResult;
-import me.aleksilassila.litematica.printer.utils.minecraft.NetworkUtils;
+import me.aleksilassila.litematica.printer.utils.InteractionUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
-import net.minecraft.world.level.block.state.BlockState;
 
 public final class BedrockBreaker {
     private static final Minecraft CLIENT = Minecraft.getInstance();
@@ -41,8 +37,7 @@ public final class BedrockBreaker {
         if (!switched) {
             return false;
         }
-        if (RuntimeAccess.get().toolSwitchService().prepareForBreak(pos, state, false)
-                != ToolPreparationResult.READY) {
+        if (!InteractionUtils.protectCurrentToolBeforeBreak(state)) {
             return false;
         }
 
@@ -57,50 +52,5 @@ public final class BedrockBreaker {
             return result != BlockBreakResult.FAILED && result != BlockBreakResult.ABORTED;
         }
         return false;
-    }
-
-    static boolean prepareCriticalTool(BlockPos pistonPos, BlockState pistonState) {
-        if (CLIENT.level == null || CLIENT.player == null || pistonPos == null
-                || pistonState == null || pistonState.isAir()) {
-            return false;
-        }
-        if (!BedrockInventory.switchToBestTool(pistonState)) {
-            return false;
-        }
-        return RuntimeAccess.get().toolSwitchService().prepareForBreak(pistonPos, pistonState, false)
-                == ToolPreparationResult.READY;
-    }
-
-    static void sendCriticalBreakPackets(BlockPos pos, Direction direction) {
-        if (CLIENT.level == null || pos == null || direction == null
-                || CLIENT.level.getBlockState(pos).isAir()) {
-            return;
-        }
-
-        //#if MC >= 11900
-        NetworkUtils.sendPacket(sequence -> new ServerboundPlayerActionPacket(
-                ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK,
-                pos,
-                direction,
-                sequence
-        ));
-        NetworkUtils.sendPacket(sequence -> new ServerboundPlayerActionPacket(
-                ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK,
-                pos,
-                direction,
-                sequence
-        ));
-        //#else
-        //$$ NetworkUtils.sendPacket(new ServerboundPlayerActionPacket(
-        //$$         ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK,
-        //$$         pos,
-        //$$         direction
-        //$$ ));
-        //$$ NetworkUtils.sendPacket(new ServerboundPlayerActionPacket(
-        //$$         ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK,
-        //$$         pos,
-        //$$         direction
-        //$$ ));
-        //#endif
     }
 }

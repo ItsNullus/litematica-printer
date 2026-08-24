@@ -1,16 +1,34 @@
 package me.aleksilassila.litematica.printer.handler.handlers.bedrock;
 
+import me.aleksilassila.litematica.printer.config.Configs;
+import me.aleksilassila.litematica.printer.enums.RadiusShapeType;
+import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.BlockUtils;
+import me.aleksilassila.litematica.printer.utils.minecraft.PlayerUtils;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.RedstoneWallTorchBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 public final class BedrockEnvironment {
+    private static final double BEDROCK_INTERACTION_GRACE = 1.0D;
+    private static final Direction[] PLACEMENT_DIRECTIONS = {
+            Direction.DOWN,
+            Direction.NORTH,
+            Direction.SOUTH,
+            Direction.EAST,
+            Direction.WEST,
+            Direction.UP
+    };
+
     private BedrockEnvironment() {
     }
 
@@ -282,11 +300,17 @@ public final class BedrockEnvironment {
     }
 
     public static List<BlockPos> findNearbyRedstoneTorches(ClientLevel level, BlockPos pistonPos) {
-        return BedrockPlacementQuery.findNearbyRedstoneTorches(level, pistonPos);
+        List<BlockPos> result = new ArrayList<>();
+        for (BlockPos candidate : getTorchInfluencePositions(pistonPos)) {
+            if (isRedstoneTorch(level.getBlockState(candidate))) {
+                result.add(candidate);
+            }
+        }
+        return result;
     }
 
     public static boolean isRedstoneTorch(BlockState state) {
-        return BedrockPlacementQuery.isRedstoneTorch(state);
+        return state.is(Blocks.REDSTONE_TORCH) || state.is(Blocks.REDSTONE_WALL_TORCH);
     }
 
     public static boolean isRedstoneTorchAt(ClientLevel level, BlockPos pos) {
@@ -307,29 +331,145 @@ public final class BedrockEnvironment {
     }
 
     public static List<PlacementInteraction> getPlacementInteractions(ClientLevel level, BlockPos placePos, BlockPos... preferredAnchors) {
-        return BedrockPlacementQuery.getPlacementInteractions(level, placePos, preferredAnchors);
+        List<PlacementInteraction> interactions = new ArrayList<>();
+        if (level == null || placePos == null) {
+            return interactions;
+        }
+
+        Set<BlockPos> seenAnchors = new LinkedHashSet<>();
+        if (preferredAnchors != null) {
+            for (BlockPos preferredAnchor : preferredAnchors) {
+                addPlacementInteraction(level, placePos, preferredAnchor, seenAnchors, interactions);
+            }
+        }
+
+        for (Direction direction : PLACEMENT_DIRECTIONS) {
+            addPlacementInteraction(level, placePos, placePos.relative(direction), seenAnchors, interactions);
+        }
+
+        return interactions;
     }
 
     public static boolean canInteract(BlockPos pos) {
-        return BedrockRangePolicy.canInteract(pos);
+        if (pos == null || !isWithinBedrockWorkRange(pos)) {
+            return false;
+        }
+        if (!Configs.Core.CHECK_PLAYER_INTERACTION_RANGE.getBooleanValue()) {
+            return true;
+        }
+
+        LocalPlayer player = ConfigUtils.client.player;
+        if (player == null) {
+            return false;
+        }
+
+        return PlayerUtils.isWithinBlockInteractionRange(player, pos, BEDROCK_INTERACTION_GRACE);
     }
 
     public static BlockPos findFirstOutOfRangePosition(BlockPos... positions) {
-        return BedrockRangePolicy.findFirstOutOfRange(positions);
+        if (positions == null) {
+            return null;
+        }
+        for (BlockPos pos : positions) {
+            if (pos != null && !canInteract(pos)) {
+                return pos;
+            }
+        }
+        return null;
     }
 
     public static BlockPos findFirstOutOfRangePosition(Iterable<BlockPos> positions) {
-        return BedrockRangePolicy.findFirstOutOfRange(positions);
+        if (positions == null) {
+            return null;
+        }
+        for (BlockPos pos : positions) {
+            if (pos != null && !canInteract(pos)) {
+                return pos;
+            }
+        }
+        return null;
     }
 
     public static List<BlockPos> getTorchInfluencePositions(BlockPos pistonPos) {
-        return BedrockPlacementQuery.getTorchInfluencePositions(pistonPos);
+        List<BlockPos> result = new ArrayList<>();
+        for (int yOffset : new int[]{0, 1, -1}) {
+            BlockPos center = pistonPos.offset(0, yOffset, 0);
+            for (Direction direction : new Direction[]{Direction.EAST, Direction.WEST, Direction.NORTH, Direction.SOUTH}) {
+                result.add(center.relative(direction));
+            }
+        }
+        return result;
     }
 
     private static boolean isPlacementInteractable(BedrockTorchPlacement placement, BlockPos... blockedPositions) {
         return placement != null
                 && arePositionsInteractable(blockedPositions)
                 && arePositionsInteractable(placement.getSupportPos(), placement.getTorchPos());
+    }
+
+    private static void addPlacementInteraction(ClientLevel level, BlockPos placePos, BlockPos anchorPos, Set<BlockPos> seenAnchors, List<PlacementInteraction> interactions) {
+        if (anchorPos == null || !seenAnchors.add(anchorPos)) {
+            return;
+        }
+        Direction clickedFace = getClickedFace(placePos, anchorPos);
+        if (clickedFace == null) {
+            return;
+        }
+        if (!isPlacementAnchorUsable(level, anchorPos, clickedFace)) {
+            return;
+        }
+        interactions.add(new PlacementInteraction(anchorPos, clickedFace));
+    }
+
+    private static Direction getClickedFace(BlockPos placePos, BlockPos anchorPos) {
+        int dx = placePos.getX() - anchorPos.getX();
+        int dy = placePos.getY() - anchorPos.getY();
+        int dz = placePos.getZ() - anchorPos.getZ();
+        if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) != 1) {
+            return null;
+        }
+        if (dx == 1) {
+            return Direction.EAST;
+        }
+        if (dx == -1) {
+            return Direction.WEST;
+        }
+        if (dy == 1) {
+            return Direction.UP;
+        }
+        if (dy == -1) {
+            return Direction.DOWN;
+        }
+        if (dz == 1) {
+            return Direction.SOUTH;
+        }
+        if (dz == -1) {
+            return Direction.NORTH;
+        }
+        return null;
+    }
+
+    private static boolean isPlacementAnchorUsable(ClientLevel level, BlockPos anchorPos, Direction clickedFace) {
+        if (!isWithinBuildHeight(level, anchorPos) || !canInteract(anchorPos)) {
+            return false;
+        }
+        BlockState anchorState = level.getBlockState(anchorPos);
+        if (anchorState.isAir() || BlockUtils.isReplaceable(anchorState)) {
+            return false;
+        }
+        return anchorState.isFaceSturdy(level, anchorPos, clickedFace) || BlockUtils.canSupportCenter(level, anchorPos, clickedFace);
+    }
+
+    private static boolean isWithinBedrockWorkRange(BlockPos pos) {
+        double workRange = ConfigUtils.getWorkRange();
+        if (Configs.Core.ITERATOR_SHAPE.getOptionListValue() instanceof RadiusShapeType radiusShapeType) {
+            return switch (radiusShapeType) {
+                case SPHERE -> PlayerUtils.isWithinWorkInteractedEuclideanRange(pos, workRange);
+                case OCTAHEDRON -> PlayerUtils.isWithinWorkInteractedManhattanRange(pos, workRange);
+                case CUBE -> PlayerUtils.isWithinWorkInteractedCubeRange(pos, workRange);
+            };
+        }
+        return true;
     }
 
     public record PlacementInteraction(BlockPos anchorPos, Direction clickedFace) {

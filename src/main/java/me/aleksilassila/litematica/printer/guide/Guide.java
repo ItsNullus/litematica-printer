@@ -48,7 +48,16 @@ public abstract class Guide extends BlockStateUtils {
         if (state == BlockMatchResult.MISSING) {
             // 水相关方块由 WaterGuide 特判处理，不能在这里提前拦掉
             if (!BlockStateUtils.isWaterBlock(requiredState) && !requiredState.canSurvive(level, blockPos)) {
-                return Result.PASS;
+                // 无支撑支撑方块功能开启时放行（不返回 PASS），由 PrintPlacementExecutor 先放支撑再放置本体
+                me.aleksilassila.litematica.printer.enums.SupportPlaceModeType supportMode =
+                        (me.aleksilassila.litematica.printer.enums.SupportPlaceModeType)
+                                me.aleksilassila.litematica.printer.config.Configs.Print.SUPPORT_PLACE_MODE.getOptionListValue();
+                if (supportMode == me.aleksilassila.litematica.printer.enums.SupportPlaceModeType.NONE) {
+                    return Result.PASS;
+                }
+                me.aleksilassila.litematica.printer.Reference.LOGGER.info(
+                        "[Printer] 无支撑支撑: 目标 {} 在 {} 无法存活, 放行给支撑流程 (模式 {})",
+                        requiredBlock, blockPos, supportMode.getI18n().getSimpleKey());
             }
             // 双格方块的上半部分由下半部分生成，缺失时不独立放置
             if (requiredState.hasProperty(BlockStateProperties.DOUBLE_BLOCK_HALF)

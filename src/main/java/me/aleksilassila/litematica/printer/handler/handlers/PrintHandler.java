@@ -1,24 +1,22 @@
 package me.aleksilassila.litematica.printer.handler.handlers;
 
-import com.google.common.collect.Iterables;
+import fi.dy.masa.litematica.world.SchematicWorldHandler;
 import fi.dy.masa.litematica.world.WorldSchematic;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.enums.PrintModeType;
 import me.aleksilassila.litematica.printer.guide.Guides;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
-import me.aleksilassila.litematica.printer.handler.FeatureModuleBase;
+import me.aleksilassila.litematica.printer.handler.Module;
+import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
 import me.aleksilassila.litematica.printer.handler.handlers.print.PrintPlacementExecutor;
 import me.aleksilassila.litematica.printer.handler.handlers.print.PrintPlacementResult;
 import me.aleksilassila.litematica.printer.handler.handlers.print.PrintTaskAction;
 import me.aleksilassila.litematica.printer.handler.handlers.print.PrintTaskBuildResult;
-import me.aleksilassila.litematica.printer.handler.handlers.print.PrintWorkflowScheduler;
-import me.aleksilassila.litematica.printer.handler.handlers.print.FallingPlacementTracker;
-import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
+import me.aleksilassila.litematica.printer.handler.handlers.print.PrintTaskController;
 import me.aleksilassila.litematica.printer.handler.handlers.print.SortedSchematicTargetQueue;
 import me.aleksilassila.litematica.printer.printer.*;
 import me.aleksilassila.litematica.printer.printer.action.Action;
-import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import me.aleksilassila.litematica.printer.utils.*;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.state.BlockState;
@@ -29,41 +27,25 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jetbrains.annotations.Nullable;
 
-public class PrintHandler extends FeatureModuleBase {
+public class PrintHandler extends Module {
     public final static String NAME = "print";
 
-    private final Guides guides = new Guides();
     private Action action;
     @Nullable
     private PrintTaskAction printTaskAction;
 
     private SchematicBlockContext ctx;
-    private final PrintWorkflowScheduler printTasks;
-    private final SortedSchematicTargetQueue sortedTargets;
-    private final PrintPlacementExecutor placementExecutor;
-    private final FallingPlacementTracker fallingPlacements = new FallingPlacementTracker();
+    private final PrintTaskController printTasks = new PrintTaskController();
+    private final SortedSchematicTargetQueue sortedTargets = new SortedSchematicTargetQueue();
+    private final PrintPlacementExecutor placementExecutor = new PrintPlacementExecutor();
+    private int missingRejectCount;
 
     private List<String> printSkipListCache = List.of();
     private String[] printSkipFilters = new String[0];
     private int observedActionConfigHash = Integer.MIN_VALUE;
 
-    public PrintHandler(PrinterRuntime runtime) {
-        super(runtime, NAME, PrintModeType.PRINTER, Configs.Core.PRINT, Configs.Print.PRINT_SELECTION_TYPE, true);
-        this.printTasks = new PrintWorkflowScheduler(runtime::currentTick, runtime.strippableBlocks());
-        runtime.events().subscribe(event -> {
-            if (event instanceof RuntimeEvent.BlockUpdated update) {
-                this.printTasks.wake(new BlockPos(update.x(), update.y(), update.z()));
-            }
-        });
-        this.sortedTargets = new SortedSchematicTargetQueue(this.scanEngine);
-        this.placementExecutor = new PrintPlacementExecutor(
-                this.actionBroker,
-                this.cooldownUtils,
-                runtime.inventorySwitchGuard(),
-                this.hudStats,
-                this.missingMaterials,
-                this.litematica,
-                this.fallingPlacements);
+    public PrintHandler() {
+        super(NAME, PrintModeType.PRINTER, Configs.Core.PRINT, Configs.Print.PRINT_SELECTION_TYPE, true);
     }
 
     public SchematicBlockContext getContext() {
@@ -72,13 +54,13 @@ public class PrintHandler extends FeatureModuleBase {
 
     @Override
     protected int getTickInterval() {
-        if (this.printTasks.hasActiveWorkflow()) {
+        if (this.printTasks.hasActiveTask()) {
             return 0;
         }
         int baseInterval = Configs.Placement.PLACE_INTERVAL.getIntegerValue();
         if (Configs.Placement.RTT_ADAPTIVE_INTERVAL.getBooleanValue()) {
             // 保证重放间隔不低于一次往返(RTT),避免在服务端确认上一次放置前就发下一个导致放错。
-            int rttFloor = this.rttReplayController.getExtraIntervalTicks(
+            int rttFloor = RttReplayController.INSTANCE.getExtraIntervalTicks(
                     Configs.Placement.RTT_SAFETY_PERCENT.getIntegerValue());
             return Math.max(baseInterval, rttFloor);
         }
@@ -91,25 +73,19 @@ public class PrintHandler extends FeatureModuleBase {
     }
 
     @Override
-    protected boolean hasPendingIterationWork() {
-        return this.printTasks.hasReadyWorkflow() || this.sortedTargets.hasPendingWork();
-    }
-
-    @Override
     protected boolean isSchematicBlockHandler() {
         return true;
     }
 
     @Override
     protected void preprocess() {
-        this.printTasks.tick(this.level, this.litematica.schematicWorld());
         this.updatePrintSkipCache();
         int actionConfigHash = this.getActionConfigHash();
         if (this.observedActionConfigHash != Integer.MIN_VALUE
                 && this.observedActionConfigHash != actionConfigHash) {
             this.sortedTargets.clear();
-            this.scanEngine.resetOwner(NAME);
-            this.scanEngine.resetOwner("print_sorted");
+            ScanCache.INSTANCE.resetOwner(NAME);
+            ScanCache.INSTANCE.resetOwner("print_sorted");
             this.requestFullScan();
         }
         this.observedActionConfigHash = actionConfigHash;
@@ -121,26 +97,20 @@ public class PrintHandler extends FeatureModuleBase {
         this.printTaskAction = null;
         this.ctx = null;
         this.printTasks.clear();
-        this.fallingPlacements.clear();
         this.sortedTargets.clear();
         this.observedActionConfigHash = Integer.MIN_VALUE;
     }
 
     @Override
     protected Iterable<BlockPos> getIterationPositions(PrinterBox playerInteractionBox) {
-        WorldSchematic schematic = this.litematica.schematicWorld();
-        List<BlockPos> runnableTasks = this.printTasks.readyTargetPositions();
-        Iterable<BlockPos> normalPositions = this.getNormalIterationPositions(playerInteractionBox, schematic);
-        return runnableTasks.isEmpty()
-                ? normalPositions
-                : Iterables.concat(runnableTasks, normalPositions);
-    }
-
-    private Iterable<BlockPos> getNormalIterationPositions(
-            PrinterBox playerInteractionBox,
-            @Nullable WorldSchematic schematic
-    ) {
-        if (!Configs.Print.PRINT_SORT_TARGETS.getBooleanValue()) {
+        WorldSchematic schematic = SchematicWorldHandler.getSchematicWorld();
+        BlockPos activeTaskPos = this.printTasks.getActiveTargetPos(level, schematic);
+        if (activeTaskPos != null) {
+            this.sortedTargets.clear();
+            return List.of(activeTaskPos);
+        }
+        if (!Configs.Print.PRINT_SORT_TARGETS.getBooleanValue()
+                && !Configs.Print.PRINT_BOTTOM_UP.getBooleanValue()) {
             this.sortedTargets.clear();
             return this.getCachedFilteredIterationPositions(playerInteractionBox, ScanIntent.PRINT, pos -> true);
         }
@@ -160,30 +130,28 @@ public class PrintHandler extends FeatureModuleBase {
     public boolean canIterationBlockPos(BlockPos blockPos) {
         this.action = null;
         this.printTaskAction = null;
-        WorldSchematic schematic = this.litematica.schematicWorld();
-        if (schematic == null) return false;
-        if (this.hudStats.isPrintPlacementPending(blockPos)) {
+        WorldSchematic schematic = SchematicWorldHandler.getSchematicWorld();
+        if (schematic == null) {
+            HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.PRINT, "原理图世界未加载");
             return false;
         }
-        if (InteractionUtils.getRuntime().isRecentlyBroken(blockPos) && !this.printTasks.isActiveTaskPos(blockPos)) {
+        if (HudStatsManager.INSTANCE.isPrintPlacementPending(blockPos)) {
+            HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.PRINT, "位置等待服务端确认");
+            return false;
+        }
+        if (InteractionUtils.INSTANCE.isRecentlyBroken(blockPos) && !this.printTasks.isActiveTaskPos(blockPos)) {
+            HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.PRINT, "位置刚被破坏");
             return false;
         }
         this.ctx = new SchematicBlockContext(client, level, schematic, blockPos);
-        if (this.ctx.requiredState.getBlock() instanceof net.minecraft.world.level.block.FallingBlock
-                && this.fallingPlacements.blocks(
-                        blockPos,
-                        this.level.getGameTime(),
-                        Configs.Placement.FALLING_CHECK.getBooleanValue(),
-                        (pendingPos, expectedState) -> this.level.getBlockState(pendingPos).equals(expectedState)
-                )) {
-            return false;
-        }
         if (this.shouldSkipRequiredState(ctx.requiredState)) {
+            HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.PRINT, "方块在跳过列表中");
             return false;
         }
         PrintTaskBuildResult taskResult = this.printTasks.buildAction(ctx);
         if (taskResult.handled()) {
             if (!taskResult.hasAction()) {
+                HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.PRINT, "任务处理器无输出");
                 return false;
             }
             this.action = taskResult.action();
@@ -191,9 +159,17 @@ public class PrintHandler extends FeatureModuleBase {
             return true;
         }
 //        Action action = guide.getAction(ctx);
-        Optional<Action> action = this.guides.buildAction(ctx);
-        if (action.isEmpty())
+        Optional<Action> action = Guides.INSTANCE.buildAction(ctx);
+        if (action.isEmpty()) {
+            HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.PRINT, "无有效放置方案");
+            // 只记录"缺失方块被拒绝"的情况（低频汇总, 避免刷屏拖慢扫描）
+            if (ctx.currentState.isAir() && ++missingRejectCount % 200 == 1) {
+                me.aleksilassila.litematica.printer.Reference.LOGGER.info(
+                        "[Printer] 缺失方块无放置方案: 目标 {} 位置 {} canSurvive={} (累计 {})",
+                        ctx.requiredState.getBlock(), blockPos, ctx.requiredState.canSurvive(level, blockPos), missingRejectCount);
+            }
             return false;
+        }
         this.action = action.get();
         this.printTaskAction = this.printTasks.createActionHandle(ctx, this.action);
         return true;
@@ -211,7 +187,6 @@ public class PrintHandler extends FeatureModuleBase {
     private int getActionConfigHash() {
         int result = Boolean.hashCode(Configs.Print.BREAK_WRONG_BLOCK.getBooleanValue());
         result = 31 * result + Boolean.hashCode(Configs.Print.BREAK_EXTRA_BLOCK.getBooleanValue());
-        result = 31 * result + Boolean.hashCode(Configs.Print.BREAK_WRONG_STATE_BLOCK.getBooleanValue());
         result = 31 * result + Boolean.hashCode(Configs.Print.PRINT_SKIP.getBooleanValue());
         result = 31 * result + this.printSkipListCache.hashCode();
         result = 31 * result + Boolean.hashCode(Configs.Print.PRINT_REPLACE.getBooleanValue());
@@ -264,8 +239,7 @@ public class PrintHandler extends FeatureModuleBase {
         switch (taskEvent) {
             case SUCCESS -> this.printTasks.onActionSuccess(taskAction, this.ctx, this.action);
             case QUEUED -> this.printTasks.onActionQueued(taskAction, this.ctx, this.action);
-            case DEFERRED -> this.printTasks.onActionDeferred(this.ctx);
-            case CANCELLED -> this.printTasks.onActionCancelled(taskAction, this.ctx, this.action);
+            case CANCELLED -> taskAction.onCancelled(this.ctx, this.action);
             case FAILURE -> this.printTasks.onActionFailure(taskAction, this.ctx, this.action);
         }
     }

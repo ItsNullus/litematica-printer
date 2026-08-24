@@ -25,11 +25,15 @@ public class ShulkerUtils {
         } else if (openMode == QuickShulkerModeType.INVOKE) {
             if (ModLoadUtils.isQuickShulkerLoaded()) {
                 try {
-                    return ClientUtil.CheckAndSend(stack, shulkerBoxSlot);
-                } catch (Exception ignored) {
+                    boolean ok = ClientUtil.CheckAndSend(stack, shulkerBoxSlot);
+                    me.aleksilassila.litematica.printer.Reference.LOGGER.info("[QuickShulker] CheckAndSend(槽位{}) -> {}", shulkerBoxSlot, ok);
+                    return ok;
+                } catch (Exception e) {
+                    me.aleksilassila.litematica.printer.Reference.LOGGER.warn("[QuickShulker] CheckAndSend 异常", e);
                     return false;
                 }
             } else {
+                me.aleksilassila.litematica.printer.Reference.LOGGER.info("[QuickShulker] quickshulker mod 未加载");
                 MessageUtils.addMessage(I18n.SHULKER_MOD_NOT_LOADED.getName());
             }
         }

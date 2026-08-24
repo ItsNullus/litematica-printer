@@ -2,43 +2,40 @@ package me.aleksilassila.litematica.printer.handler;
 
 import com.google.common.collect.ImmutableList;
 import me.aleksilassila.litematica.printer.config.Configs;
-import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
-import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
 import me.aleksilassila.litematica.printer.handler.handlers.GuiHandler;
 import me.aleksilassila.litematica.printer.handler.handlers.MineDebugLog;
-import me.aleksilassila.litematica.printer.core.action.ResourceLease;
+import me.aleksilassila.litematica.printer.printer.ActionManager;
+import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
+import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import net.minecraft.client.Minecraft;
-import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 
+import static me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.hasPendingSwitchRequest;
+import static me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.isOpenHandler;
+import static me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.switchItem;
 
-final class TickScheduler implements RuntimeComponent {
-    private final ImmutableList<FeatureModuleBase> modules;
-    private final PrinterRuntime runtime;
+final class TickScheduler {
+    private static final Minecraft MC = Minecraft.getInstance();
+
+    private final ImmutableList<Module> modules;
     private int packetTick;
+    private int packetEpoch;
     private String lastPauseReason;
     private boolean runtimeActive;
     private int executionScopeHash = Integer.MIN_VALUE;
     private int roundRobinOffset;
 
-    TickScheduler(ImmutableList<FeatureModuleBase> modules, PrinterRuntime runtime) {
+    TickScheduler(ImmutableList<Module> modules) {
         this.modules = modules;
-        this.runtime = runtime;
     }
 
     void tick() {
-        Minecraft mc = this.runtime.client();
-        this.runtime.inventoryAvailability().tick(mc.player);
-        this.runtime.hudStats().tick();
-        this.runtime.missingMaterials().tick(
-                mc.player,
-                mc.level != null ? mc.level.getGameTime() : 0L
-        );
+        HudStatsManager.INSTANCE.tick();
         if (!Configs.Core.WORK_SWITCH.getBooleanValue()) {
             if (this.runtimeActive) {
-                this.runtime.reset("work_switch_disabled");
+                ClientPlayerTickManager.resetRuntime("work_switch_disabled");
             }
             this.runtimeActive = false;
-            this.runtime.hudStats().resetAll();
+            HudStatsManager.INSTANCE.resetAll();
             this.lastPauseReason = null;
             return;
         }
@@ -47,24 +44,24 @@ final class TickScheduler implements RuntimeComponent {
             this.runtimeActive = true;
             this.executionScopeHash = currentScopeHash;
         } else if (this.executionScopeHash != currentScopeHash) {
-            this.runtime.reset("execution_scope_changed");
+            ClientPlayerTickManager.resetRuntime("execution_scope_changed");
             this.runtimeActive = true;
             this.executionScopeHash = currentScopeHash;
             return;
         }
-        boolean inventoryBusy = this.pauseForInventoryState("shared_precheck");
-        // Advance a pending look transaction, but do not turn it into a global scheduler
-        // barrier.  The coordinator owns LOOK/INTERACTION per action owner; unrelated features
-        // must still be able to scan and submit their own resources in this tick.
-        this.advancePendingLookQueue(mc);
+        if (this.pauseForInventoryState("shared_precheck")) {
+            return;
+        }
+        if (this.pauseForPendingLookQueue()) {
+            ActionManager.INSTANCE.sendQueue(MC.player);
+            return;
+        }
         if (this.pauseForLagCheck()) {
             return;
         }
         TickContext context = TickContext.capture();
-        if (!inventoryBusy) {
-            this.resume();
-        }
-        for (FeatureModuleBase handler : this.modules) {
+        this.resume();
+        for (Module handler : this.modules) {
             if (handler instanceof GuiHandler) {
                 handler.tick(context);
             }
@@ -76,7 +73,7 @@ final class TickScheduler implements RuntimeComponent {
         int startIndex = this.roundRobinOffset % actionableCount;
         this.roundRobinOffset = (this.roundRobinOffset + 1) % actionableCount;
         for (int offset = 0; offset < actionableCount; offset++) {
-            FeatureModuleBase handler = this.modules.get(1 + (startIndex + offset) % actionableCount);
+            Module handler = this.modules.get(1 + (startIndex + offset) % actionableCount);
             if (this.pauseForHandlerPrecheck(handler)) {
                 return;
             }
@@ -92,21 +89,22 @@ final class TickScheduler implements RuntimeComponent {
         this.packetTick = packetTick;
     }
 
+    int getPacketEpoch() {
+        return this.packetEpoch;
+    }
+
     void recordInboundPacket() {
         this.packetTick = 0;
+        this.packetEpoch++;
     }
 
     void resetRuntime() {
         this.packetTick = 0;
+        this.packetEpoch++;
         this.lastPauseReason = null;
         this.runtimeActive = false;
         this.executionScopeHash = Integer.MIN_VALUE;
         this.roundRobinOffset = 0;
-    }
-
-    @Override
-    public void onEpochChanged(RuntimeEvent.EpochChanged event) {
-        this.resetRuntime();
     }
 
     String getLastPauseReason() {
@@ -128,22 +126,25 @@ final class TickScheduler implements RuntimeComponent {
     }
 
     private boolean pauseForInventoryState(String reasonPrefix) {
-        boolean inventoryLease = this.runtime.actionBroker().isResourceHeld(ResourceLease.INVENTORY);
-        boolean inventorySwitchPending = this.runtime.inventorySwitchGuard().isWaiting();
-        if (inventoryLease || inventorySwitchPending) {
-            this.pause(reasonPrefix + " inventoryLease=" + inventoryLease
-                    + " inventorySwitchPending=" + inventorySwitchPending);
+        boolean switchingItem = switchItem();
+        boolean pendingSwitch = hasPendingSwitchRequest();
+        boolean takeItOutPending = TakeItOutUtils.isAwaitingStack();
+        boolean inventorySwitchPending = InventorySwitchGuard.isWaiting();
+        boolean openHandler = isOpenHandler;
+        if (pendingSwitch || switchingItem || takeItOutPending || inventorySwitchPending) {
+            ActionManager.INSTANCE.clearQueue();
+            this.pause(reasonPrefix + " openHandler=" + openHandler + " pendingSwitch=" + pendingSwitch + " switchingItem=" + switchingItem + " takeItOutPending=" + takeItOutPending + " inventorySwitchPending=" + inventorySwitchPending);
             return true;
         }
         return false;
     }
 
-    private void advancePendingLookQueue(Minecraft mc) {
-        if (!this.runtime.actionBroker().isWaitingForLook()) {
-            return;
+    private boolean pauseForPendingLookQueue() {
+        if (!ActionManager.INSTANCE.needWaitModifyLook) {
+            return false;
         }
         this.pause("send_queue_wait_modify_look");
-        this.runtime.actionBroker().sendQueue(mc.player);
+        return true;
     }
 
     private boolean pauseForLagCheck() {
@@ -158,9 +159,13 @@ final class TickScheduler implements RuntimeComponent {
         return false;
     }
 
-    private boolean pauseForHandlerPrecheck(FeatureModuleBase handler) {
-        if (this.runtime.actionBroker().isResourceHeldByOther(ResourceLease.LOOK, handler.getId())) {
+    private boolean pauseForHandlerPrecheck(Module handler) {
+        if (this.pauseForInventoryState("handler_precheck handler=" + handler.getId())) {
+            return true;
+        }
+        if (ActionManager.INSTANCE.needWaitModifyLook) {
             this.pause("action_wait_modify_look handler=" + handler.getId());
+            return true;
         }
         return false;
     }

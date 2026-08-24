@@ -2,7 +2,6 @@ package me.aleksilassila.litematica.printer.config.builder;
 
 import fi.dy.masa.malilib.config.options.ConfigBoolean;
 import me.aleksilassila.litematica.printer.I18n;
-import me.aleksilassila.litematica.printer.config.PrinterConfigOptions;
 
 public class BooleanConfigBuilder extends BaseConfigBuilder<ConfigBoolean, BooleanConfigBuilder> {
     private boolean defaultValue = false;
@@ -22,7 +21,7 @@ public class BooleanConfigBuilder extends BaseConfigBuilder<ConfigBoolean, Boole
 
     @Override
     public ConfigBoolean build() {
-        ConfigBoolean config = new PrinterConfigOptions.BooleanOption(i18n.getNameKey(), defaultValue, descKey);
+        ConfigBoolean config = new ConfigBoolean(i18n.getNameKey(), defaultValue, descKey);
         return buildExtension(config);
     }
 }

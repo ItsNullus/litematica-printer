@@ -43,11 +43,6 @@ val Project.lombokVersion get() = propStr("lombok_version")
 val Project.githubRunNumber get() = System.getenv("GITHUB_RUN_NUMBER")?.takeIf { it.isNotBlank() }
 val Project.isReleaseWorkflow get() = System.getenv("IS_THIS_RELEASE")?.equals("true", ignoreCase = true) == true
 
-private val Project.ciBuildVersion: String?
-    get() = githubRunNumber?.let { buildNumber ->
-        if (isReleaseWorkflow) "beta$buildNumber" else "dev$buildNumber"
-    }
-
 val Project.javaVersion
     get() = when {
         mcVersionInt >= 260000 -> JavaVersion.VERSION_25
@@ -59,7 +54,12 @@ val Project.javaVersion
 val Project.mixinJavaVersion get() = "JAVA_${javaVersion}"
 
 val Project.fullProjectVersion: String get() {
-    return ciBuildVersion ?: "$modVersion-local"
+    val buildNumber = githubRunNumber
+    return when {
+        buildNumber != null && isReleaseWorkflow -> "$modVersion-beta$buildNumber"
+        buildNumber != null -> "$modVersion-dev$buildNumber"
+        else -> "$modVersion-local"
+    }
 }
 
 private val Project.modVersionFlavorSuffix: String
@@ -94,6 +94,13 @@ val Project.placeholderProps: Map<String, Any?>
             "\"printer.mc.BeaconBlockEntityAccessor\",\n" +
                     "    \"printer.mc.BeaconButtonAccessor\",\n" +
                     "    \"printer.mc.BeaconScreenMixin\","
+        } else {
+            ""
+        },
+        "chesttracker_client_mixins" to if (mcVersionInt == 12104) {
+            "\"printer.chesttracker.InteractionTrackerImplMixin\",\n" +
+                    "    \"printer.chesttracker.ItemListWidgetAccessor\",\n" +
+                    "    \"printer.chesttracker.ItemListWidgetMixin\","
         } else {
             ""
         },

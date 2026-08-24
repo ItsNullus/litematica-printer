@@ -4,10 +4,11 @@ import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.enums.ScanState;
 import me.aleksilassila.litematica.printer.enums.WorkingModeType;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
-import me.aleksilassila.litematica.printer.handler.FeatureModuleBase;
+import me.aleksilassila.litematica.printer.handler.ClientPlayerTickManager;
+import me.aleksilassila.litematica.printer.handler.Module;
+import me.aleksilassila.litematica.printer.handler.Modules;
 import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockController;
-import me.aleksilassila.litematica.printer.handler.handlers.bedrock.BedrockEngine;
-import me.aleksilassila.litematica.printer.runtime.RuntimeAccess;
+import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.render.Render2DUtils;
 import net.minecraft.client.Minecraft;
@@ -68,32 +69,6 @@ public class Render2D {
         if (Configs.Core.RENDER_HUD.getBooleanValue()) {
             drawHudInfo(scaledWidth, scaledHeight);
         }
-        if (Configs.Core.MISSING_MATERIAL_HUD.getBooleanValue()) {
-            int materialHudX = Configs.Core.RENDER_HUD_X.getIntegerValue();
-            int materialHudY = Configs.Core.RENDER_HUD_Y.getIntegerValue();
-            if (Configs.Core.RENDER_HUD.getBooleanValue()) {
-                HudBounds bounds = this.getHudBounds(scaledWidth, scaledHeight);
-                materialHudX = bounds.x();
-                materialHudY = bounds.y() + bounds.height();
-                MissingMaterialHudRenderer.INSTANCE.render(
-                        scaledWidth,
-                        scaledHeight,
-                        materialHudX,
-                        materialHudY,
-                        getHudScale(),
-                        bounds.width()
-                );
-            } else {
-                MissingMaterialHudRenderer.INSTANCE.render(
-                        scaledWidth,
-                        scaledHeight,
-                        materialHudX,
-                        materialHudY,
-                        getHudScale(),
-                        0
-                );
-            }
-        }
     }
 
     public void renderHudPreview(float scaledWidth, float scaledHeight) {
@@ -113,7 +88,7 @@ public class Render2D {
 
         // 延迟过大警告
         if (Configs.Core.LAG_CHECK.getBooleanValue() &&
-                RuntimeAccess.get().modules().packetTick() > Configs.Core.LAG_CHECK_MAX.getIntegerValue()) {
+                ClientPlayerTickManager.getPacketTick() > Configs.Core.LAG_CHECK_MAX.getIntegerValue()) {
             Render2DUtils.drawString("延迟过大，已暂停运行", centerX, centerY - 22, Color.ORANGE, true, true);
         }
 
@@ -210,7 +185,7 @@ public class Render2D {
         int baseX = Configs.Core.RENDER_HUD_X.getIntegerValue();
         int baseY = Configs.Core.RENDER_HUD_Y.getIntegerValue();
         int scaleConfig = Configs.Core.RENDER_HUD_SCALE.getIntegerValue();
-        long tick = RuntimeAccess.get().currentTick();
+        long tick = ClientPlayerTickManager.getCurrentHandlerTime();
         if (!forceRefresh
                 && this.cachedHudLayouts != null
                 && this.cachedHudTick == tick
@@ -255,13 +230,13 @@ public class Render2D {
         String workMode = ((WorkingModeType) Configs.Core.WORK_MODE.getOptionListValue()).equals(WorkingModeType.SINGLE) ? "单模" : "多模";
         lines.add(new HudLine("工作: " + (enabled ? "运行中" : "已关闭") + " | 模式: " + workMode + " | 功能: " + getActiveModeSummary(), new Color(255, 255, 255, 255)));
 
-        String pauseReason = RuntimeAccess.get().modules().lastPauseReason();
+        String pauseReason = ClientPlayerTickManager.getLastPauseReason();
         if (!enabled) {
             lines.add(new HudLine("调度: 已关闭", new Color(255, 204, 102, 255)));
         } else if (pauseReason != null) {
             lines.add(new HudLine("调度: 暂停 | 原因: " + humanizeSchedulerReason(pauseReason), new Color(255, 180, 90, 255)));
         } else {
-            lines.add(new HudLine("调度: 运行中 | Tick: " + RuntimeAccess.get().currentTick(), new Color(180, 255, 180, 255)));
+            lines.add(new HudLine("调度: 运行中 | Tick: " + ClientPlayerTickManager.getCurrentHandlerTime(), new Color(180, 255, 180, 255)));
         }
         return lines;
     }
@@ -280,28 +255,51 @@ public class Render2D {
         if (!active) {
             return;
         }
-        HudStatsManager.Snapshot snapshot = HudStatsManager.getRuntime().snapshot(mode);
+        HudStatsManager.Snapshot snapshot = HudStatsManager.INSTANCE.snapshot(mode);
         double actualRate = getDisplayedModeRate(mode, snapshot);
         String status = humanizeCommonModeReason(mode, snapshot, actualRate);
         StringBuilder text = new StringBuilder("[").append(label).append("] ");
         if (shouldDisplayModeRate(mode)) {
             text.append(getModeRateLabel(mode)).append(' ').append(formatRate(actualRate)).append("/s | ");
         }
-        FeatureModuleBase module = getModule(mode);
+        Module module = getModule(mode);
         text.append("设置 ").append(formatModeSettings(mode));
         if (module != null) {
             text.append(" | 扫描 ").append(formatScanState(module));
         }
+        if (mode == HudStatsManager.Mode.PRINT && Configs.Print.PRINT_INDEX_CHUNK_FILTER.getBooleanValue()) {
+            ScanCache.FilterStats filterStats = ScanCache.getLastFilterStats();
+            if (filterStats.isFilterActive() && filterStats.totalBuckets() > 0) {
+                text.append(" | 过滤").append(filterStats.includedBuckets())
+                        .append('/').append(filterStats.totalBuckets()).append("桶");
+                if (filterStats.skippedBuckets() > 0) {
+                    text.append("(跳").append(filterStats.skippedBuckets()).append(")");
+                }
+            }
+        }
         text.append(" | 状态 ").append(status);
-        lines.add(new HudLine(text.toString(), new Color(120, 220, 255, 255)));
+        lines.add(new HudLine(text.toString(), getStatusColor(status)));
+    }
+
+    private Color getStatusColor(String status) {
+        if (status == null) {
+            return new Color(120, 220, 255, 255);
+        }
+        return switch (status) {
+            case "无目标", "无有效放置方案" -> new Color(150, 150, 160, 255);
+            case "失败" -> new Color(255, 100, 100, 255);
+            case "未配置", "缺少方块" -> new Color(255, 200, 90, 255);
+            case "工作中" -> new Color(120, 255, 170, 255);
+            default -> new Color(120, 220, 255, 255);
+        };
     }
 
     private void appendBedrockLines(List<HudLine> lines, boolean active) {
         if (!active) {
             return;
         }
-        HudStatsManager.Snapshot snapshot = HudStatsManager.getRuntime().snapshot(HudStatsManager.Mode.BEDROCK);
-        BedrockEngine.HudSnapshot bedrock = BedrockController.getHudSnapshot();
+        HudStatsManager.Snapshot snapshot = HudStatsManager.INSTANCE.snapshot(HudStatsManager.Mode.BEDROCK);
+        BedrockController.HudSnapshot bedrock = BedrockController.getHudSnapshot();
         String progressText = formatProgress(
                 bedrock.confirmedSuccesses(),
                 bedrock.submittedTargets(),
@@ -327,7 +325,7 @@ public class Render2D {
         lines.add(new HudLine("吞吐 " + bedrock.configuredThroughput()
                 + " | 提交 " + bedrock.acceptedThisTick() + "/" + bedrock.submitCap()
                 + " | 阻塞 " + bedrock.rejectedThisTick()
-                + " | 扫描 " + formatScanState(RuntimeAccess.get().modules().bedrock())
+                + " | 扫描 " + formatScanState(Modules.BEDROCK)
                 + " | 状态 " + status, new Color(255, 255, 255, 255)));
     }
 
@@ -442,18 +440,18 @@ public class Render2D {
         };
     }
 
-    private FeatureModuleBase getModule(HudStatsManager.Mode mode) {
+    private Module getModule(HudStatsManager.Mode mode) {
         return switch (mode) {
-            case PRINT -> RuntimeAccess.get().modules().print();
-            case MINE -> RuntimeAccess.get().modules().mine();
-            case FILL -> RuntimeAccess.get().modules().fill();
-            case FLUID -> RuntimeAccess.get().modules().fluid();
-            case BEDROCK -> RuntimeAccess.get().modules().bedrock();
+            case PRINT -> Modules.PRINT;
+            case MINE -> Modules.MINE;
+            case FILL -> Modules.FILL;
+            case FLUID -> Modules.FLUID;
+            case BEDROCK -> Modules.BEDROCK;
             case TOTAL -> null;
         };
     }
 
-    private String formatScanState(FeatureModuleBase module) {
+    private String formatScanState(Module module) {
         ScanState state = module.getScanState();
         String text = switch (state) {
             case FULL -> "全量";
@@ -464,7 +462,7 @@ public class Render2D {
         if (dirtyRegions > 0) {
             text += "(" + dirtyRegions + ")";
         }
-        var metrics = RuntimeAccess.get().scanEngine().metricsFor(module.getId());
+        ScanCache.ScanMetrics metrics = ScanCache.INSTANCE.metricsFor(module.getId());
         if (metrics.hasActivity()) {
             text += " " + formatScanMillis(metrics.scanNanos())
                     + "ms " + metrics.scannedBlocks()
@@ -489,15 +487,6 @@ public class Render2D {
         if (reason == null || reason.isBlank() || "空闲".equals(reason)) {
             return actualRate > 0.0D ? "工作中" : "无目标";
         }
-        if (snapshot.total() <= 0
-                && actualRate <= 0.0D
-                && !reason.contains("缺少")
-                && !reason.contains("配置")
-                && !reason.contains("列表为空")
-                && !reason.contains("列表无匹配")
-                && !reason.contains("失败")) {
-            return "无目标";
-        }
         if (reason.contains("失败")) {
             return "失败";
         }
@@ -507,10 +496,10 @@ public class Render2D {
         if (reason.contains("缺少") || reason.contains("主手无可填充方块")) {
             return "缺少方块";
         }
-        if ("运行中".equals(reason) && snapshot.total() <= 0 && actualRate <= 0.0D) {
-            return "无目标";
+        if ("运行中".equals(reason)) {
+            return (snapshot.total() <= 0 && actualRate <= 0.0D) ? "无目标" : "工作中";
         }
-        return "工作中";
+        return reason;
     }
 
     private String formatModeSettings(HudStatsManager.Mode mode) {

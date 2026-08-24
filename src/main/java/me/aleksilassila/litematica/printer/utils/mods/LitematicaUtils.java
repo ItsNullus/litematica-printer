@@ -33,23 +33,31 @@ public class LitematicaUtils {
 
     @SuppressWarnings("deprecation")
     public static Vec3 usePrecisionPlacement(BlockPos pos, BlockState stateSchematic) {
-        if (Configs.Print.EASY_PLACE_PROTOCOL.getBooleanValue()) {
-            EasyPlaceProtocol protocol = PlacementHandler.getEffectiveProtocolVersion();
-            Vec3 hitPos = Vec3.atLowerCornerOf(pos);
-            if (protocol == EasyPlaceProtocol.V3) {
-                //#if MC > 260100
-                //$$ return fi.dy.masa.litematica.util.EasyPlaceUtils.applyPlacementProtocolV3(pos, stateSchematic, hitPos);
-                //#else
-                return fi.dy.masa.litematica.util.WorldUtils.applyPlacementProtocolV3(pos, stateSchematic, hitPos);
-                //#endif
-            } else if (protocol == EasyPlaceProtocol.V2) {
-                // Carpet Accurate Block placements protocol support, plus slab support
-                //#if MC > 260100
-                //$$ return fi.dy.masa.litematica.util.EasyPlaceUtils.applyCarpetProtocolHitVec(pos, stateSchematic, hitPos);
-                //#else
-                return fi.dy.masa.litematica.util.WorldUtils.applyCarpetProtocolHitVec(pos, stateSchematic, hitPos);
-                //#endif
-            }
+        boolean easyPlace = Configs.Placement.EASY_PLACE_PROTOCOL.getBooleanValue();
+        boolean useCarpetEnabled = Configs.Placement.USE_CARPET_PROTOCOL.getBooleanValue();
+        if (!easyPlace && !useCarpetEnabled) {
+            return null;
+        }
+        // 两者同时开启时, 根据优先级开关决定使用哪个协议
+        boolean carpetPriority = Configs.Placement.CARPET_PROTOCOL_PRIORITY.getBooleanValue();
+        boolean useCarpet = useCarpetEnabled && (!easyPlace || carpetPriority);
+        EasyPlaceProtocol protocol = useCarpet
+                ? EasyPlaceProtocol.V2
+                : PlacementHandler.getEffectiveProtocolVersion();
+        Vec3 hitPos = Vec3.atLowerCornerOf(pos);
+        if (protocol == EasyPlaceProtocol.V3) {
+            //#if MC > 260100
+            //$$ return fi.dy.masa.litematica.util.EasyPlaceUtils.applyPlacementProtocolV3(pos, stateSchematic, hitPos);
+            //#else
+            return fi.dy.masa.litematica.util.WorldUtils.applyPlacementProtocolV3(pos, stateSchematic, hitPos);
+            //#endif
+        } else if (protocol == EasyPlaceProtocol.V2) {
+            // Carpet Accurate Block placements protocol support, plus slab support
+            //#if MC > 260100
+            //$$ return fi.dy.masa.litematica.util.EasyPlaceUtils.applyCarpetProtocolHitVec(pos, stateSchematic, hitPos);
+            //#else
+            return fi.dy.masa.litematica.util.WorldUtils.applyCarpetProtocolHitVec(pos, stateSchematic, hitPos);
+            //#endif
         }
         return null;
     }
@@ -159,9 +167,11 @@ public class LitematicaUtils {
     public static List<PrinterBox> createSchematicPlacementBoxes() {
         List<PrinterBox> result = new ArrayList<>();
         SchematicPlacementManager manager = DataManager.getSchematicPlacementManager();
-        for (SchematicPlacement placement : manager.getAllSchematicsPlacements()) {
-            if (!placement.matchesRequirement(SubRegionPlacement.RequiredEnabled.RENDERING_ENABLED)) {
-                continue;
+        if (Configs.Print.PRINT_ONLY_SELECTED.getBooleanValue()) {
+            SchematicPlacement placement = manager.getSelectedSchematicPlacement();
+            if (placement == null
+                    || !placement.matchesRequirement(SubRegionPlacement.RequiredEnabled.RENDERING_ENABLED)) {
+                return result;
             }
             Map<String, Box> boxes = placement.getSubRegionBoxes(
                     SubRegionPlacement.RequiredEnabled.RENDERING_ENABLED
@@ -170,6 +180,21 @@ public class LitematicaUtils {
                 Bounds bounds = Bounds.from(box);
                 if (bounds != null) {
                     result.add(bounds.toPrinterBox());
+                }
+            }
+        } else {
+            for (SchematicPlacement placement : manager.getAllSchematicsPlacements()) {
+                if (!placement.matchesRequirement(SubRegionPlacement.RequiredEnabled.RENDERING_ENABLED)) {
+                    continue;
+                }
+                Map<String, Box> boxes = placement.getSubRegionBoxes(
+                        SubRegionPlacement.RequiredEnabled.RENDERING_ENABLED
+                );
+                for (Box box : boxes.values()) {
+                    Bounds bounds = Bounds.from(box);
+                    if (bounds != null) {
+                        result.add(bounds.toPrinterBox());
+                    }
                 }
             }
         }

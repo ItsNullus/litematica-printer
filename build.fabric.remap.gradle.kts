@@ -41,6 +41,14 @@ repositories {
     strictMaven("https://staging.alexiil.uk/maven/", "io.github.cottonmc") // LibGui 依赖
     strictMaven("https://maven.shedaniel.me")  // Cloth API/Config 官方源
     strictMaven("https://jitpack.io")
+
+    // Chest Tracker 相关依赖仓库 (仅 1.21.4)
+    if (mcVersionInt == 12104) {
+        strictMaven("https://maven.jackf.red/releases", "red.jackf.jackfredlib")
+        strictMaven("https://maven.blamejared.com", "com.blamejared.searchables")
+        strictMaven("https://maven.isxander.dev/releases", "dev.isxander")
+        strictMaven("https://maven.quiltmc.org/repository/release", "org.quiltmc")
+    }
 }
 
 fun masaDependency(mod: String): String {
@@ -90,8 +98,6 @@ dependencies {
     mappings(loom.officialMojangMappings())
     modImplementation("net.fabricmc:fabric-loader:$fabricLoaderVersion")
     modImplementation("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
-    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
     modImplementation("com.belerweb:pinyin4j:${prop("pinyin_version")}")?.let { include(it) }
 
     modImplementation(modMenuDependency)
@@ -128,10 +134,15 @@ dependencies {
             exclude(group = "maven.modrinth", module = "modmenu")
         }
     }
-}
 
-tasks.withType<Test>().configureEach {
-    useJUnitPlatform()
+    // Chest Tracker 远程取物依赖 (仅 1.21.4)
+    if (mcVersionInt == 12104) {
+        modImplementation("maven.modrinth:chest-tracker:${prop("chesttracker")}")
+        modImplementation("maven.modrinth:where-is-it:${prop("whereisit")}")
+        modImplementation("red.jackf.jackfredlib:jackfredlib:${prop("jackfredlib")}")
+        modImplementation("com.blamejared.searchables:Searchables-fabric-1.21.4:${prop("searchables")}")
+        modImplementation("dev.isxander:yet-another-config-lib:${prop("yacl")}")
+    }
 }
 
 loom {

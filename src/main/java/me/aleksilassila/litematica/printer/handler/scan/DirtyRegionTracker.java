@@ -6,14 +6,15 @@ import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import net.minecraft.core.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 
 public final class DirtyRegionTracker {
+    public static final DirtyRegionTracker INSTANCE = new DirtyRegionTracker();
+
     public static final int REGION_SIZE = 16;
     private static final int MAX_DIRTY_REGIONS = 8192;
-    private static final int HISTORY_COMPACT_THRESHOLD = MAX_DIRTY_REGIONS * 2;
+    private static final long MAX_VERSION_HISTORY = 32768L;
 
     private static final int XZ_BITS = 22;
     private static final int Y_BITS = 20;
@@ -21,11 +22,9 @@ public final class DirtyRegionTracker {
     private static final long Y_MASK = (1L << Y_BITS) - 1L;
 
     private final Long2LongOpenHashMap dirtyRegions = new Long2LongOpenHashMap();
-    private final ArrayDeque<RegionVersion> regionHistory = new ArrayDeque<>();
     private long version;
-    private long historyFloorVersion;
 
-    public DirtyRegionTracker() {
+    private DirtyRegionTracker() {
     }
 
     public synchronized void markDirty(@Nullable BlockPos pos) {
@@ -63,9 +62,6 @@ public final class DirtyRegionTracker {
         if (snapshotVersion <= lastSeenVersion) {
             return new DirtySnapshot(snapshotVersion, List.of());
         }
-        if (lastSeenVersion < this.historyFloorVersion) {
-            return new DirtySnapshot(snapshotVersion, bounds == null ? List.of() : List.of(bounds));
-        }
         List<PrinterBox> boxes = new ArrayList<>();
         for (Long2LongMap.Entry entry : this.dirtyRegions.long2LongEntrySet()) {
             if (entry.getLongValue() <= lastSeenVersion) {
@@ -85,40 +81,15 @@ public final class DirtyRegionTracker {
 
     public synchronized void clear() {
         this.dirtyRegions.clear();
-        this.regionHistory.clear();
         this.version++;
-        this.historyFloorVersion = this.version;
     }
 
     private void markDirtyRegion(int sectionX, int sectionY, int sectionZ) {
-        long key = regionKey(sectionX, sectionY, sectionZ);
-        long entryVersion = ++this.version;
-        this.dirtyRegions.put(key, entryVersion);
-        this.regionHistory.addLast(new RegionVersion(key, entryVersion));
-        while (this.dirtyRegions.size() > MAX_DIRTY_REGIONS) {
-            RegionVersion oldest = this.regionHistory.removeFirst();
-            if (this.dirtyRegions.get(oldest.key()) == oldest.version()) {
-                this.dirtyRegions.remove(oldest.key());
-                this.historyFloorVersion = Math.max(this.historyFloorVersion, oldest.version());
-            }
+        this.dirtyRegions.put(regionKey(sectionX, sectionY, sectionZ), ++this.version);
+        if (this.dirtyRegions.size() > MAX_DIRTY_REGIONS && (this.version & 255L) == 0L) {
+            long minimumVersion = Math.max(0L, this.version - MAX_VERSION_HISTORY);
+            this.dirtyRegions.long2LongEntrySet().removeIf(entry -> entry.getLongValue() < minimumVersion);
         }
-        if (this.regionHistory.size() > HISTORY_COMPACT_THRESHOLD + this.dirtyRegions.size()) {
-            this.compactHistory();
-        }
-    }
-
-    private void compactHistory() {
-        List<RegionVersion> regions = new ArrayList<>(this.dirtyRegions.size());
-        for (Long2LongMap.Entry entry : this.dirtyRegions.long2LongEntrySet()) {
-            regions.add(new RegionVersion(entry.getLongKey(), entry.getLongValue()));
-        }
-        regions.sort(java.util.Comparator.comparingLong(RegionVersion::version));
-        this.regionHistory.clear();
-        this.regionHistory.addAll(regions);
-    }
-
-    int retainedRegionCount() {
-        return this.dirtyRegions.size();
     }
 
     private PrinterBox toBox(long key) {
@@ -168,8 +139,5 @@ public final class DirtyRegionTracker {
     }
 
     public record DirtySnapshot(long version, List<PrinterBox> boxes) {
-    }
-
-    private record RegionVersion(long key, long version) {
     }
 }

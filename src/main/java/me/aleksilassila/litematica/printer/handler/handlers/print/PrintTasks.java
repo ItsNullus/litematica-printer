@@ -1,22 +1,26 @@
 package me.aleksilassila.litematica.printer.handler.handlers.print;
 
 import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
-import me.aleksilassila.litematica.printer.interaction.StrippableBlockPort;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.function.LongSupplier;
+import java.util.List;
 
 public final class PrintTasks {
+    private static final List<PrintTaskFactory> FACTORIES = List.of(
+            WaterPrintTask::tryCreate
+    );
+
     private PrintTasks() {
     }
 
     @Nullable
-    public static PrintTask tryCreate(
-            SchematicBlockContext context,
-            LongSupplier tickClock,
-            StrippableBlockPort strippableBlocks
-    ) {
-        PrintTask water = WaterPrintTask.tryCreate(context, tickClock);
-        return water != null ? water : StripLogPrintTask.tryCreate(context, tickClock, strippableBlocks);
+    public static PrintTask tryCreate(SchematicBlockContext context) {
+        for (PrintTaskFactory factory : FACTORIES) {
+            PrintTask task = factory.tryCreate(context);
+            if (task != null) {
+                return task;
+            }
+        }
+        return null;
     }
 }

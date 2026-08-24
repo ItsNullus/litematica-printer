@@ -2,7 +2,6 @@ package me.aleksilassila.litematica.printer.config.builder;
 
 import fi.dy.masa.malilib.config.options.ConfigColor;
 import me.aleksilassila.litematica.printer.I18n;
-import me.aleksilassila.litematica.printer.config.PrinterConfigOptions;
 
 public class ColorConfigBuilder extends BaseConfigBuilder<ConfigColor, ColorConfigBuilder> {
     private String defaultValue = "";
@@ -22,7 +21,7 @@ public class ColorConfigBuilder extends BaseConfigBuilder<ConfigColor, ColorConf
 
     @Override
     public ConfigColor build() {
-        ConfigColor config = new PrinterConfigOptions.ColorOption(i18n.getNameKey(), defaultValue, descKey);
+        ConfigColor config = new ConfigColor(i18n.getNameKey(), defaultValue, descKey);
         return buildExtension(config);
     }
 }

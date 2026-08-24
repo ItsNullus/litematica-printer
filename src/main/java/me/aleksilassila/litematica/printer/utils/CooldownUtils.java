@@ -8,15 +8,11 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
-import me.aleksilassila.litematica.printer.core.runtime.RuntimeComponent;
-import me.aleksilassila.litematica.printer.core.runtime.RuntimeEvent;
-import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 
-public final class CooldownUtils implements RuntimeComponent {
+public class CooldownUtils {
+    public static CooldownUtils INSTANCE = new CooldownUtils();
+
     private final Map<Info, Integer> cooldownMap = new HashMap<>();
-
-    public CooldownUtils() {
-    }
 
     /**
      * 冷却刻数递减核心方法（可抽离到玩家交互最顶层统一调用，无任何业务依赖）
@@ -108,8 +104,6 @@ public final class CooldownUtils implements RuntimeComponent {
     public void clearAllCooldowns() {
         cooldownMap.clear();
     }
-
-    @Override public void onEpochChanged(RuntimeEvent.EpochChanged event) { this.clearAllCooldowns(); }
 
     @SuppressWarnings("ClassCanBeRecord")
     private static final class Info {

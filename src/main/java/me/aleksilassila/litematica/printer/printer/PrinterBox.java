@@ -22,7 +22,7 @@ public class PrinterBox implements Iterable<BlockPos> {
         this.maxZ = Math.max(minZ, maxZ);
         int rawMinY = Math.min(minY, maxY);
         int rawMaxY = Math.max(minY, maxY);
-        if (client != null && client.level != null) {
+        if (client.level != null) {
             this.minY = Math.max(client.level.getMinY(), rawMinY);
             this.maxY = Math.min(client.level.getMaxY(), rawMaxY);
         } else {
@@ -63,7 +63,7 @@ public class PrinterBox implements Iterable<BlockPos> {
         int maxZ = this.maxZ + expandZ;
         int minY = this.minY - expandY;
         int maxY = this.maxY + expandY;
-        if (client != null && client.level != null) {
+        if (client.level != null) {
             minY = Math.max(client.level.getMinY(), minY);
             maxY = Math.min(client.level.getMaxY(), maxY);
         }

@@ -2,18 +2,16 @@ package me.aleksilassila.litematica.printer.handler.handlers;
 
 import lombok.Getter;
 import me.aleksilassila.litematica.printer.config.Configs;
-import me.aleksilassila.litematica.printer.core.action.ResourceLease;
 import me.aleksilassila.litematica.printer.enums.FillBlockModeType;
 import me.aleksilassila.litematica.printer.enums.PrintModeType;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.I18n;
-import me.aleksilassila.litematica.printer.handler.FeatureModuleBase;
+import me.aleksilassila.litematica.printer.handler.Module;
+import me.aleksilassila.litematica.printer.handler.scan.ScanCache;
 import me.aleksilassila.litematica.printer.handler.scan.ScanIntent;
-import me.aleksilassila.litematica.printer.handler.scan.ScanEngine;
 import me.aleksilassila.litematica.printer.printer.PlayerLook;
 import me.aleksilassila.litematica.printer.printer.PrinterUtils;
-import me.aleksilassila.litematica.printer.printer.action.ActionPort;
-import me.aleksilassila.litematica.printer.printer.MissingMaterialTracker;
+import me.aleksilassila.litematica.printer.printer.ActionManager;
 import me.aleksilassila.litematica.printer.printer.PrinterBox;
 import me.aleksilassila.litematica.printer.utils.ConfigUtils;
 import me.aleksilassila.litematica.printer.utils.FilterUtils;
@@ -21,7 +19,6 @@ import me.aleksilassila.litematica.printer.utils.InventoryUtils;
 import me.aleksilassila.litematica.printer.utils.RegistryFilterResolver;
 import me.aleksilassila.litematica.printer.utils.minecraft.BlockUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.MessageUtils;
-import me.aleksilassila.litematica.printer.runtime.PrinterRuntime;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.item.BlockItem;
@@ -34,11 +31,13 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
-public class FillHandler extends FeatureModuleBase {
+public class FillHandler extends Module {
     public final static String NAME = "fill";
     private static final Direction[] FILL_SIDE_ORDER = {
             Direction.DOWN,
@@ -48,15 +47,6 @@ public class FillHandler extends FeatureModuleBase {
             Direction.WEST,
             Direction.UP
     };
-
-    /**
-     * How long to cool a cell after a rejected placement attempt. A rejection is usually caused
-     * by a falling fill-block entity in the column (sand/gravel into air), which settles within a
-     * few ticks. Shorter than the normal placement cooldown so the cell is retried promptly once
-     * it becomes placeable again, but long enough that a momentarily-occupied column is not
-     * hot-rejected every single tick.
-     */
-    private static final int REJECT_RETRY_COOLDOWN_TICKS = 4;
 
     private List<String> fillCacheBlocklist = new ArrayList<>();
     private List<String> replaceableListCache = List.of();
@@ -68,8 +58,8 @@ public class FillHandler extends FeatureModuleBase {
     private int fillScanConfigHash;
     private int observedFillScanConfigHash = Integer.MIN_VALUE;
 
-    public FillHandler(PrinterRuntime runtime) {
-        super(runtime, NAME, PrintModeType.FILL, Configs.Core.FILL, Configs.Fill.FILL_SELECTION_TYPE, true);
+    public FillHandler() {
+        super(NAME, PrintModeType.FILL, Configs.Core.FILL, Configs.Fill.FILL_SELECTION_TYPE, true);
     }
 
     @Override
@@ -94,7 +84,7 @@ public class FillHandler extends FeatureModuleBase {
                     fillCacheBlocklist = new ArrayList<>(strings);
                     fillModeItemList = new Item[0];
                     if (strings.isEmpty()) {
-                        this.hudStats.recordStatus(HudStatsManager.Mode.FILL, "填充列表为空");
+                        HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.FILL, "填充列表为空");
                         return;
                     }
                     List<Item> items = RegistryFilterResolver.resolveItems(fillCacheBlocklist);
@@ -106,22 +96,22 @@ public class FillHandler extends FeatureModuleBase {
                     ItemStack heldStack = player.getMainHandItem(); // 获取主手物品
                     if (!heldStack.isEmpty() && heldStack.getCount() > 0) {
                         fillModeItemList = new Item[]{player.getMainHandItem().getItem()};
-                        this.hudStats.recordStatus(HudStatsManager.Mode.FILL, "运行中");
+                        HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.FILL, "运行中");
                     } else {
                         fillModeItemList = new Item[0];
-                        this.hudStats.recordStatus(HudStatsManager.Mode.FILL, "主手无可填充方块");
+                        HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.FILL, "主手无可填充方块");
                     }
                 }
                 break;
         }
         if (fillModeItemList.length == 0 && fillMode == FillBlockModeType.BLOCKLIST && !fillCacheBlocklist.isEmpty()) {
-            this.hudStats.recordStatus(HudStatsManager.Mode.FILL, "列表无匹配方块");
+            HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.FILL, "列表无匹配方块");
         }
         int scanConfigHash = this.getFillScanConfigHash();
         if (this.observedFillScanConfigHash != Integer.MIN_VALUE
                 && this.observedFillScanConfigHash != scanConfigHash) {
             this.clearFillTargets();
-            this.scanEngine.resetOwner(NAME);
+            ScanCache.INSTANCE.resetOwner(NAME);
             this.requestFullScan();
         }
         this.observedFillScanConfigHash = scanConfigHash;
@@ -155,7 +145,7 @@ public class FillHandler extends FeatureModuleBase {
 
     @Override
     protected boolean iterationPositionsPrefilterCooldown() {
-        return false;
+        return true;
     }
 
     @Override
@@ -184,21 +174,52 @@ public class FillHandler extends FeatureModuleBase {
         }
 
         Predicate<BlockPos> selectionPredicate = this.createSelectionRangePredicate();
-        Predicate<BlockPos> reachPredicate = this.createScanReachPredicate();
-        // ScanEngine already exposes a resumable candidate iterable and its explicit pause
-        // state. A second look-ahead iterator would hide budget pauses from the coordinator.
-        return this.createSourceIterator(scanSourceBoxes, reachPredicate, selectionPredicate);
+        return () -> new Iterator<>() {
+            private final Iterator<BlockPos> sourceIterator =
+                    createSourceIterator(scanSourceBoxes, selectionPredicate);
+            private BlockPos next;
+            private boolean prepared;
+            private boolean nextAvailable;
+
+            private void prepare() {
+                if (this.prepared) {
+                    return;
+                }
+                this.prepared = true;
+                if (this.sourceIterator.hasNext()) {
+                    this.next = this.sourceIterator.next();
+                    this.nextAvailable = true;
+                }
+            }
+
+            @Override
+            public boolean hasNext() {
+                this.prepare();
+                return this.nextAvailable;
+            }
+
+            @Override
+            public BlockPos next() {
+                if (!this.hasNext()) {
+                    throw new NoSuchElementException();
+                }
+                BlockPos result = this.next;
+                this.next = null;
+                this.prepared = false;
+                this.nextAvailable = false;
+                return result;
+            }
+        };
     }
 
-    private Iterable<BlockPos> createSourceIterator(
+    private Iterator<BlockPos> createSourceIterator(
             List<PrinterBox> scanSourceBoxes,
-            Predicate<BlockPos> reachPredicate,
             Predicate<BlockPos> selectionPredicate
     ) {
         ScanIntent scanIntent = Configs.Print.PLACE_IN_AIR.getBooleanValue()
                 ? ScanIntent.CUSTOM
                 : ScanIntent.FILL;
-        return this.scanEngine.iterable(
+        return ScanCache.INSTANCE.iterable(
                 NAME,
                 scanSourceBoxes,
                 this.level,
@@ -207,18 +228,14 @@ public class FillHandler extends FeatureModuleBase {
                 this.getScanGuardLimit(),
                 scanIntent,
                 this::isFillTarget,
-                pos -> this.isFillCandidatePreFilter(pos, reachPredicate, selectionPredicate),
-                ScanEngine.PassPolicy.INVALIDATIONS_ONLY
-        );
+                pos -> this.isFillCandidatePreFilter(pos, selectionPredicate)
+        ).iterator();
     }
 
-    private boolean isFillCandidatePreFilter(
-            BlockPos blockPos,
-            Predicate<BlockPos> reachPredicate,
-            Predicate<BlockPos> selectionPredicate
-    ) {
-        return reachPredicate.test(blockPos)
-                && selectionPredicate.test(blockPos);
+    private boolean isFillCandidatePreFilter(BlockPos blockPos, Predicate<BlockPos> selectionPredicate) {
+        return this.canReachIterationPosition(blockPos)
+                && selectionPredicate.test(blockPos)
+                && !this.isBlockPosOnCooldown(blockPos);
     }
 
     private void resetFillScan(
@@ -267,7 +284,7 @@ public class FillHandler extends FeatureModuleBase {
                 item.getBlock() instanceof FallingBlock block &&
                 FallingBlock.isFree(level.getBlockState(blockPos.below()))
         ) {
-                        this.hudStats.recordDeferred(HudStatsManager.Mode.FILL, "下落方块无支撑");
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "下落方块无支撑");
             MessageUtils.setOverlayMessage(I18n.FALLING_BLOCK_NO_SUPPORT.getName(block.getName().getString()));
             return;
         }
@@ -278,32 +295,17 @@ public class FillHandler extends FeatureModuleBase {
             return;
         }
         if (!handheld && !InventoryUtils.switchToItems(player, this.fillModeItemList)) {
-            boolean retrievalPending =
-                    this.actionBroker.isResourceHeld(ResourceLease.INVENTORY);
-            if (retrievalPending) {
-                this.hudStats.recordDeferred(HudStatsManager.Mode.FILL, "等待取货");
-                this.missingMaterials.resolve(this.fillModeItemList, null);
-            } else {
-                this.hudStats.recordDeferred(HudStatsManager.Mode.FILL, "缺少填充材料");
-                this.missingMaterials.recordMissing(
-                        this.fillModeItemList,
-                        null,
-                        null,
-                        level.getGameTime()
-                );
-            }
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "缺少填充材料");
             setIterationConsumedEffectiveExecution(false);
-            if (retrievalPending) {
+            if (me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.shouldPauseForSwitchRequest()
+                    || me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils.isAwaitingStack()) {
                 skipIteration.set(true);
             }
             return;
         }
-        if (!handheld) {
-            this.missingMaterials.resolve(this.fillModeItemList, null);
-        }
         Direction side = this.getFillPlacementSide(blockPos);
         if (side == null) {
-            this.hudStats.recordDeferred(HudStatsManager.Mode.FILL, "无有效放置面");
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "无有效放置面");
             setIterationConsumedEffectiveExecution(false);
             return;
         }
@@ -312,42 +314,37 @@ public class FillHandler extends FeatureModuleBase {
         Item[] expectedItems = handheld
                 ? new Item[]{player.getMainHandItem().getItem()}
                 : this.fillModeItemList;
-        if (!this.actionBroker.queueClick(
+        if (!ActionManager.INSTANCE.queueClick(
                 clickTarget,
                 clickSide,
                 Vec3.ZERO,
                 false,
                 1,
                 expectedItems,
-                    ActionPort.ActionSource.FILL
+                ActionManager.ActionSource.FILL
         )) {
-            this.hudStats.recordDeferred(HudStatsManager.Mode.FILL, "动作队列占用");
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "动作队列占用");
             setIterationConsumedEffectiveExecution(false);
             skipIteration.set(true);
             return;
         }
-        this.actionBroker.setLook(new PlayerLook(clickSide));
-        this.actionBroker.setWaitForHorizontalLook(false);
-        ActionPort.SendResult sendResult = this.actionBroker.sendQueue(player);
+        ActionManager.INSTANCE.setLook(new PlayerLook(clickSide));
+        ActionManager.INSTANCE.setWaitForHorizontalLook(false);
+        ActionManager.SendResult sendResult = ActionManager.INSTANCE.sendQueue(player);
         if (sendResult.isWaiting()) {
-            this.hudStats.recordDeferred(HudStatsManager.Mode.FILL, "等待转头");
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "等待转头");
             skipIteration.set(true);
             return;
         }
         if (!sendResult.isSent()) {
-            this.hudStats.recordDeferred(HudStatsManager.Mode.FILL, "放置动作未发送");
-            // A rejected interaction means this cell is momentarily unplaceable (a falling fill
-            // block entity occupies the column, or the server rejected the placement). Do NOT
-            // abort the whole pass: that serialised work to one rejected attempt per tick and
-            // read as the slow ring-by-ring expansion. Cool the cell briefly and let the
-            // iteration loop move on to the next candidate.
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.FILL, "放置动作未发送");
             setIterationConsumedEffectiveExecution(false);
-            this.setBlockPosCooldown(blockPos, REJECT_RETRY_COOLDOWN_TICKS);
+            skipIteration.set(true);
             return;
         }
-        this.hudStats.trackExpectedBlockChange(HudStatsManager.Mode.FILL, blockPos, currentState);
-        this.hudStats.recordRateUnit(HudStatsManager.Mode.FILL, 1);
-        this.hudStats.recordStatus(HudStatsManager.Mode.FILL, "运行中");
+        HudStatsManager.INSTANCE.trackExpectedBlockChange(HudStatsManager.Mode.FILL, blockPos, currentState);
+        HudStatsManager.INSTANCE.recordRateUnit(HudStatsManager.Mode.FILL, 1);
+        HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.FILL, "运行中");
         this.setBlockPosCooldown(blockPos, ConfigUtils.getPlaceCooldown());
     }
 

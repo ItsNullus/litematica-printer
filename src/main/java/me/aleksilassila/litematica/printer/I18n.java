@@ -14,6 +14,12 @@ public class I18n {
     public static final I18n AUTO_DISABLE_NOTICE = of("auto_disable_notice");
     public static final I18n FREE_NOTICE = of("free_notice");
 
+    public static final I18n UPDATE_AVAILABLE = of("update.available");
+    public static final I18n UPDATE_DOWNLOAD = of("update.download");
+    public static final I18n UPDATE_FAILED = of("update.failed");
+    public static final I18n UPDATE_PASSWORD = of("update.password");
+    public static final I18n UPDATE_RECOMMENDATION = of("update.recommendation");
+    public static final I18n UPDATE_REPOSITORY = of("update.repository");
 
     // 下落方块检查提示
     public static final I18n FALLING_BLOCK_NO_SUPPORT = of("message.falling_block.no_support");
@@ -34,9 +40,18 @@ public class I18n {
     public static final I18n INVENTORY_SHULKER_OCCUPIED = of("message.inventory.shulker_occupied");
     public static final I18n RESERVE_ITEM_SKIP = of("message.reserve_item.skip");
 
-    // 缺少材料 HUD
-    public static final I18n MISSING_MATERIAL_TITLE = of("hud.missing.title");
-    public static final I18n MISSING_MATERIAL_OVERFLOW = of("hud.missing.overflow");
+    // 远程取物提示
+    public static final I18n REMOTE_TAKE_START = of("message.remote_take.start");
+    public static final I18n REMOTE_TAKE_COMPLETE = of("message.remote_take.complete");
+    public static final I18n REMOTE_TAKE_CANCELLED = of("message.remote_take.cancelled");
+    public static final I18n REMOTE_TAKE_FAILED = of("message.remote_take.failed");
+    public static final I18n REMOTE_TAKE_TIMEOUT = of("message.remote_take.timeout");
+    public static final I18n REMOTE_TAKE_SCAN_TIMEOUT = of("message.remote_take.scan_timeout");
+    public static final I18n REMOTE_TAKE_NO_ITEM = of("message.remote_take.no_item");
+    public static final I18n REMOTE_TAKE_INV_FULL = of("message.remote_take.inv_full");
+    public static final I18n REMOTE_TAKE_NOT_SYNCED = of("message.remote_take.not_synced");
+    public static final I18n REMOTE_TAKE_EXCEPTION = of("message.remote_take.exception");
+    public static final I18n REMOTE_OPEN_TIMEOUT = of("message.remote_take.open_timeout");
 
     private static final String PREFIX_CONFIG = "config";
     private static final String PREFIX_COMMENT = "desc";

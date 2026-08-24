@@ -8,20 +8,22 @@ import fi.dy.masa.malilib.gui.button.ButtonGeneric;
 import fi.dy.masa.malilib.gui.button.IButtonActionListener;
 import me.aleksilassila.litematica.printer.I18n;
 import me.aleksilassila.litematica.printer.Reference;
-import me.aleksilassila.litematica.printer.config.ConfigMetadata;
+import me.aleksilassila.litematica.printer.mixin_extension.ConfigExtension;
 import me.aleksilassila.litematica.printer.config.Configs;
+import me.aleksilassila.litematica.printer.utils.UpdateCheckerUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.function.BooleanSupplier;
 
 public class ConfigUi extends GuiConfigsBase {
     private static Tab tab = Tab.CORE;
 
     public ConfigUi(@Nullable Screen parent) {
-        super(10, 50, Reference.MOD_ID, parent, Reference.GUI_TITLE + "   " + I18n.FREE_NOTICE.getName().getString());
+        super(10, 50, Reference.MOD_ID, parent, Reference.MOD_NAME + " " + UpdateCheckerUtils.LOCAL_VERSION + "   " + I18n.FREE_NOTICE.getName().getString());
     }
 
     public ConfigUi() {
@@ -70,8 +72,11 @@ public class ConfigUi extends GuiConfigsBase {
     public List<ConfigOptionWrapper> getConfigs() {
         ImmutableList.Builder<ConfigOptionWrapper> builder = ImmutableList.builder();
         for (IConfigBase config : ConfigUi.tab.getConfigs()) {
-            if (ConfigMetadata.isVisible(config)) {
-                builder.add(new ConfigOptionWrapper(config));
+            if (config instanceof ConfigExtension extension) {
+                @Nullable BooleanSupplier visible = extension.litematica_printer$getVisible();
+                if (visible != null && visible.getAsBoolean()) {
+                    builder.add(new ConfigOptionWrapper(config));
+                }
             }
         }
         return builder.build();
