@@ -87,7 +87,6 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
             ./.gradle
-            ./libs
           key: ${{ runner.os }}-gradle-release-${{ inputs.version_set }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts', '**/gradle.properties', 'buildSrc/**') }}
           restore-keys: |
             ${{ runner.os }}-gradle-release-${{ inputs.version_set }}-

@@ -66,9 +66,7 @@ jobs:
       - name: Cache Loom workspace
         uses: actions/cache@v5
         with:
-          path: |
-            ./.gradle/loom-cache
-            ./libs
+          path: ./.gradle/loom-cache
           key: ${{ runner.os }}-loom-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts', '**/gradle.properties', 'buildSrc/**') }}
           restore-keys: |
             ${{ runner.os }}-loom-
@@ -89,7 +87,7 @@ jobs:
           name: versionpack
           path: fabricWrapper/build/libs/*.jar
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 90
           archive: false
 
       - name: Capture standalone version JARs
@@ -98,7 +96,7 @@ jobs:
           name: version-jars
           path: fabricWrapper/build/libs/jars/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 90
 
       - name: Publish development build to Modrinth
         if: >-
