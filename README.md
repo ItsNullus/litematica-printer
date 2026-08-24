@@ -1,13 +1,12 @@
-# Litematica Printer — Hana
+# Litematica Printer — ItsNullus
 
 **English** | [简体中文](README.zh-CN.md)
 
 [![GitHub Actions](https://github.com/Yur1Ca/litematica-printer/actions/workflows/build.yml/badge.svg)](https://github.com/Yur1Ca/litematica-printer/actions/workflows/build.yml)
-[![Modrinth](https://img.shields.io/modrinth/dt/nriQwbvD?logo=modrinth&label=Modrinth)](https://modrinth.com/mod/litematica-printer-hana)
 [![GitHub release](https://img.shields.io/github/v/release/Yur1Ca/litematica-printer?include_prereleases&label=GitHub)](https://github.com/Yur1Ca/litematica-printer/releases)
 [![License](https://img.shields.io/github/license/Yur1Ca/litematica-printer)](LICENSE.md)
 
-Litematica Printer — Hana is a client-side Fabric mod that adds automated schematic building to Litematica. It restores a schematic by placing the correct blocks around the player and also provides filling, fluid removal, mining, bedrock breaking, inventory assistance, and related utilities.
+Litematica Printer — ItsNullus is a client-side Fabric mod that adds automated schematic building to Litematica. It restores a schematic by placing the correct blocks around the player and also provides filling, fluid removal, mining, bedrock breaking, inventory assistance, and related utilities.
 
 This repository is a modified downstream fork of [Yur1Ca/litematica-printer (Hana)](https://github.com/Yur1Ca/litematica-printer). The printing execution logic has been completely rewritten, making both print speed and correctness far beyond upstream, and remote item retrieval has been restored. See [Key differences from upstream](#key-differences-from-upstream) for details.
 
@@ -43,7 +42,6 @@ Currently available on Minecraft **1.21.4** only, and requires Chest Tracker.
 
 ### 🚧 Planned (TODO)
 
-- `block place` support.
 - Remaining container-related operations not yet brought back.
 
 ## Download and release channels
@@ -78,6 +76,7 @@ Optional integrations:
 - [Tweakeroo](https://modrinth.com/mod/tweakeroo)
 - [Quick Shulker](https://github.com/MoRanpcy/quickshulker)
 - [Take It Out](https://modrinth.com/mod/takeitout), on supported 1.21.x and 26.x versions
+- [Chest Tracker](https://modrinth.com/mod/chest-tracker), 1.21.4 only (remote item retrieval)
 
 Dependency versions must match the Minecraft version being launched.
 
@@ -128,6 +127,7 @@ Some content cannot currently be printed reliably and may be skipped or placed w
 - Cauldrons containing fluids.
 - Entities such as item frames, armor stands, and paintings.
 - Non-vanilla content unless it is explicitly supported.
+- Automatic support-block placement (not implemented yet).
 
 If a vanilla block is placed incorrectly even at a conservative work interval, submit a [block support report](https://github.com/Yur1Ca/litematica-printer/issues/new/choose).
 

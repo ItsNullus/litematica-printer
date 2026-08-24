@@ -49,7 +49,7 @@ body:
     attributes:
       label: 打印机版本
       description: 请填写完整版本号，不要只写“最新版”。
-      placeholder: "例如：0.7.2.1-Hana-dev377"
+      placeholder: "例如：0.7.2.1-ItsNullus-dev377"
     validations:
       required: true
 

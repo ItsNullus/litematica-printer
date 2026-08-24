@@ -1,13 +1,12 @@
-# Litematica Printer — Hana
+# Litematica Printer — ItsNullus
 
 [English](README.md) | **简体中文**
 
 [![GitHub Actions](https://github.com/Yur1Ca/litematica-printer/actions/workflows/build.yml/badge.svg)](https://github.com/Yur1Ca/litematica-printer/actions/workflows/build.yml)
-[![Modrinth](https://img.shields.io/modrinth/dt/nriQwbvD?logo=modrinth&label=Modrinth)](https://modrinth.com/mod/litematica-printer-hana)
 [![GitHub release](https://img.shields.io/github/v/release/Yur1Ca/litematica-printer?include_prereleases&label=GitHub)](https://github.com/Yur1Ca/litematica-printer/releases)
 [![License](https://img.shields.io/github/license/Yur1Ca/litematica-printer)](LICENSE.md)
 
-Litematica Printer — Hana 是一个客户端 Fabric 模组，为 Litematica 添加自动还原投影的能力。它会在玩家周围自动放置正确的方块，并提供填充、排流体、挖掘、破基岩、物品管理等辅助功能。
+Litematica Printer — ItsNullus 是一个客户端 Fabric 模组，为 Litematica 添加自动还原投影的能力。它会在玩家周围自动放置正确的方块，并提供填充、排流体、挖掘、破基岩、物品管理等辅助功能。
 
 本仓库是 [Yur1Ca/litematica-printer（Hana）](https://github.com/Yur1Ca/litematica-printer) 的下游修改版，在原版基础上**完全重写了打印执行逻辑**，打印速度和正确性都远超原版，同时恢复了远程取物等功能。具体区别见下方[「与原版的主要区别」](#与原版的主要区别)。
 
@@ -43,7 +42,6 @@ Litematica Printer — Hana 是一个客户端 Fabric 模组，为 Litematica �
 
 ### 🚧 计划中（TODO）
 
-- `block place` 支持。
 - 其余尚未恢复的容器相关操作。
 
 ## 下载与发布通道
@@ -78,6 +76,7 @@ Litematica Printer — Hana 是一个客户端 Fabric 模组，为 Litematica �
 - [Tweakeroo](https://modrinth.com/mod/tweakeroo)
 - [Quick Shulker](https://github.com/MoRanpcy/quickshulker)
 - [Take It Out](https://modrinth.com/mod/takeitout)，仅用于受支持的 1.21.x 和 26.x 版本
+- [Chest Tracker](https://modrinth.com/mod/chest-tracker)，仅支持 1.21.4（用于远程取物）
 
 所有前置模组都需要选择与当前 Minecraft 版本匹配的版本。
 
@@ -128,6 +127,7 @@ Litematica Printer — Hana 是一个客户端 Fabric 模组，为 Litematica �
 - 装有液体的炼药锅。
 - 物品展示框、盔甲架、画等实体。
 - 未明确适配的非原版内容。
+- 自动放置支撑方块（该功能尚未实现）。
 
 如果原版方块在较保守的工作间隔下仍然放置错误，请提交[方块支持报告](https://github.com/Yur1Ca/litematica-printer/issues/new/choose)。
 
