@@ -61,6 +61,9 @@ fabric.properties
 **/run/
 **/libs/
 
+# 多版本子工程构建时生成的预处理源码副本
+versions/*/src/
+
 # 跨平台系统临时文件
 # macOS
 .DS_Store
