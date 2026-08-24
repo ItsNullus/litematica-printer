@@ -9,7 +9,42 @@
 
 Litematica Printer — Hana is a client-side Fabric mod that adds automated schematic building to Litematica. It restores a schematic by placing the correct blocks around the player and also provides filling, fluid removal, mining, bedrock breaking, inventory assistance, and related utilities.
 
-This repository is an independently maintained continuation of earlier Litematica Printer forks, with a rewritten bedrock-breaking workflow, scanner and iterator improvements, and additional building features.
+This repository is a modified downstream fork of [Yur1Ca/litematica-printer (Hana)](https://github.com/Yur1Ca/litematica-printer). The printing execution logic has been completely rewritten, making both print speed and correctness far beyond upstream, and remote item retrieval has been restored. See [Key differences from upstream](#key-differences-from-upstream) for details.
+
+## Key differences from upstream
+
+### ⚡ Massively faster printing (the core change of this fork)
+
+The printing execution logic has been completely rewritten. Print speed is no longer bound to a fixed work interval and is limited only by **how fast items can be switched**:
+
+- Creative mode: theoretically unlimited maximum speed.
+- Survival mode: theoretical maximum of 9 × 64 = 576 blocks per tick.
+- Real-world building speed depends on the number of distinct materials and computer performance.
+
+Correctness matters just as much — by design the printer does not misplace blocks. Measured results:
+
+> Test subject: **[再灰二度] 无沟V4.2双倍速遇残骸即停防雪世吞** (RedenMC)
+> 224 × 83 × 176, **19187** blocks in total, with observer updates disabled during testing.
+> Across **10 full builds**: ghost blocks appeared only once, with **0 construction errors (including orientation errors)**.
+
+### 🪨 Faster bedrock breaking
+
+Bedrock breaking is slightly faster than the original workflow.
+
+### 📦 Remote item retrieval brought back (Chest Tracker)
+
+Restores remote item retrieval based on [Chest Tracker](https://modrinth.com/mod/chest-tracker):
+
+- With "remote take" enabled, items can be taken directly from the Chest Tracker interface.
+- Hotkeys add containers inside the Litematica selection to the printer inventory, or clear the printer inventory.
+- Missing materials can be fetched automatically from recorded containers while printing.
+
+Currently available on Minecraft **1.21.4** only, and requires Chest Tracker.
+
+### 🚧 Planned (TODO)
+
+- `block place` support.
+- Remaining container-related operations not yet brought back.
 
 ## Download and release channels
 
@@ -69,6 +104,7 @@ Dependency versions must match the Minecraft version being launched.
 
 ### Inventory integrations
 
+- Chest Tracker remote item retrieval (1.21.4 only, see [Key differences from upstream](#key-differences-from-upstream)).
 - Quick Shulker material retrieval and ordered return.
 - Take It Out remote material retrieval on supported versions.
 - Material switching safeguards intended to prevent placement with the previous hotbar item.
@@ -144,6 +180,7 @@ The first build downloads Minecraft and mod dependencies and may require a worki
 - [bunny_i](https://github.com/bunnyi116) for broad support and contributions to the project.
 - [aleksilassila/litematica-printer](https://github.com/aleksilassila/litematica-printer) for the original project.
 - [zhaixianyu/litematica-printer](https://github.com/zhaixianyu/litematica-printer) for earlier fixes and features.
+- [Yur1Ca/litematica-printer](https://github.com/Yur1Ca/litematica-printer) for the Hana upstream that this fork builds upon.
 - [MoRanpcy/quickshulker](https://github.com/MoRanpcy/quickshulker) for Quick Shulker integration.
 - [bunnyi116/fabric-bedrock-miner](https://github.com/bunnyi116/fabric-bedrock-miner) for the bedrock-breaking foundation.
 - Everyone who tests, reports issues, contributes code, or supports the project.

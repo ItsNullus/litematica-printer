@@ -9,7 +9,42 @@
 
 Litematica Printer — Hana 是一个客户端 Fabric 模组，为 Litematica 添加自动还原投影的能力。它会在玩家周围自动放置正确的方块，并提供填充、排流体、挖掘、破基岩、物品管理等辅助功能。
 
-这是在多个 Litematica Printer 分支基础上继续维护的独立版本，包含重写的破基岩流程、扫描器与迭代器优化，以及更多建造功能。
+本仓库是 [Yur1Ca/litematica-printer（Hana）](https://github.com/Yur1Ca/litematica-printer) 的下游修改版，在原版基础上**完全重写了打印执行逻辑**，打印速度和正确性都远超原版，同时恢复了远程取物等功能。具体区别见下方[「与原版的主要区别」](#与原版的主要区别)。
+
+## 与原版的主要区别
+
+### ⚡ 打印速度大幅提升（本分支的核心改动）
+
+打印执行逻辑被完全重写，打印速度不再受固定工作间隔限制，只受**切换物品的速度**限制：
+
+- 创造模式：理论最大速度无限。
+- 生存模式：理论最大速度为每 tick 9 × 64 = 576 个方块。
+- 实际建造速度取决于材料种类数量与电脑性能。
+
+正确性同样重要——理论上不会产生构建错误。实测数据：
+
+> 测试对象：**[再灰二度] 无沟V4.2双倍速遇残骸即停防雪世吞**（RedenMC）
+> 尺寸 224 × 83 × 176，共 **19187** 个方块，测试时取消了 observer 更新。
+> 连续完整建造 **10 次**：仅 1 次出现幽灵方块，**0 次构建错误（包括方向错误）**。
+
+### 🪨 破基岩提速
+
+在原版破基岩流程的基础上略微提高了破坏速度。
+
+### 📦 恢复远程取物（Chest Tracker）
+
+重新加入基于 [Chest Tracker](https://modrinth.com/mod/chest-tracker) 的远程取物功能：
+
+- 开启「远程取物」后，可直接从 Chest Tracker 界面取出对应物品；
+- 提供快捷键将 Litematica 选区内容器加入打印机库存、一键清空打印机库存；
+- 打印缺料时可自动从记录的容器中远程取料。
+
+目前仅支持 Minecraft **1.21.4**，且需要安装 Chest Tracker。
+
+### 🚧 计划中（TODO）
+
+- `block place` 支持。
+- 其余尚未恢复的容器相关操作。
 
 ## 下载与发布通道
 
@@ -69,6 +104,7 @@ Litematica Printer — Hana 是一个客户端 Fabric 模组，为 Litematica �
 
 ### 物品联动
 
+- 基于 Chest Tracker 的远程取物（仅 1.21.4，详见[「与原版的主要区别」](#与原版的主要区别)）。
 - Quick Shulker 自动取料与有序存回。
 - 在受支持版本中使用 Take It Out 远程取物。
 - 切换材料时锁定放置，尽量避免使用上一个快捷栏物品错放。
@@ -148,6 +184,7 @@ Litematica Printer — Hana 是一个客户端 Fabric 模组，为 Litematica �
 - [bunny_i](https://github.com/bunnyi116)：为项目提供了广泛的支持和贡献。
 - [aleksilassila/litematica-printer](https://github.com/aleksilassila/litematica-printer)：原始项目。
 - [zhaixianyu/litematica-printer](https://github.com/zhaixianyu/litematica-printer)：早期修复与功能改进。
+- [Yur1Ca/litematica-printer](https://github.com/Yur1Ca/litematica-printer)：Hana 版本上游，本分支在其基础上修改。
 - [MoRanpcy/quickshulker](https://github.com/MoRanpcy/quickshulker)：Quick Shulker 联动支持。
 - [bunnyi116/fabric-bedrock-miner](https://github.com/bunnyi116/fabric-bedrock-miner)：破基岩功能基础。
 - 所有参与测试、反馈问题、贡献代码和支持项目的人。
