@@ -59,7 +59,9 @@ fabric.properties
 # 项目构建/运行/依赖目录 - 推荐**/ 全层级匹配，合并等效项
 **/build/
 **/run/
-**/libs/
+
+# 根目录 libs/ 的第三方依赖 jar 有意纳入版本控制（供离线编译）
+!libs/*.jar
 
 # 多版本子工程构建时生成的预处理源码副本
 versions/*/src/
