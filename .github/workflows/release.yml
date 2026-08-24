@@ -138,16 +138,3 @@ jobs:
           make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish beta wrapper to Modrinth
-        if: inputs.version_set == 'all'
-        shell: bash
-        env:
-          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
-          MODRINTH_FILE_DIR: release-artifacts
-          MODRINTH_VERSION_TYPE: beta
-          MODRINTH_CHANGELOG: |
-            Beta release `${{ inputs.target_release_tag }}`.
-
-            [View GitHub release](https://github.com/${{ github.repository }}/releases/tag/${{ inputs.target_release_tag }})
-        run: bash .github/scripts/publish-modrinth.sh

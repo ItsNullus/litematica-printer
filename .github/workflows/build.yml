@@ -97,16 +97,3 @@ jobs:
           path: fabricWrapper/build/libs/jars/
           if-no-files-found: error
           retention-days: 90
-
-      - name: Publish development build to Modrinth
-        if: >-
-          github.event_name == 'push' &&
-          github.ref == 'refs/heads/master' &&
-          github.repository == 'Yur1Ca/litematica-printer'
-        shell: bash
-        env:
-          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
-          MODRINTH_VERSION_TYPE: alpha
-          MODRINTH_COMMIT_SHA: ${{ github.sha }}
-          MODRINTH_REPOSITORY: ${{ github.repository }}
-        run: bash .github/scripts/publish-modrinth.sh
