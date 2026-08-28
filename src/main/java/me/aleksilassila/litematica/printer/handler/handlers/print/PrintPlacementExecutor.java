@@ -2,11 +2,13 @@ package me.aleksilassila.litematica.printer.handler.handlers.print;
 
 import me.aleksilassila.litematica.printer.I18n;
 import me.aleksilassila.litematica.printer.config.Configs;
+import me.aleksilassila.litematica.printer.enums.SupportPlaceModeType;
 import me.aleksilassila.litematica.printer.handler.HudStatsManager;
 import me.aleksilassila.litematica.printer.handler.handlers.PrintHandler;
 import me.aleksilassila.litematica.printer.interfaces.Implementation;
 import me.aleksilassila.litematica.printer.printer.ActionManager;
 import me.aleksilassila.litematica.printer.printer.PlayerLook;
+import me.aleksilassila.litematica.printer.printer.PrinterUtils;
 import me.aleksilassila.litematica.printer.printer.SchematicBlockContext;
 import me.aleksilassila.litematica.printer.printer.action.Action;
 import me.aleksilassila.litematica.printer.printer.action.ClickAction;
@@ -46,11 +48,23 @@ public final class PrintPlacementExecutor {
     private static long lastReserveNoticeTick = Long.MIN_VALUE;
     private static boolean supportModeBannerLogged;
 
+    /**
+     * 目标方块在当前世界位置是否"需要支撑"。
+     * 下落类方块（铁砧/沙/砂砾等）不重写 canSurvive（恒为 true, 只会坠落）,
+     * 必须用 FallingBlock.isFree(下方) 判断；其余方块用 canSurvive。
+     */
+    public static boolean requiresSupportAt(net.minecraft.world.level.Level level, BlockState state, BlockPos pos) {
+        if (state.getBlock() instanceof FallingBlock) {
+            return FallingBlock.isFree(level.getBlockState(pos.below()));
+        }
+        return !state.canSurvive(level, pos);
+    }
+
     public PrintPlacementResult execute(SchematicBlockContext context, Action action, @Nullable PrintTaskAction taskAction) {
         BlockPos blockPos = context.blockPos;
         // 无支撑支撑方块：目标方块无法存活（缺支撑）且支撑位为空（世界+投影均无）→ 先放支撑方块
-        me.aleksilassila.litematica.printer.enums.SupportPlaceModeType supportMode =
-                (me.aleksilassila.litematica.printer.enums.SupportPlaceModeType) Configs.Print.SUPPORT_PLACE_MODE.getOptionListValue();
+        SupportPlaceModeType supportMode =
+                (SupportPlaceModeType) Configs.Print.SUPPORT_PLACE_MODE.getOptionListValue();
         if (!supportModeBannerLogged) {
             supportModeBannerLogged = true;
             me.aleksilassila.litematica.printer.Reference.LOGGER.info(
@@ -59,16 +73,20 @@ public final class PrintPlacementExecutor {
                     String.join("|", Configs.Print.SUPPORT_BLOCK_LIST.getStrings()),
                     resolveSupportItem() == null ? "null" : BuiltInRegistries.ITEM.getKey(resolveSupportItem()));
         }
-        if (supportMode != me.aleksilassila.litematica.printer.enums.SupportPlaceModeType.NONE) {
-            boolean survivable = context.requiredState.canSurvive(context.level, blockPos);
+        if (supportMode != SupportPlaceModeType.NONE) {
+            boolean survivable = !requiresSupportAt(context.level, context.requiredState, blockPos);
             if (!survivable) {
                 me.aleksilassila.litematica.printer.Reference.LOGGER.info(
-                        "[Printer] 无支撑支撑: 模式={} 目标={} 位置={} canSurvive=false",
+                        "[Printer] 无支撑支撑: 模式={} 目标={} 位置={} 需要支撑",
                         supportMode.getI18n().getSimpleKey(), context.requiredState.getBlock(), blockPos);
-            }
-            if (!survivable && tryQueueSupportPlacement(context, action, blockPos)) {
-                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "放置支撑");
-                return PrintPlacementResult.cancelled(false);
+                SupportPlacementPlan supportPlan = tryBuildSupportPlacement(context, action, blockPos);
+                if (supportPlan != null) {
+                    if (supportPlan.deferred()) {
+                        HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "等待支撑");
+                        return PrintPlacementResult.cancelled(false);
+                    }
+                    return sendSupportPlacement(context, action, taskAction, blockPos, supportPlan);
+                }
             }
         }
         if (Configs.Placement.FALLING_CHECK.getBooleanValue() && context.requiredState.getBlock() instanceof FallingBlock) {
@@ -314,44 +332,63 @@ public final class PrintPlacementExecutor {
     private static Item cachedSupportItem;
     private static String cachedSupportListKey;
 
+    /** 支撑放置方案：null=无需/无法支撑；deferred=true=等待中（防抖/切换物品）；否则为可执行的支撑方案 */
+    private record SupportPlacementPlan(
+            @Nullable BlockPos supportPos,
+            @Nullable Direction supportSide,
+            @Nullable Item item,
+            boolean useShift,
+            boolean deferred,
+            boolean airPlace
+    ) {
+        static SupportPlacementPlan waiting() {
+            return new SupportPlacementPlan(null, null, null, false, true, false);
+        }
+
+        static SupportPlacementPlan ready(BlockPos supportPos, Direction supportSide, Item item, boolean useShift) {
+            return new SupportPlacementPlan(supportPos, supportSide, item, useShift, false, false);
+        }
+
+        /** 凭空放置：无可点击相邻面时, 直接把空气位当作点击目标（ItemPlacementContext 对可替换目标直接在目标位放置） */
+        static SupportPlacementPlan readyAir(BlockPos supportPos, Item item, boolean useShift) {
+            return new SupportPlacementPlan(supportPos, Direction.UP, item, useShift, false, true);
+        }
+    }
+
     /**
-     * 目标方块无法存活（缺支撑）时，在支撑位（世界+投影均为空气）放置支撑方块。
-     * 返回 true = 已排队支撑/等待支撑确认/正在切换支撑物品（本体本次不放置）。
+     * 目标方块无法存活（缺支撑）时，寻找支撑位并准备放置支撑方块。
+     * 支撑方向优先取目标真正需要的方向：单侧面 Action（火把/墙牌/梯子/绊线钩等）→ 该侧面（墙侧/下方）；
+     * 其余（铁砧/压力板等）→ 正下方。支撑位无可点击相邻面时（悬空/虚空），只要支撑位在世界内就直接
+     * 凭空放置（直接点击空气位）；支撑位超出世界则无法放置（无解）。
+     * 只负责选位和切换物品；点击由 sendSupportPlacement 排队并发送。
      */
-    private static boolean tryQueueSupportPlacement(SchematicBlockContext context, Action action, BlockPos blockPos) {
+    @Nullable
+    private static SupportPlacementPlan tryBuildSupportPlacement(SchematicBlockContext context, Action action, BlockPos blockPos) {
         if (context.client.player == null) {
-            return false;
+            return null;
         }
         BlockState target = context.requiredState;
-        // 目标本身能存活 → 不需要支撑
-        if (target.canSurvive(context.level, blockPos)) {
-            return false;
+        // 目标本身能存活 → 不需要支撑（下落类方块用 FallingBlock.isFree 判断）
+        if (!requiresSupportAt(context.level, target, blockPos)) {
+            return null;
         }
         long gameTime = context.level.getGameTime();
-        // 刚排过支撑, 等待服务端确认期间不重复排队（防抖 tick 数可配置, 0=关闭）
+        // 刚发过支撑, 等待服务端确认期间不重复排队（防抖 tick 数可配置, 0=关闭）
         long pendingTtlTicks = Configs.Print.SUPPORT_PENDING_TTL.getIntegerValue();
         Long pendingTick = pendingSupportTargets.get(blockPos);
         if (pendingTtlTicks > 0 && pendingTick != null && gameTime - pendingTick < pendingTtlTicks) {
-            return true;
+            return SupportPlacementPlan.waiting();
         }
         pendingSupportTargets.remove(blockPos);
-        me.aleksilassila.litematica.printer.enums.SupportPlaceModeType mode =
-                (me.aleksilassila.litematica.printer.enums.SupportPlaceModeType) Configs.Print.SUPPORT_PLACE_MODE.getOptionListValue();
-        List<Direction> dirs = new ArrayList<>();
-        if (mode == me.aleksilassila.litematica.printer.enums.SupportPlaceModeType.DOWN) {
-            dirs.add(Direction.DOWN);
-        } else {
-            for (Direction d : Direction.values()) {
-                dirs.add(d);
-            }
-        }
+        List<Direction> dirs = computeSupportDirections(action);
         Item supportItem = resolveSupportItem();
         if (supportItem == null) {
             me.aleksilassila.litematica.printer.Reference.LOGGER.info("[Printer] 无支撑支撑: 支撑列表无法解析出物品");
-            return false;
+            return null;
         }
         me.aleksilassila.litematica.printer.Reference.LOGGER.info(
-                "[Printer] 无支撑支撑: 支撑物品={} 候选方向数={}", BuiltInRegistries.ITEM.getKey(supportItem), dirs.size());
+                "[Printer] 无支撑支撑: 支撑物品={} 候选方向数={} 方向={}",
+                BuiltInRegistries.ITEM.getKey(supportItem), dirs.size(), dirs);
         for (Direction d : dirs) {
             BlockPos supportPos = blockPos.relative(d);
             if (supportPos == null) {
@@ -359,36 +396,175 @@ public final class PrintPlacementExecutor {
             }
             me.aleksilassila.litematica.printer.Reference.LOGGER.info(
                     "[Printer] 无支撑支撑: 候选方向 {} 位置 {} 世界空气={} 投影方块={}",
-                    d, supportPos, context.level.getBlockState(supportPos).isAir(), LitematicaUtils.isSchematicBlock(supportPos));
+                    d, supportPos, context.level.getBlockState(supportPos).isAir(), context.schematic.getBlockState(supportPos));
             if (!context.level.getBlockState(supportPos).isAir()) {
                 continue; // 世界已有方块（含已放支撑）
             }
-            if (LitematicaUtils.isSchematicBlock(supportPos)) {
+            if (!context.schematic.getBlockState(supportPos).isAir()) {
                 continue; // 投影中有方块 → 交给打印本身放置
             }
-            if (InventoryUtils.switchToItems(context.client.player, new Item[]{supportItem})) {
-                Direction supportSide = findSupportSide(context.level, supportPos);
-                if (supportSide != null) {
-                    boolean queued = action.queueAction(supportPos, supportSide, false, context.client.player, new Item[]{supportItem});
-                    me.aleksilassila.litematica.printer.Reference.LOGGER.info(
-                            "[Printer] 无支撑支撑: {} 放置 {} 支撑 {} (方向 {}) 排队={}",
-                            supportPos, BuiltInRegistries.ITEM.getKey(supportItem), target.getBlock(), d, queued);
-                    if (queued) {
-                        pendingSupportTargets.put(blockPos, gameTime);
-                        return true;
-                    }
-                } else {
-                    me.aleksilassila.litematica.printer.Reference.LOGGER.info("[Printer] 无支撑支撑: 位置 {} 无可点击相邻面", supportPos);
+            if (!ConfigUtils.canInteracted(supportPos)) {
+                continue; // 超出交互范围
+            }
+            Direction supportSide = findSupportSide(context.level, supportPos);
+            if (supportSide != null) {
+                if (!PrinterUtils.canBeClicked(context.level, supportPos.relative(supportSide))) {
+                    me.aleksilassila.litematica.printer.Reference.LOGGER.info("[Printer] 无支撑支撑: 位置 {} 相邻面 {} 不可点击", supportPos, supportSide);
+                    continue;
                 }
-            } else if (InventorySwitchGuard.isWaiting()) {
-                me.aleksilassila.litematica.printer.Reference.LOGGER.info("[Printer] 无支撑支撑: 正在切换支撑物品");
-                return true; // 正在切换支撑物品
+                boolean useShift = isSupportNeighborInteractive(context, supportPos, supportSide);
+                if (InventoryUtils.switchToItems(context.client.player, new Item[]{supportItem})) {
+                    me.aleksilassila.litematica.printer.Reference.LOGGER.info(
+                            "[Printer] 无支撑支撑: 位置 {} 放置 {} 支撑 {} (方向 {})",
+                            supportPos, BuiltInRegistries.ITEM.getKey(supportItem), target.getBlock(), d);
+                    return SupportPlacementPlan.ready(supportPos, supportSide, supportItem, useShift);
+                } else if (InventorySwitchGuard.isWaiting()) {
+                    me.aleksilassila.litematica.printer.Reference.LOGGER.info("[Printer] 无支撑支撑: 正在切换支撑物品");
+                    return SupportPlacementPlan.waiting(); // 正在切换支撑物品
+                } else {
+                    me.aleksilassila.litematica.printer.Reference.LOGGER.info(
+                            "[Printer] 无支撑支撑: 背包中没有支撑物品 {}", BuiltInRegistries.ITEM.getKey(supportItem));
+                }
+            } else if (canAirPlace(context, supportPos)) {
+                // 无可点击相邻面, 但支撑位在世界内 → 凭空放置：直接点击空气位（无需相邻面/协议）
+                boolean useShift = Configs.Print.PRINT_FORCED_SNEAK.getBooleanValue();
+                if (InventoryUtils.switchToItems(context.client.player, new Item[]{supportItem})) {
+                    me.aleksilassila.litematica.printer.Reference.LOGGER.info(
+                            "[Printer] 无支撑支撑: 位置 {} 凭空放置 {} (方向 {})",
+                            supportPos, BuiltInRegistries.ITEM.getKey(supportItem), d);
+                    return SupportPlacementPlan.readyAir(supportPos, supportItem, useShift);
+                } else if (InventorySwitchGuard.isWaiting()) {
+                    me.aleksilassila.litematica.printer.Reference.LOGGER.info("[Printer] 无支撑支撑: 正在切换支撑物品");
+                    return SupportPlacementPlan.waiting(); // 正在切换支撑物品
+                } else {
+                    me.aleksilassila.litematica.printer.Reference.LOGGER.info(
+                            "[Printer] 无支撑支撑: 背包中没有支撑物品 {}", BuiltInRegistries.ITEM.getKey(supportItem));
+                }
             } else {
-                me.aleksilassila.litematica.printer.Reference.LOGGER.info(
-                        "[Printer] 无支撑支撑: 背包中没有支撑物品 {}", BuiltInRegistries.ITEM.getKey(supportItem));
+                me.aleksilassila.litematica.printer.Reference.LOGGER.info("[Printer] 无支撑支撑: 位置 {} 无可点击相邻面", supportPos);
             }
         }
-        return false;
+        return null;
+    }
+
+    /**
+     * 计算支撑候选方向：单侧面 Action（火把/墙牌/梯子/绊线钩等）→ 该侧面（目标真正需要的方向）；
+     * 其余（铁砧/压力板等）→ 正下方。只测试该主方向——非支撑方向必然无效, 不做兜底迭代。
+     */
+    private static List<Direction> computeSupportDirections(Action action) {
+        List<Direction> actionSides = new ArrayList<>(action.getSides().keySet());
+        Direction primary;
+        if (actionSides.size() == 1) {
+            primary = actionSides.get(0); // 火把/墙牌/梯子等：支撑 = 该侧面（墙侧/下方）
+        } else {
+            primary = Direction.DOWN; // 铁砧/压力板等：支撑 = 正下方
+        }
+        return List.of(primary);
+    }
+
+    /** 是否允许凭空放置支撑：支撑位在世界高度范围内即可（凭空放置 = 直接点击空气位, 服务端对可替换目标在位放置） */
+    private static boolean canAirPlace(SchematicBlockContext context, BlockPos supportPos) {
+        return supportPos.getY() >= context.level.getMinY();
+    }
+
+    /** 交互方块（箱子/按钮等）需要潜行放置, 避免点开 GUI */
+    private static boolean isSupportNeighborInteractive(SchematicBlockContext context, BlockPos supportPos, Direction supportSide) {
+        return Implementation.isInteractive(
+                context.level.getBlockState(supportPos.relative(supportSide)).getBlock())
+                || Configs.Print.PRINT_FORCED_SNEAK.getBooleanValue();
+    }
+
+    /**
+     * 将支撑点击排队并发送（与主流程相同的发送管线），随后返回对应的执行结果。
+     * 普通支撑 = 点击支撑位相邻方块的对应面；凭空放置（airPlace）= 直接点击空气位。
+     */
+    private static PrintPlacementResult sendSupportPlacement(
+            SchematicBlockContext context,
+            Action action,
+            @Nullable PrintTaskAction taskAction,
+            BlockPos targetPos,
+            SupportPlacementPlan plan
+    ) {
+        // 点击目标：凭空放置 = 直接点击空气位（ItemPlacementContext 对可替换目标在目标位放置, 与 litematica easy-place 一致）；
+        // 普通 = 点击支撑位相邻方块的对应面
+        BlockPos clickTarget;
+        Direction clickSide;
+        if (plan.airPlace()) {
+            clickTarget = plan.supportPos;
+            clickSide = Direction.UP;
+        } else {
+            clickTarget = plan.supportPos.relative(plan.supportSide);
+            clickSide = plan.supportSide.getOpposite();
+        }
+        boolean queued = ActionManager.INSTANCE.queueClick(
+                clickTarget,
+                clickSide,
+                Vec3.ZERO,
+                plan.useShift,
+                1,
+                new Item[]{plan.item},
+                ActionManager.ActionSource.PRINT
+        );
+        if (!queued) {
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "动作队列占用");
+            return PrintPlacementResult.cancelled(true);
+        }
+        // 防抖 TTL：等待服务端确认期间不重复排队（tick 数可配置, 0=关闭）
+        pendingSupportTargets.put(targetPos, context.level.getGameTime());
+        int cooldownTicks = action.getCooldownTicksOverride() >= 0
+                ? action.getCooldownTicksOverride()
+                : ConfigUtils.getPlaceCooldown();
+        AtomicBoolean deferred = new AtomicBoolean(false);
+        ActionManager.INSTANCE.setQueueCompletionListener(sendResult -> {
+            if (!deferred.get()) {
+                return;
+            }
+            if (sendResult.isSent()) {
+                if (cooldownTicks > 0) {
+                    CooldownUtils.INSTANCE.setCooldown(context.level, PrintHandler.NAME, targetPos, cooldownTicks);
+                }
+                HudStatsManager.INSTANCE.recordRateUnit(HudStatsManager.Mode.PRINT, 1);
+                HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.PRINT, "运行中");
+                if (taskAction != null) {
+                    taskAction.onSuccess(context, action);
+                }
+            } else {
+                HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, describeSendFailure(sendResult));
+                if (taskAction != null) {
+                    taskAction.onCancelled(context, action);
+                }
+            }
+        });
+        ActionManager.SendResult sendResult = ActionManager.INSTANCE.sendQueue(context.client.player);
+        if (sendResult.isWaiting()) {
+            deferred.set(true);
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "等待转头");
+            return new PrintPlacementResult(
+                    true,
+                    true,
+                    PrintPlacementResult.TaskEvent.QUEUED,
+                    -1
+            );
+        }
+        if (!sendResult.isSent()) {
+            if (sendResult == ActionManager.SendResult.RESERVE_LIMIT) {
+                showReserveNotice(context, context.client.player.getMainHandItem());
+            }
+            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, describeSendFailure(sendResult));
+            return PrintPlacementResult.cancelled(true);
+        }
+        if (cooldownTicks > 0) {
+            CooldownUtils.INSTANCE.setCooldown(context.level, PrintHandler.NAME, targetPos, cooldownTicks);
+        }
+        HudStatsManager.INSTANCE.recordRateUnit(HudStatsManager.Mode.PRINT, 1);
+        HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.PRINT, "运行中");
+        HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "放置支撑");
+        return new PrintPlacementResult(
+                true,
+                shouldStopAfterTaskAction(taskAction),
+                PrintPlacementResult.TaskEvent.SUCCESS,
+                cooldownTicks
+        );
     }
 
     /** 为支撑位置找一个可点击的相邻面（优先下方） */

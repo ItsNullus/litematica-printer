@@ -24,7 +24,8 @@ Litematica Printer — ItsNullus 是一个客户端 Fabric 模组，为 Litemati
 
 > 测试对象：**[再灰二度] 无沟V4.2双倍速遇残骸即停防雪世吞**（RedenMC）
 > 尺寸 224 × 83 × 176，共 **19187** 个方块，测试时取消了 observer 更新。
-> 连续完整建造 **10 次**：仅 1 次出现幽灵方块，**0 次构建错误（包括方向错误）**。
+> 连续完整建造 **10 次**：**0次幽灵方块 和 0 次构建错误（包括方向错误）**。
+> 构建19187个方块只花费了0.12~0.18秒。
 
 ### 🪨 破基岩提速
 
@@ -40,14 +41,17 @@ Litematica Printer — ItsNullus 是一个客户端 Fabric 模组，为 Litemati
 
 目前仅支持 Minecraft **1.21.4**，且需要安装 Chest Tracker。
 
+### 🧱 自动放置支撑方块
+
+本分支新增了完整支持，在打印过程中自动为悬空方块放置临时支撑方块（如泥土、圆石）。支持自定义方块类型，并在结构完成后自动移除支撑物，极大简化了悬空或浮空结构的建造。
+
 ### 🚧 计划中（TODO）
 
 - 其余尚未恢复的容器相关操作。
 
 ## 下载与发布通道
 
-- [Modrinth](https://modrinth.com/mod/litematica-printer-hana) 提供多版本 Wrapper JAR。需要启动器或 Mod Menu 识别更新时，推荐从这里安装。
-- [GitHub Releases](https://github.com/Yur1Ca/litematica-printer/releases) 同时提供各 Minecraft 版本的独立 JAR。
+- [GitHub Releases](https://github.com/Yur1Ca/litematica-printer/releases) 提供各 Minecraft 版本的独立 JAR。
 - Actions 自动构建的 `devXXX` 为 **Alpha** 版本。
 - 手动创建的 Release 为 **Beta** 版本。
 - 目前没有正式版通道。
@@ -100,6 +104,7 @@ Litematica Printer — ItsNullus 是一个客户端 Fabric 模组，为 Litemati
 - 带白名单的独立破基岩模式。
 - 含水方块放置和破冰放水。
 - 使用活珊瑚替换投影中的死珊瑚。
+- **自动放置支撑方块** — 打印时自动放置可配置的临时方块来支撑悬空的无法存活方块（如悬浮铁砧、火把）。
 
 ### 物品联动
 
@@ -127,7 +132,6 @@ Litematica Printer — ItsNullus 是一个客户端 Fabric 模组，为 Litemati
 - 装有液体的炼药锅。
 - 物品展示框、盔甲架、画等实体。
 - 未明确适配的非原版内容。
-- 自动放置支撑方块（该功能尚未实现）。
 
 如果原版方块在较保守的工作间隔下仍然放置错误，请提交[方块支持报告](https://github.com/Yur1Ca/litematica-printer/issues/new/choose)。
 
@@ -159,10 +163,6 @@ Litematica Printer — ItsNullus 是一个客户端 Fabric 模组，为 Litemati
 - 可稳定复现的 Bug、方块支持问题和明确的功能建议请使用 [GitHub Issues](https://github.com/Yur1Ca/litematica-printer/issues/new/choose)。
 - 提交前请搜索已有 Issues 和 Discussions。
 - 每个 Issue 只提交一个可以独立复现的问题，并按情况附上 `latest.log`、崩溃报告、截图或短视频。
-
-### QQ 群
-
-不方便使用 GitHub 的中文用户，可以[点击这里加入 QQ 群](https://qm.qq.com/q/L8wglHf3GI)进行交流、反馈和获取帮助。
 
 ## 编译
 

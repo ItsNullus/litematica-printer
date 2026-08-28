@@ -24,7 +24,8 @@ Correctness matters just as much — by design the printer does not misplace blo
 
 > Test subject: **[再灰二度] 无沟V4.2双倍速遇残骸即停防雪世吞** (RedenMC)
 > 224 × 83 × 176, **19187** blocks in total, with observer updates disabled during testing.
-> Across **10 full builds**: ghost blocks appeared only once, with **0 construction errors (including orientation errors)**.
+> Across **10 full builds**: with **0 ghost blocks and 0 construction errors (including orientation errors)**.
+> It took 0.12~0.18 seconds to build 19187 blocks.
 
 ### 🪨 Faster bedrock breaking
 
@@ -40,14 +41,17 @@ Restores remote item retrieval based on [Chest Tracker](https://modrinth.com/mod
 
 Currently available on Minecraft **1.21.4** only, and requires Chest Tracker.
 
+### 🧱 Automatic support block placement
+
+Automatic support block placement — automatically places configurable temporary blocks to supporte blocks that would otherwise not survive during printing (e.x. floating anvil, torches).
+
 ### 🚧 Planned (TODO)
 
 - Remaining container-related operations not yet brought back.
 
 ## Download and release channels
 
-- [Modrinth](https://modrinth.com/mod/litematica-printer-hana) provides the multi-version Wrapper JAR and is recommended when launcher or Mod Menu update detection is desired.
-- [GitHub Releases](https://github.com/Yur1Ca/litematica-printer/releases) also provides standalone JARs for individual Minecraft versions.
+- [GitHub Releases](https://github.com/Yur1Ca/litematica-printer/releases) provides standalone JARs for individual Minecraft versions.
 - Automated `devXXX` builds are published as **Alpha** versions.
 - Manually created releases are published as **Beta** versions.
 - There is currently no stable release channel.
@@ -100,6 +104,7 @@ Dependency versions must match the Minecraft version being launched.
 - Bedrock-breaking mode with an allowlist.
 - Waterlogged block placement and ice-breaking water placement.
 - Replacement of dead coral in the schematic using live coral.
+- **Automatic support block placement** — temporarily places configurable blocks beneath unsupported blocks during printing, and removes them after the build finishes.
 
 ### Inventory integrations
 
@@ -127,7 +132,6 @@ Some content cannot currently be printed reliably and may be skipped or placed w
 - Cauldrons containing fluids.
 - Entities such as item frames, armor stands, and paintings.
 - Non-vanilla content unless it is explicitly supported.
-- Automatic support-block placement (not implemented yet).
 
 If a vanilla block is placed incorrectly even at a conservative work interval, submit a [block support report](https://github.com/Yur1Ca/litematica-printer/issues/new/choose).
 

@@ -170,12 +170,14 @@ public abstract class Module extends ConfigUtils {
         if (isEnable() && context.gameTime % 100 == 0) {
             try {
                 WorldSchematic schematicWorld = SchematicWorldHandler.getSchematicWorld();
+                // GuiHandler 等 useBox=false 的模块没有交互盒, 这里判空避免 NPE 刷屏
+                PrinterBox interactionBox = this.playerInteractionBox == null ? null : this.playerInteractionBox.get();
                 me.aleksilassila.litematica.printer.Reference.LOGGER.info(
                         "[PrinterDiag] 模块={} 原理图世界={} 交互盒={} 扫描源盒数={} 候选={} 状态={}",
                         this.id,
                         schematicWorld == null ? "NULL" : "loaded",
-                        this.playerInteractionBox.get(),
-                        this.getScanSourceBoxes(this.playerInteractionBox.get()).size(),
+                        interactionBox,
+                        this.getScanSourceBoxes(interactionBox).size(),
                         this.currentIterationFoundCandidate,
                         this.scanState);
             } catch (Exception e) {

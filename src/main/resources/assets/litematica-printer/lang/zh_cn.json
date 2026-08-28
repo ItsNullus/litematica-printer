@@ -319,7 +319,7 @@
   "litematica-printer.message.remote_take.exception": "远程取物异常: %s",
   "litematica-printer.message.remote_take.open_timeout": "远程开箱超时",
   "litematica-printer.config.supportPlaceMode": "无支撑支撑方块",
-  "litematica-printer.config.supportPlaceMode.desc": "打印时遇到因无支撑而无法放置的方块（如下方无方块的铁砧/压力板/站立火把），且该方块在投影中为空气时，先在此处放置支撑方块。\n关闭=不启用；仅正下方=只检查并放置正下方的支撑；所有方向=检查并放置所有方向的支撑。",
+  "litematica-printer.config.supportPlaceMode.desc": "打印时遇到因无支撑而无法放置的方块（如下方无方块的铁砧/压力板/站立火把），且该方块在投影中为空气时，先在此处放置支撑方块。\n关闭=不启用；启用后始终选取目标真正需要的支撑方向（地板类→正下方；墙壁火把/墙牌/梯子等→墙侧），不做其他方向的兜底尝试。支撑位无可点击相邻面时：只要支撑位在世界内，就直接在空气中放置支撑方块。",
   "litematica-printer.config.supportPlaceMode.none": "关闭",
   "litematica-printer.config.supportPlaceMode.down": "仅正下方",
   "litematica-printer.config.supportPlaceMode.all": "所有方向",

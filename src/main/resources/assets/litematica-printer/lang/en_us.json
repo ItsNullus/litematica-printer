@@ -319,7 +319,7 @@
   "litematica-printer.message.remote_take.exception": "Remote take error: %s",
   "litematica-printer.message.remote_take.open_timeout": "Remote container open timed out",
   "litematica-printer.config.supportPlaceMode": "Unsupported Block Support",
-  "litematica-printer.config.supportPlaceMode.desc": "When printing a block that cannot be placed due to lack of support (e.g. anvil/pressure plate/standing torch with nothing below), and the support position is air in the schematic, place a support block there first.\nOff = disabled; Below = only check/place support directly below; All = check/place supports in all directions.",
+  "litematica-printer.config.supportPlaceMode.desc": "When printing a block that cannot be placed due to lack of support (e.g. anvil/pressure plate/standing torch with nothing below), and the support position is air in the schematic, place a support block there first.\nOff = disabled; the printer always picks the support direction the target actually needs (floor-type blocks: directly below; wall-type blocks: the wall side) and never tries other directions. When the support spot has nothing to click against, the support block is placed directly in the air as long as the spot is inside the world.",
   "litematica-printer.config.supportPlaceMode.none": "Off",
   "litematica-printer.config.supportPlaceMode.down": "Below only",
   "litematica-printer.config.supportPlaceMode.all": "All directions",
