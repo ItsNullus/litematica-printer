@@ -21,7 +21,7 @@ public class InitHandler implements IInitializationHandler {
         Configs.init();
         initModConfig();
         initConfigCallback();
-        ChestTrackerBridge.init();  // Chest Tracker 远程取物: 世界加入/退出加载与保存打印机库存
+        ChestTrackerBridge.init();  // Chest Tracker 远程取物门面
         HighlightBlockRenderer.init();  // 高亮显示方块渲染器
     }
 
@@ -64,10 +64,10 @@ public class InitHandler implements IInitializationHandler {
         Core.RENDER_HUD.setValueChangeCallback(b -> ConfigUi.refresh());
         Configs.Placement.RTT_ADAPTIVE_INTERVAL.setValueChangeCallback(b -> ConfigUi.refresh());
 
-        // 远程取物开关关闭时，中断正在进行的取物/添加流程
-        Hotkeys.REMOTE_TAKE.setValueChangeCallback(b -> {
+        // 远程取物开关关闭时，中断正在进行的取物流程
+        Special.REMOTE_TAKE.setValueChangeCallback(b -> {
             if (!b.getBooleanValue()) {
-                ChestTrackerBridge.abortRemoteOps();
+                ChestTrackerBridge.reset();
             }
         });
     }

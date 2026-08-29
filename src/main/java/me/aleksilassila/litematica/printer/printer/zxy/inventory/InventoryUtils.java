@@ -8,6 +8,7 @@ import me.aleksilassila.litematica.printer.utils.mods.ShulkerUtils;
 import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.mixin.printer.litematica.InventoryUtilsAccessor;
 import me.aleksilassila.litematica.printer.printer.zxy.utils.ZxyUtils;
+import me.aleksilassila.litematica.printer.utils.ContainerGate;
 import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
 import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import net.minecraft.client.Minecraft;
@@ -83,6 +84,13 @@ public class InventoryUtils {
         if (me.aleksilassila.litematica.printer.printer.zxy.chesttracker.ChestTrackerBridge.isAwaitingStack()) {
             return true;
         }
+        if (TakeItOutUtils.isAwaitingStack()) {
+            return true;
+        }
+        // 容器互斥守卫：其他子系统（物品归还等）正在占用容器菜单时让路
+        if (ContainerGate.isHeld() && !ContainerGate.isHeldBy(ContainerGate.Owner.QUICK_SHULKER)) {
+            return true;
+        }
         if (Configs.Placement.QUICK_SHULKER.getBooleanValue() && !loggedQuickShulkerConfig) {
             loggedQuickShulkerConfig = true;
             Reference.LOGGER.info("[QuickShulker] 配置: QUICK_SHULKER={} MODE={} COOLDOWN={} STORE_ORDERLY={} qsModLoaded={}",
@@ -113,6 +121,7 @@ public class InventoryUtils {
                 return true;
             }
 
+            // 对齐 master-4 材料链：QuickShulker → TakeItOut → ChestTracker
             if (Configs.Placement.QUICK_SHULKER.getBooleanValue()) {
                 if (shulkerCooldown > 0) {
                     Reference.LOGGER.info("[QuickShulker] switchItem: 冷却中 {}", shulkerCooldown);
@@ -121,10 +130,14 @@ public class InventoryUtils {
                 if (openShulker(lastNeedItemList)) {
                     return true;
                 }
-                Reference.LOGGER.info("[QuickShulker] switchItem: 背包无可用潜影盒, 尝试远程取物");
+                Reference.LOGGER.info("[QuickShulker] switchItem: 背包无可用潜影盒, 尝试 Take It Out / 远程取物");
             }
-            // 背包潜影盒找不到所需物品 → 远程取物（箱子兜底；v2 架构：本地盒子优先，箱子其次）
-            if (me.aleksilassila.litematica.printer.config.Configs.Hotkeys.REMOTE_TAKE.getBooleanValue()
+            for (Item item : lastNeedItemList) {
+                if (TakeItOutUtils.tryRequestItem(item)) {
+                    return true;
+                }
+            }
+            if (me.aleksilassila.litematica.printer.config.Configs.Special.REMOTE_TAKE.getBooleanValue()
                     && me.aleksilassila.litematica.printer.printer.zxy.chesttracker.ChestTrackerBridge.requestMissingItem(
                     lastNeedItemList.toArray(new Item[0]))) {
                 return true;
@@ -231,6 +244,10 @@ public class InventoryUtils {
         if (shulkerCooldown > 0) {
             return false;
         }
+        // 容器互斥守卫：其他子系统占用容器菜单时不开盒
+        if (!ContainerGate.tryAcquire(ContainerGate.Owner.QUICK_SHULKER)) {
+            return false;
+        }
         for (Item item : items) {
             AbstractContainerMenu sc = Minecraft.getInstance().player.inventoryMenu;
             for (int i = 9; i < sc.slots.size(); i++) {
@@ -263,6 +280,24 @@ public class InventoryUtils {
         return false;
     }
 
+    /**
+     * 供 Chest Tracker 嵌套取物：潜影盒已在背包时直接打开取料，绕过 isAwaitingStack 互斥。
+     */
+    public static boolean requestItemsFromShulker(Item item) {
+        if (item == null || !Configs.Placement.QUICK_SHULKER.getBooleanValue()) {
+            return false;
+        }
+        if (isOpenHandler || client.player == null) {
+            return false;
+        }
+        if (!client.player.containerMenu.equals(client.player.inventoryMenu)) {
+            return false;
+        }
+        lastNeedItemList = new LinkedHashSet<>();
+        lastNeedItemList.add(item);
+        return openShulker(lastNeedItemList);
+    }
+
     public static void tick() {
         SwitchItem.tick();
         if (ModLoadUtils.closeScreen > 0) {
@@ -288,5 +323,11 @@ public class InventoryUtils {
         lastNeedItemList = new LinkedHashSet<>();
         isOpenHandler = false;
         openHandlerTimeout = 0;
+        ContainerGate.release(ContainerGate.Owner.QUICK_SHULKER);
+    }
+
+    /** 看门狗/玩家意图优先时强制清除快捷潜影盒请求状态 */
+    public static void forceClearSwitchRequest() {
+        clearSwitchRequest();
     }
 }

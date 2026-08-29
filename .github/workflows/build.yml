@@ -1,37 +1,12 @@
 name: build
 
 on:
-  # Automatic builds are limited to files that can change the produced JARs.
-  # CI and release workflow changes can still be verified with workflow_dispatch.
-  push:
-    branches: [master]
-    paths:
-      - 'src/**'
-      - 'versions/**'
-      - 'fabricWrapper/src/**'
-      - 'fabricWrapper/build.gradle.kts'
-      - 'fabricWrapper/gradle.properties'
-      - 'buildSrc/**'
-      - 'gradle/**'
-      - '*.gradle.kts'
-      - 'gradle.properties'
-      - 'gradlew'
-      - 'gradlew.bat'
-  pull_request:
-    branches: [master]
-    paths:
-      - 'src/**'
-      - 'versions/**'
-      - 'fabricWrapper/src/**'
-      - 'fabricWrapper/build.gradle.kts'
-      - 'fabricWrapper/gradle.properties'
-      - 'buildSrc/**'
-      - 'gradle/**'
-      - '*.gradle.kts'
-      - 'gradle.properties'
-      - 'gradlew'
-      - 'gradlew.bat'
   workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Release 版本号（例如 v1.0.0）'
+        type: string
+        required: true
 
 env:
   IS_THIS_RELEASE: false
@@ -41,10 +16,10 @@ env:
   GRADLE_OPTS: --sun-misc-unsafe-memory-access=allow
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -97,3 +72,18 @@ jobs:
           path: fabricWrapper/build/libs/jars/
           if-no-files-found: error
           retention-days: 90
+
+      - name: Create Release and upload JARs
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_version }}
+          name: Release ${{ inputs.release_version }}
+          files: |
+            fabricWrapper/build/libs/*.jar
+            fabricWrapper/build/libs/jars/*.jar
+          generate_release_notes: true
+          prerelease: true
+          make_latest: false
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

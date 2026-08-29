@@ -2,9 +2,9 @@ package me.aleksilassila.litematica.printer.utils.mods;
 
 import net.fabricmc.loader.api.FabricLoader;
 import me.aleksilassila.litematica.printer.Reference;
+import me.aleksilassila.litematica.printer.utils.ContainerGate;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.NonNullList;
-import me.aleksilassila.litematica.printer.printer.ActionManager;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
@@ -15,6 +15,8 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.HashSet;
+import java.util.Set;
 
 public final class TakeItOutUtils {
     private static final String MOD_ID = "takeitout";
@@ -22,14 +24,7 @@ public final class TakeItOutUtils {
     private static final String SOURCES_CLASS = "net.maxbel.takeitout.client.WorldContainerSources";
     private static final String SHULKER_PAYLOAD_CLASS = "net.maxbel.takeitout.Takeitout$GetShulkerStackPayload";
     private static final String CLIENT_PLAY_NETWORKING_CLASS = "net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking";
-    private static final long MAX_LOCAL_PENDING_MS = 4_000L;
-    private static final int SETTLE_TICKS_AFTER_ARRIVAL = 0;
-
     private static final Minecraft client = Minecraft.getInstance();
-    private static Item localPendingItem;
-    private static long localPendingStartedAtMs;
-    private static int localPendingSettleTicks = -1;
-    private static int localPendingInitialCount;
     private static boolean apiFailureLogged;
 
     private TakeItOutUtils() {
@@ -52,13 +47,67 @@ public final class TakeItOutUtils {
         }
     }
 
+    public static Set<Item> getAvailableItems() {
+        if (!isLoaded() || !isAutoTakeoutEnabled()) {
+            return Set.of();
+        }
+        try {
+            Object value = Class.forName(CLIENT_CLASS)
+                    .getField("WORLD_CONTAINER_ITEMS")
+                    .get(null);
+            if (!(value instanceof Iterable<?> entries)) {
+                return Set.of();
+            }
+            Set<Item> items = new HashSet<>();
+            for (Object entry : entries) {
+                if (entry == null) {
+                    continue;
+                }
+                Method stackMethod = entry.getClass().getMethod("stack");
+                Method countMethod = entry.getClass().getMethod("count");
+                Object stackValue = stackMethod.invoke(entry);
+                Object countValue = countMethod.invoke(entry);
+                if (stackValue instanceof ItemStack stack
+                        && countValue instanceof Integer count
+                        && count > 0
+                        && !stack.isEmpty()) {
+                    items.add(stack.getItem());
+                }
+            }
+            return items.isEmpty() ? Set.of() : Set.copyOf(items);
+        } catch (ReflectiveOperationException | LinkageError exception) {
+            logApiFailure("读取远程容器材料", exception);
+            return Set.of();
+        }
+    }
+
+    /** Requests Take It Out to refresh its linked-container material cache. */
+    public static void requestAvailableItemsRefresh() {
+        if (!isLoaded() || !isAutoTakeoutEnabled()) {
+            return;
+        }
+        try {
+            Class.forName("net.maxbel.takeitout.client.WorldContainerMaterialListCache")
+                    .getMethod("requestRefresh", Minecraft.class)
+                    .invoke(null, client);
+        } catch (ClassNotFoundException | NoSuchMethodException ignored) {
+            // Older Take It Out versions do not expose the material-list cache API.
+        } catch (ReflectiveOperationException | LinkageError exception) {
+            logApiFailure("刷新远程容器材料", exception);
+        }
+    }
+
     public static boolean isAwaitingStack() {
         ItemStack awaitingStack = getAwaitingStack();
         if (awaitingStack != null && !awaitingStack.isEmpty()) {
-            beginLocalPending(awaitingStack.getItem());
             return true;
         }
-        return isLocalPending();
+        return false;
+    }
+
+    public static boolean isAwaitingItem(Item item) {
+        ItemStack awaitingStack = getAwaitingStack();
+        return item != null && !awaitingStack.isEmpty() && awaitingStack.is(item);
     }
 
     public static boolean tryRequestItem(Item item) {
@@ -77,7 +126,6 @@ public final class TakeItOutUtils {
     }
 
     public static void resetPending() {
-        clearLocalPending();
         if (!isLoaded()) {
             return;
         }
@@ -111,7 +159,6 @@ public final class TakeItOutUtils {
                 result = requestStack.invoke(null, client, singleStack(required), isSingleItemMode());
             }
             if (Boolean.TRUE.equals(result)) {
-                beginLocalPending(required.getItem());
                 return true;
             }
             return false;
@@ -151,9 +198,17 @@ public final class TakeItOutUtils {
             if (!canSend(payloadClass)) {
                 return false;
             }
-            setAwaitingStack(singleStack(required));
-            sendPayload(payload);
-            beginLocalPending(required.getItem());
+            // 容器互斥守卫：仅围绕发送做同步互斥（发送后立即释放；
+            // 异步等待期间由调用方 isAwaitingStack 互斥，避免长时间占锁）
+            if (!ContainerGate.tryAcquire(ContainerGate.Owner.TAKE_IT_OUT)) {
+                return false;
+            }
+            try {
+                setAwaitingStack(singleStack(required));
+                sendPayload(payload);
+            } finally {
+                ContainerGate.release(ContainerGate.Owner.TAKE_IT_OUT);
+            }
             return true;
         } catch (ReflectiveOperationException | LinkageError exception) {
             logApiFailure("请求背包潜影盒", exception);
@@ -200,64 +255,6 @@ public final class TakeItOutUtils {
             return false;
         }
         return false;
-    }
-
-    private static void beginLocalPending(Item item) {
-        if (item == null) {
-            return;
-        }
-        if (localPendingItem == null || !localPendingItem.equals(item)) {
-            localPendingItem = item;
-            localPendingStartedAtMs = System.currentTimeMillis();
-            localPendingSettleTicks = -1;
-            localPendingInitialCount = countInventoryItem(item);
-        }
-        ActionManager.INSTANCE.clearQueue();
-    }
-
-    private static boolean isLocalPending() {
-        if (localPendingItem == null) {
-            return false;
-        }
-        ActionManager.INSTANCE.clearQueue();
-        if (System.currentTimeMillis() - localPendingStartedAtMs > MAX_LOCAL_PENDING_MS) {
-            clearLocalPending();
-            return false;
-        }
-        if (countInventoryItem(localPendingItem) <= localPendingInitialCount) {
-            return true;
-        }
-        if (localPendingSettleTicks < 0) {
-            localPendingSettleTicks = SETTLE_TICKS_AFTER_ARRIVAL;
-        }
-        if (localPendingSettleTicks-- > 0) {
-            return true;
-        }
-        clearLocalPending();
-        return false;
-    }
-
-    private static int countInventoryItem(Item item) {
-        if (client.player == null || item == null) {
-            return 0;
-        }
-        Inventory inventory = client.player.getInventory();
-        int size = Math.min(36, inventory.getContainerSize());
-        int count = 0;
-        for (int slot = 0; slot < size; slot++) {
-            ItemStack stack = inventory.getItem(slot);
-            if (!stack.isEmpty() && stack.is(item)) {
-                count += stack.getCount();
-            }
-        }
-        return count;
-    }
-
-    private static void clearLocalPending() {
-        localPendingItem = null;
-        localPendingStartedAtMs = 0L;
-        localPendingSettleTicks = -1;
-        localPendingInitialCount = 0;
     }
 
     private static void sendPayload(Object payload) throws ReflectiveOperationException {

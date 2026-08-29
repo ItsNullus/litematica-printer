@@ -22,6 +22,8 @@ The printing execution logic has been completely rewritten. Print speed is no lo
 
 Correctness matters just as much — by design the printer does not misplace blocks. Measured results:
 
+https://github.com/user-attachments/assets/8347f184-c170-4ebd-9981-b68544397ca2
+
 > Test subject: **[再灰二度] 无沟V4.2双倍速遇残骸即停防雪世吞** (RedenMC)
 > 224 × 83 × 176, **19187** blocks in total, with observer updates disabled during testing.
 > Across **10 full builds**: with **0 ghost blocks and 0 construction errors (including orientation errors)**.

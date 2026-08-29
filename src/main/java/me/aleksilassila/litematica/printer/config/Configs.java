@@ -239,11 +239,18 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 .setVisible(ModLoadUtils::isTweakerooLoaded)
                 .build();
 
+        // Chest Tracker 远程取物开关
+        public static final ConfigBooleanHotkeyed REMOTE_TAKE = booleanHotkey("remoteTake")
+                .defaultValue(false)
+                .setVisible(ModLoadUtils::isChestTrackerLoaded)
+                .build();
+
         public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
                 //#if MC < 260200
                 UNLOCK_BEACON_EFFECTS,
                 //#endif
-                TWEAKEROO_ANGEL_BLOCK_MAY_BUILD
+                TWEAKEROO_ANGEL_BLOCK_MAY_BUILD,
+                REMOTE_TAKE
         );
     }
 
@@ -651,6 +658,29 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 .defaultValue(java.util.List.of("minecraft:glass"))
                 .build();
 
+        // 无支撑支撑方块 - 目标方块白名单 (默认铁砧和所有压力板)
+        public static final ConfigStringList SUPPORT_TARGET_BLOCK_LIST = stringList("supportTargetBlockList")
+                .defaultValue(java.util.List.of(
+                        "minecraft:anvil",
+                        "minecraft:chipped_anvil",
+                        "minecraft:damaged_anvil",
+                        "minecraft:stone_pressure_plate",
+                        "minecraft:oak_pressure_plate",
+                        "minecraft:spruce_pressure_plate",
+                        "minecraft:birch_pressure_plate",
+                        "minecraft:jungle_pressure_plate",
+                        "minecraft:acacia_pressure_plate",
+                        "minecraft:dark_oak_pressure_plate",
+                        "minecraft:mangrove_pressure_plate",
+                        "minecraft:cherry_pressure_plate",
+                        "minecraft:crimson_pressure_plate",
+                        "minecraft:warped_pressure_plate",
+                        "minecraft:polished_blackstone_pressure_plate",
+                        "minecraft:heavy_weighted_pressure_plate",
+                        "minecraft:light_weighted_pressure_plate"
+                ))
+                .build();
+
         // 无支撑支撑方块 - 支撑防抖 (tick, 0=关闭)
         public static final ConfigInteger SUPPORT_PENDING_TTL = integer("supportPendingTtl")
                 .defaultValue(20)
@@ -665,6 +695,11 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
         // 破坏多余方块
         public static final ConfigBoolean BREAK_EXTRA_BLOCK = bool("printBreakExtraBlock")
                 .defaultValue(false)
+                .build();
+
+        // 按物品种类批量放置 - 开关
+        public static final ConfigBoolean PRINT_BATCH_BY_ITEM = bool("printBatchByItem")
+                .defaultValue(true)
                 .build();
 
         public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
@@ -697,7 +732,9 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 , BONEMEAL_CROPS_CLICKS
                 , SUPPORT_PLACE_MODE
                 , SUPPORT_BLOCK_LIST
+                , SUPPORT_TARGET_BLOCK_LIST
                 , SUPPORT_PENDING_TTL
+                , PRINT_BATCH_BY_ITEM
         );
     }
 
@@ -820,19 +857,14 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 .setVisible(isMulti) // 仅多模式时显示
                 .build();
 
-        // 远程取物 (Chest Tracker) - 开关
-        public static final ConfigBooleanHotkeyed REMOTE_TAKE = booleanHotkey("remoteTake")
-                .defaultValue(false)
+        // 选区容器缓存（Chest Tracker 远程取物允许列表）
+        public static final ConfigHotkey CACHE_SELECTION_CONTAINERS = hotkey("cacheSelectionContainers")
+                .defaultStorageString("")
                 .setVisible(ModLoadUtils::isChestTrackerLoaded)
                 .build();
 
-        // 远程取物 (Chest Tracker) - 添加打印机库存
-        public static final ConfigHotkey PRINTER_INVENTORY = hotkey("printerInventory")
-                .setVisible(ModLoadUtils::isChestTrackerLoaded)
-                .build();
-
-        // 远程取物 (Chest Tracker) - 清空打印机库存
-        public static final ConfigHotkey REMOVE_PRINT_INVENTORY = hotkey("removePrintInventory")
+        public static final ConfigHotkey CLEAR_CONTAINER_CACHE = hotkey("clearContainerCache")
+                .defaultStorageString("")
                 .setVisible(ModLoadUtils::isChestTrackerLoaded)
                 .build();
 
@@ -849,10 +881,8 @@ public class Configs extends ConfigBuilders implements IConfigHandler {
                 Core.FLUID,                  // 排流体
                 BEDROCK,                      // 破基岩
 
-                // Chest Tracker 远程取物
-                REMOTE_TAKE,                  // 远程取物开关
-                PRINTER_INVENTORY,            // 添加打印机库存
-                REMOVE_PRINT_INVENTORY        // 清空打印机库存
+                CACHE_SELECTION_CONTAINERS,
+                CLEAR_CONTAINER_CACHE
         );
     }
 

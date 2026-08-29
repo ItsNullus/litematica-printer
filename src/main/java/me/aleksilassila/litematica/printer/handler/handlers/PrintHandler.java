@@ -39,6 +39,10 @@ public class PrintHandler extends Module {
     private final SortedSchematicTargetQueue sortedTargets = new SortedSchematicTargetQueue();
     private final PrintPlacementExecutor placementExecutor = new PrintPlacementExecutor();
     private int missingRejectCount;
+    /** 本轮连续"缺失但暂时无法放置"拒绝次数（用于节流 HUD 状态，避免刷屏） */
+    private int missingRejectStreak;
+    /** 本轮连续"无放置方案"拒绝次数（WRONG_BLOCK/WRONG_STATE 等真问题） */
+    private int wrongRejectStreak;
 
     private List<String> printSkipListCache = List.of();
     private String[] printSkipFilters = new String[0];
@@ -98,6 +102,8 @@ public class PrintHandler extends Module {
         this.ctx = null;
         this.printTasks.clear();
         this.sortedTargets.clear();
+        this.missingRejectStreak = 0;
+        this.wrongRejectStreak = 0;
         this.observedActionConfigHash = Integer.MIN_VALUE;
     }
 
@@ -109,8 +115,12 @@ public class PrintHandler extends Module {
             this.sortedTargets.clear();
             return List.of(activeTaskPos);
         }
-        if (!Configs.Print.PRINT_SORT_TARGETS.getBooleanValue()
-                && !Configs.Print.PRINT_BOTTOM_UP.getBooleanValue()) {
+        // 按物品种类批量放置（PRINT_BATCH_BY_ITEM）也需要走分桶队列，
+        // 因此即使未开启目标排序/自底向上，也进入 sortedTargets 路径。
+        boolean useSortedQueue = Configs.Print.PRINT_SORT_TARGETS.getBooleanValue()
+                || Configs.Print.PRINT_BOTTOM_UP.getBooleanValue()
+                || Configs.Print.PRINT_BATCH_BY_ITEM.getBooleanValue();
+        if (!useSortedQueue) {
             this.sortedTargets.clear();
             return this.getCachedFilteredIterationPositions(playerInteractionBox, ScanIntent.PRINT, pos -> true);
         }
@@ -123,7 +133,8 @@ public class PrintHandler extends Module {
             this.sortedTargets.clear();
             return List.of();
         }
-        return this.sortedTargets.iterable(scanSourceBoxes, level, schematic, player, getScanGuardLimit());
+        int maxBlocksPerTick = Configs.Placement.PLACE_BLOCKS_PER_TICK.getIntegerValue();
+        return this.sortedTargets.iterable(scanSourceBoxes, level, schematic, player, getScanGuardLimit(), maxBlocksPerTick);
     }
 
     @Override
@@ -161,15 +172,30 @@ public class PrintHandler extends Module {
 //        Action action = guide.getAction(ctx);
         Optional<Action> action = Guides.INSTANCE.buildAction(ctx);
         if (action.isEmpty()) {
-            HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.PRINT, "无有效放置方案");
-            // 只记录"缺失方块被拒绝"的情况（低频汇总, 避免刷屏拖慢扫描）
-            if (ctx.currentState.isAir() && ++missingRejectCount % 200 == 1) {
+            // 缺失方块无放置方案 = 暂时无法放置（缺支撑/构建顺序未到/环境未就绪），
+            // 属正常现象：每轮连续拒绝只记录一次状态，避免 HUD 刷屏显示"无有效放置方案"。
+            boolean missingLike = ctx.currentState.isAir()
+                    || me.aleksilassila.litematica.printer.utils.minecraft.BlockUtils.isReplaceable(ctx.currentState);
+            if (missingLike) {
+                if (missingRejectStreak++ == 0) {
+                    HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.PRINT, "等待支撑或顺序");
+                }
+            } else {
+                if (wrongRejectStreak++ == 0) {
+                    HudStatsManager.INSTANCE.recordStatus(HudStatsManager.Mode.PRINT, "无有效放置方案");
+                }
+            }
+            // 只记录低频汇总日志, 避免刷屏拖慢扫描
+            if (++missingRejectCount % 200 == 1) {
                 me.aleksilassila.litematica.printer.Reference.LOGGER.info(
-                        "[Printer] 缺失方块无放置方案: 目标 {} 位置 {} canSurvive={} (累计 {})",
-                        ctx.requiredState.getBlock(), blockPos, ctx.requiredState.canSurvive(level, blockPos), missingRejectCount);
+                        "[Printer] 无放置方案: 目标 {} 位置 {} 当前 {} canSurvive={} (累计 {})",
+                        ctx.requiredState.getBlock(), blockPos, ctx.currentState.getBlock(),
+                        ctx.requiredState.canSurvive(level, blockPos), missingRejectCount);
             }
             return false;
         }
+        this.missingRejectStreak = 0;
+        this.wrongRejectStreak = 0;
         this.action = action.get();
         this.printTaskAction = this.printTasks.createActionHandle(ctx, this.action);
         return true;

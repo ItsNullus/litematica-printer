@@ -5,6 +5,8 @@ import me.aleksilassila.litematica.printer.config.Configs;
 import me.aleksilassila.litematica.printer.handler.handlers.GuiHandler;
 import me.aleksilassila.litematica.printer.handler.handlers.MineDebugLog;
 import me.aleksilassila.litematica.printer.printer.ActionManager;
+import me.aleksilassila.litematica.printer.printer.zxy.inventory.SwitchItem;
+import me.aleksilassila.litematica.printer.utils.ContainerGate;
 import me.aleksilassila.litematica.printer.utils.InventorySwitchGuard;
 import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import net.minecraft.client.Minecraft;
@@ -39,6 +41,7 @@ final class TickScheduler {
             this.lastPauseReason = null;
             return;
         }
+        this.enforceContainerWatchdog();
         int currentScopeHash = this.currentExecutionScopeHash();
         if (!this.runtimeActive) {
             this.runtimeActive = true;
@@ -109,6 +112,28 @@ final class TickScheduler {
 
     String getLastPauseReason() {
         return this.lastPauseReason;
+    }
+
+    /**
+     * 容器操作看门狗：某子系统持有容器锁超过其允许时长（内部超时失效）时，
+     * 强制清除对应子系统状态并释放锁，避免 "容器打开或切物品中" 无限期阻塞放置。
+     */
+    private void enforceContainerWatchdog() {
+        if (!ContainerGate.isExpired()) {
+            return;
+        }
+        ContainerGate.Owner stuckOwner = ContainerGate.getOwner();
+        me.aleksilassila.litematica.printer.Reference.LOGGER.warn(
+                "[ContainerGate] 看门狗: {} 持有容器锁 {} tick 超限, 强制释放",
+                stuckOwner, ContainerGate.getHoldTicks());
+        switch (stuckOwner) {
+            case CHEST_TRACKER_TAKE -> me.aleksilassila.litematica.printer.printer.zxy.chesttracker.ChestTrackerBridge.abortRemoteOps();
+            case QUICK_SHULKER -> me.aleksilassila.litematica.printer.printer.zxy.inventory.InventoryUtils.forceClearSwitchRequest();
+            case SWITCH_ITEM_RESTORE -> SwitchItem.forceClearPendingRestore();
+            case TAKE_IT_OUT -> TakeItOutUtils.resetPending();
+            default -> { }
+        }
+        ContainerGate.forceRelease();
     }
 
     private void pause(String reason) {

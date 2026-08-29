@@ -47,6 +47,10 @@ public final class PrintPlacementExecutor {
     private static final long RESERVE_NOTICE_COOLDOWN_TICKS = 100L;
     private static long lastReserveNoticeTick = Long.MIN_VALUE;
     private static boolean supportModeBannerLogged;
+    
+    /** 批量放置模式下的当前批次物品追踪，避免同批次内重复切换物品 */
+    private static Item currentBatchItem = null;
+    private static long currentBatchTick = Long.MIN_VALUE;
 
     /**
      * 目标方块在当前世界位置是否"需要支撑"。
@@ -76,16 +80,22 @@ public final class PrintPlacementExecutor {
         if (supportMode != SupportPlaceModeType.NONE) {
             boolean survivable = !requiresSupportAt(context.level, context.requiredState, blockPos);
             if (!survivable) {
-                me.aleksilassila.litematica.printer.Reference.LOGGER.info(
-                        "[Printer] 无支撑支撑: 模式={} 目标={} 位置={} 需要支撑",
-                        supportMode.getI18n().getSimpleKey(), context.requiredState.getBlock(), blockPos);
-                SupportPlacementPlan supportPlan = tryBuildSupportPlacement(context, action, blockPos);
-                if (supportPlan != null) {
-                    if (supportPlan.deferred()) {
-                        HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "等待支撑");
-                        return PrintPlacementResult.cancelled(false);
+                // 检查目标方块是否在支撑白名单中
+                if (!isTargetInSupportList(context.requiredState)) {
+                    me.aleksilassila.litematica.printer.Reference.LOGGER.info(
+                            "[Printer] 无支撑支撑: 目标 {} 不在支撑白名单中，跳过支撑", context.requiredState.getBlock());
+                } else {
+                    me.aleksilassila.litematica.printer.Reference.LOGGER.info(
+                            "[Printer] 无支撑支撑: 模式={} 目标={} 位置={} 需要支撑",
+                            supportMode.getI18n().getSimpleKey(), context.requiredState.getBlock(), blockPos);
+                    SupportPlacementPlan supportPlan = tryBuildSupportPlacement(context, action, blockPos);
+                    if (supportPlan != null) {
+                        if (supportPlan.deferred()) {
+                            HudStatsManager.INSTANCE.recordDeferred(HudStatsManager.Mode.PRINT, "等待支撑");
+                            return PrintPlacementResult.cancelled(false);
+                        }
+                        return sendSupportPlacement(context, action, taskAction, blockPos, supportPlan);
                     }
-                    return sendSupportPlacement(context, action, taskAction, blockPos, supportPlan);
                 }
             }
         }
@@ -108,24 +118,46 @@ public final class PrintPlacementExecutor {
         Predicate<ItemStack> requiredStackPredicate = action.getRequiredStackPredicate();
         boolean reserveItems = Configs.Print.PRINT_RESERVE_ITEMS.getBooleanValue();
         int reserveCount = Configs.Print.PRINT_RESERVE_ITEM_COUNT.getIntegerValue();
+        
+        // 批量放置优化：如果启用了批量模式且当前主手已是所需物品，跳过 switchToItems。
+        // 注意：带特定成分匹配（requiredStackPredicate != null）的动作不能跳过——需要精确匹配堆叠成分。
+        boolean isBatchMode = Configs.Print.PRINT_BATCH_BY_ITEM.getBooleanValue();
+        long currentTick = context.level.getGameTime();
+        Item firstRequiredItem = requiredItems.length > 0 ? requiredItems[0] : Items.AIR;
+        boolean canSkipSwitch = isBatchMode
+            && requiredStackPredicate == null
+            && currentBatchTick == currentTick
+            && currentBatchItem != null
+            && currentBatchItem == firstRequiredItem
+            && InventoryUtils.isHoldingAnyItem(context.client.player, requiredItems);
+        
         boolean itemReady;
-        if (requiredStackPredicate == null) {
-            itemReady = reserveItems
-                    ? InventoryUtils.switchToItemsWithReserve(context.client.player, requiredItems, reserveCount)
-                    : InventoryUtils.switchToItems(context.client.player, requiredItems);
+        if (!canSkipSwitch) {
+            if (requiredStackPredicate == null) {
+                itemReady = reserveItems
+                        ? InventoryUtils.switchToItemsWithReserve(context.client.player, requiredItems, reserveCount)
+                        : InventoryUtils.switchToItems(context.client.player, requiredItems);
+            } else {
+                itemReady = reserveItems
+                        ? InventoryUtils.switchToMatchingStackWithReserve(
+                                context.client.player,
+                                requiredStackPredicate,
+                                action.getRequiredCreativeStack(),
+                                reserveCount
+                        )
+                        : InventoryUtils.switchToMatchingStack(
+                                context.client.player,
+                                requiredStackPredicate,
+                                action.getRequiredCreativeStack()
+                        );
+            }
+            // 记录成功切换的物品，用于本批次后续位置复用
+            if (itemReady && isBatchMode) {
+                currentBatchItem = firstRequiredItem;
+                currentBatchTick = currentTick;
+            }
         } else {
-            itemReady = reserveItems
-                    ? InventoryUtils.switchToMatchingStackWithReserve(
-                            context.client.player,
-                            requiredStackPredicate,
-                            action.getRequiredCreativeStack(),
-                            reserveCount
-                    )
-                    : InventoryUtils.switchToMatchingStack(
-                            context.client.player,
-                            requiredStackPredicate,
-                            action.getRequiredCreativeStack()
-                    );
+            itemReady = true;
         }
         if (!itemReady) {
             ItemStack reserveBlockedStack = reserveItems
@@ -614,5 +646,34 @@ public final class PrintPlacementExecutor {
             }
         }
         return cachedSupportItem;
+    }
+
+    /** 检查目标方块是否在支撑目标白名单中 */
+    private static boolean isTargetInSupportList(BlockState targetState) {
+        List<String> list = Configs.Print.SUPPORT_TARGET_BLOCK_LIST.getStrings();
+        if (list == null || list.isEmpty()) {
+            return true; // 空列表表示所有方块都接受支撑
+        }
+
+        String blockId = BuiltInRegistries.BLOCK.getKey(targetState.getBlock()).toString();
+        for (String entry : list) {
+            if (entry == null || entry.isBlank()) {
+                continue;
+            }
+            String id = entry.trim();
+            if (id.contains(":")) {
+                // 注册表 id 精确匹配
+                if (id.equals(blockId)) {
+                    return true;
+                }
+            } else {
+                // 简单名称匹配（不含命名空间的部分）
+                String blockSimpleName = blockId.contains(":") ? blockId.substring(blockId.indexOf(":") + 1) : blockId;
+                if (id.equalsIgnoreCase(blockSimpleName)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }

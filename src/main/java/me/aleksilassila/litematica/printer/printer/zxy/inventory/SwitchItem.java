@@ -2,6 +2,7 @@ package me.aleksilassila.litematica.printer.printer.zxy.inventory;
 
 import fi.dy.masa.malilib.util.InventoryUtils;
 import me.aleksilassila.litematica.printer.I18n;
+import me.aleksilassila.litematica.printer.utils.ContainerGate;
 import me.aleksilassila.litematica.printer.utils.minecraft.MessageUtils;
 import me.aleksilassila.litematica.printer.utils.mods.ModLoadUtils;
 import me.aleksilassila.litematica.printer.utils.mods.ShulkerUtils;
@@ -388,6 +389,10 @@ public class SwitchItem {
                 || !player.containerMenu.equals(player.inventoryMenu)) {
             return;
         }
+        // 容器互斥守卫：其他子系统占用容器菜单时延后归还（pendingRestore 保留，下 tick 重试）
+        if (!ContainerGate.tryAcquire(ContainerGate.Owner.SWITCH_ITEM_RESTORE)) {
+            return;
+        }
         reconcileTrackedSlots(player);
         if (!trackedItems.contains(pendingRestore)) {
             clearPendingRestore();
@@ -722,6 +727,12 @@ public class SwitchItem {
         pendingRestore = null;
         waitingForRestoreContainer = false;
         restoreTimeout = 0;
+        ContainerGate.release(ContainerGate.Owner.SWITCH_ITEM_RESTORE);
+    }
+
+    /** 看门狗/玩家意图优先时强制清除归还状态 */
+    public static void forceClearPendingRestore() {
+        clearPendingRestore();
     }
 
     private static class ItemStatistics {

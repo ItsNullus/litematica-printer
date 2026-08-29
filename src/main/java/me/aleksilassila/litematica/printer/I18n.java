@@ -52,6 +52,10 @@ public class I18n {
     public static final I18n REMOTE_TAKE_NOT_SYNCED = of("message.remote_take.not_synced");
     public static final I18n REMOTE_TAKE_EXCEPTION = of("message.remote_take.exception");
     public static final I18n REMOTE_OPEN_TIMEOUT = of("message.remote_take.open_timeout");
+    public static final I18n REMOTE_TAKE_RETURN_START = of("message.remote_take.return_start");
+    public static final I18n REMOTE_TAKE_RETURN_DONE = of("message.remote_take.return_done");
+    public static final I18n REMOTE_TAKE_RETURN_FAILED = of("message.remote_take.return_failed");
+    public static final I18n REMOTE_TAKE_RETURN_NO_SPACE = of("message.remote_take.return_no_space");
 
     private static final String PREFIX_CONFIG = "config";
     private static final String PREFIX_COMMENT = "desc";

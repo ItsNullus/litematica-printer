@@ -31,7 +31,7 @@ package me.aleksilassila.litematica.printer.mixin.printer.chesttracker;
 //$$         if (button != 1) {
 //$$             return;
 //$$         }
-//$$         if (!Configs.Hotkeys.REMOTE_TAKE.getBooleanValue()) {
+//$$         if (!Configs.Special.REMOTE_TAKE.getBooleanValue()) {
 //$$             me.aleksilassila.litematica.printer.Reference.LOGGER.info("[ChestTracker] 右键: 远程取物开关未开启");
 //$$             return;
 //$$         }

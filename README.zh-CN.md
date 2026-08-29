@@ -22,6 +22,8 @@ Litematica Printer — ItsNullus 是一个客户端 Fabric 模组，为 Litemati
 
 正确性同样重要——理论上不会产生构建错误。实测数据：
 
+https://github.com/user-attachments/assets/8347f184-c170-4ebd-9981-b68544397ca2
+
 > 测试对象：**[再灰二度] 无沟V4.2双倍速遇残骸即停防雪世吞**（RedenMC）
 > 尺寸 224 × 83 × 176，共 **19187** 个方块，测试时取消了 observer 更新。
 > 连续完整建造 **10 次**：**0次幽灵方块 和 0 次构建错误（包括方向错误）**。

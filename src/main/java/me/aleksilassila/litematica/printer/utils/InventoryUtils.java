@@ -7,7 +7,6 @@ import me.aleksilassila.litematica.printer.mixin.printer.litematica.EasyPlaceUti
 import me.aleksilassila.litematica.printer.mixin.printer.litematica.InventoryUtilsAccessor;
 import me.aleksilassila.litematica.printer.utils.minecraft.PlayerUtils;
 import me.aleksilassila.litematica.printer.utils.minecraft.ToolSelectionUtils;
-import me.aleksilassila.litematica.printer.utils.mods.TakeItOutUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.player.LocalPlayer;
@@ -412,12 +411,7 @@ public class InventoryUtils {
                 }
             }
         }
-        // 背包里所有后备物品都不存在后，再按优先级请求外部取货。
-        for (Item item : items) {
-            if (TakeItOutUtils.tryRequestItem(item)) {
-                return false;
-            }
-        }
+        // 背包里所有后备物品都不存在后，交给外部取货链（QS → TakeItOut → Chest Tracker）。
         for (Item item : items) {
             lastNeedItemList.add(item);
         }

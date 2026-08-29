@@ -6,6 +6,7 @@ import me.aleksilassila.litematica.printer.printer.zxy.chesttracker.ChestTracker
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket;
+import net.minecraft.network.protocol.game.ClientboundOpenScreenPacket;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -15,6 +16,12 @@ import static me.aleksilassila.litematica.printer.printer.zxy.inventory.Inventor
 
 @Mixin(ClientPacketListener.class)
 public abstract class MixinClientPacketListener {
+
+    @Inject(at = @At("TAIL"), method = "handleOpenScreen")
+    public void onOpenScreen(ClientboundOpenScreenPacket packet, CallbackInfo ci) {
+        // OpenScreen 包在所有支持版本均为 getContainerId()（record 化的只有 ContainerSetContent 包）
+        ChestTrackerBridge.onContainerOpen(packet.getContainerId());
+    }
 
     @Inject(at = @At("TAIL"), method = "handleContainerContent")
     public void onInventory(ClientboundContainerSetContentPacket packet, CallbackInfo ci) {
@@ -39,6 +46,6 @@ public abstract class MixinClientPacketListener {
         if (ChestTrackerBridge.isChestTrackerLoaded()) {
             me.aleksilassila.litematica.printer.Reference.LOGGER.info("[ChestTracker] 收到容器内容包 containerId={}", client.player.containerMenu.containerId);
         }
-        ChestTrackerBridge.onContainerContent();
+        ChestTrackerBridge.onContainerContent(client.player.containerMenu.containerId);
     }
 }
