@@ -24,10 +24,17 @@ Correctness matters just as much — by design the printer does not misplace blo
 
 https://github.com/user-attachments/assets/8347f184-c170-4ebd-9981-b68544397ca2
 
-> Test subject: **[再灰二度] 无沟V4.2双倍速遇残骸即停防雪世吞** (RedenMC)
+> Test subject: **[再灰二度] 无沟V4.2双倍速遇残骸即停防雪世吞** (from RedenMC)
 > 224 × 83 × 176, **19187** blocks in total, with observer updates disabled during testing.
-> Across **10 full builds**: with **0 ghost blocks and 0 construction errors (including orientation errors)**.
+> Across **10 full builds** (not showed in the video): with **0 ghost blocks and 0 construction errors (including orientation errors)**.
 > It took 0.12~0.18 seconds to build 19187 blocks.
+
+https://github.com/user-attachments/assets/16d21510-265b-43f8-b619-16f749202998
+
+> > Test subject: **Library** (Saved from a great builder's world)
+> 47 × 18 × 31, **6766** blocks in total.
+> Across **2 full builds** (all showed in the video): with **0 ghost blocks and 0 construction errors (including orientation errors)**.
+> It took 0.05~0.06 seconds to build 19187 blocks.
 
 ### 🪨 Faster bedrock breaking
 
