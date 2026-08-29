@@ -34,7 +34,7 @@ https://github.com/user-attachments/assets/16d21510-265b-43f8-b619-16f749202998
 > > Test subject: **Library** (Saved from a great builder's world)
 > 47 × 18 × 31, **6766** blocks in total.
 > Across **2 full builds** (all showed in the video): with **0 ghost blocks and 0 construction errors (including orientation errors)**.
-> It took 0.05~0.06 seconds to build 19187 blocks.
+> It took 0.05~0.06 seconds to build 6766 blocks.
 
 ### 🪨 Faster bedrock breaking
 
